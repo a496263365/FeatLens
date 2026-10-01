@@ -1,0 +1,75 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1003,
+  "namespace": "boltons.cacheutils.ThresholdCounter.most_common",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2303,
+      "input_estimate_after": 2303,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboltons/cacheutils.py\nline: 733\nclass: ThresholdCounter\nfunction: most_common\n```",
+  "final_locations": {
+    "files": [
+      "boltons/cacheutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "ThresholdCounter",
+        "kind": "class",
+        "symbol": "boltons.cacheutils.ThresholdCounter",
+        "start": 649,
+        "end": 821,
+        "code": "class ThresholdCounter(object):\n    \"\"\"A **bounded** dict-like Mapping from keys to counts. The\n    ThresholdCounter automatically compacts after every (1 /\n    *threshold*) additions, maintaining exact counts for any keys\n    whose count represents at least a *threshold* ratio of the total\n    data. In other words, if a particular key is not present in the\n    ThresholdCounter, its count represents less than *threshold* of\n    the total data.\n\n    >>> tc = ThresholdCounter(threshold=0.1)\n    >>> tc.add(1)\n    >>> tc.items()\n    [(1, 1)]\n    >>> tc.update([2] * 10)\n    >>> tc.get(1)\n    0\n    >>> tc.add(5)\n    >>> 5 in tc\n    True\n    >>> len(list(tc.elements()))\n    11\n\n    As you can see above, the API is kept similar to\n    :class:`collections.Counter`. The most notable feature omissions\n    being that counted items cannot be set directly, uncounted, or\n    removed, as this would disrupt the math.\n\n    Use the ThresholdCounter when you need best-effort long-lived\n    counts for dynamically-keyed data. Without a bounded datastructure\n    such as this one, the dynamic keys often represent a memory leak\n    and can impact application reliability. The ThresholdCounter's\n    item replacement strategy is fully deterministic and can be\n    thought of as *Amortized Least Relevant*. The absolute upper bound\n    of keys it will store is *(2/threshold)*, but realistically\n    *(1/threshold)* is expected for uniformly random datastreams, and\n    one or two orders of magnitude better for real-world data.\n\n    This algorithm is an implementation of the Lossy Counting\n    algorithm described in \"Approximate Frequency Counts over Data\n    Streams\" by Manku & Motwani. Hat tip to Kurt Rose for discovery\n    and initial implementation.\n\n    \"\"\"\n    # TODO: hit_count/miss_count?\n    def __init__(self, threshold=0.001):\n        if not 0 < threshold < 1:\n            raise ValueError('expected threshold between 0 and 1, not: %r'\n                             % threshold)\n\n        self.total = 0\n        self._count_map = {}\n        self._threshold = threshold\n        self._thresh_count = int(1 / threshold)\n        self._cur_bucket = 1\n\n    @property\n    def threshold(self):\n        return self._threshold\n\n    def add(self, key):\n        \"\"\"Increment the count of *key* by 1, automatically adding it if it\n        does not exist.\n\n        Cache compaction is triggered every *1/threshold* additions.\n        \"\"\"\n        self.total += 1\n        try:\n            self._count_map[key][0] += 1\n        except KeyError:\n            self._count_map[key] = [1, self._cur_bucket - 1]\n\n        if self.total % self._thresh_count == 0:\n            self._count_map = dict([(k, v) for k, v in self._count_map.items()\n                                    if sum(v) > self._cur_bucket])\n            self._cur_bucket += 1\n        return\n\n    def elements(self):\n        \"\"\"Return an iterator of all the common elements tracked by the\n        counter. Yields each key as many times as it has been seen.\n        \"\"\"\n        repeaters = itertools.starmap(itertools.repeat, self.iteritems())\n        return itertools.chain.from_iterable(repeaters)\n\n    def most_common(self, n=None):\n        pass\n\n\n\n\n\n\n\n\n\n    def get_common_count(self):\n        \"\"\"Get the sum of counts for keys exceeding the configured data\n        threshold.\n        \"\"\"\n        return sum([count for count, _ in self._count_map.values()])\n\n    def get_uncommon_count(self):\n        \"\"\"Get the sum of counts for keys that were culled because the\n        associated counts represented less than the configured\n        threshold. The long-tail counts.\n        \"\"\"\n        return self.total - self.get_common_count()\n\n    def get_commonality(self):\n        \"\"\"Get a float representation of the effective count accuracy. The\n        higher the number, the less uniform the keys being added, and\n        the higher accuracy and efficiency of the ThresholdCounter.\n\n        If a stronger measure of data cardinality is required,\n        consider using hyperloglog.\n        \"\"\"\n        return float(self.get_common_count()) / self.total\n\n    def __getitem__(self, key):\n        return self._count_map[key][0]\n\n    def __len__(self):\n        return len(self._count_map)\n\n    def __contains__(self, key):\n        return key in self._count_map\n\n    def iterkeys(self):\n        return iter(self._count_map)\n\n    def keys(self):\n        return list(self.iterkeys())\n\n    def itervalues(self):\n        count_map = self._count_map\n        for k in count_map:\n            yield count_map[k][0]\n\n    def values(self):\n        return list(self.itervalues())\n\n    def iteritems(self):\n        count_map = self._count_map\n        for k in count_map:\n            yield (k, count_map[k][0])\n\n    def items(self):\n        return list(self.iteritems())\n\n    def get(self, key, default=0):\n        \"Get count for *key*, defaulting to 0.\"\n        try:\n            return self[key]\n        except KeyError:\n            return default\n\n    def update(self, iterable, **kwargs):\n        \"\"\"Like dict.update() but add counts instead of replacing them, used\n        to add multiple items in one call.\n\n        Source can be an iterable of keys to add, or a mapping of keys\n        to integer counts.\n        \"\"\"\n        if iterable is not None:\n            if callable(getattr(iterable, 'iteritems', None)):\n                for key, count in iterable.iteritems():\n                    for i in xrange(count):\n                        self.add(key)\n            else:\n                for key in iterable:\n                    self.add(key)\n        if kwargs:\n            self.update(kwargs)"
+      }
+    ],
+    "unresolved": [
+      "boltons/cacheutils.py:function: most_common"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 1,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5622
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 13388,
+    "completion_tokens": 174,
+    "total_tokens": 13562,
+    "seconds": 18.945738315582275,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 25.065810680389404,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

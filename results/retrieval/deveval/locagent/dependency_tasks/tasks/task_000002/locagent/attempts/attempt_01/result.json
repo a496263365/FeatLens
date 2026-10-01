@@ -1,0 +1,121 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2,
+  "namespace": "imapclient.datetime_util.format_criteria_date",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11619,
+      "input_estimate_after": 11619,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `format_criteria_date` function. These locations contain existing functionality that should be inspected or reused to properly format dates for IMAP search criteria.\n\n```\nimapclient/datetime_util.py\nline: 43\nfunction: datetime_to_INTERNALDATE\n\nimapclient/datetime_util.py\nline: 14\nfunction: parse_to_datetime\n\nimapclient/datetime_util.py\nline: 39\nfunction: datetime_to_native\n\nimapclient/imapclient.py\nline: 1826\nfunction: _normalise_search_criteria\n\nimapclient/imapclient.py\nline: 1413\nline: 1445\nfunction: datetime_to_INTERNALDATE usage in append/multiappend\n```",
+  "final_locations": {
+    "files": [
+      "imapclient/datetime_util.py",
+      "imapclient/imapclient.py"
+    ],
+    "entities": [
+      {
+        "file": "imapclient/datetime_util.py",
+        "name": "datetime_to_INTERNALDATE",
+        "kind": "function",
+        "symbol": "imapclient.datetime_util.datetime_to_INTERNALDATE",
+        "start": 43,
+        "end": 52,
+        "code": "def datetime_to_INTERNALDATE(dt: datetime) -> str:\n    \"\"\"Convert a datetime instance to a IMAP INTERNALDATE string.\n\n    If timezone information is missing the current system\n    timezone is used.\n    \"\"\"\n    if not dt.tzinfo:\n        dt = dt.replace(tzinfo=FixedOffset.for_system())\n    fmt = \"%d-\" + _SHORT_MONTHS[dt.month] + \"-%Y %H:%M:%S %z\"\n    return dt.strftime(fmt)"
+      },
+      {
+        "file": "imapclient/datetime_util.py",
+        "name": "parse_to_datetime",
+        "kind": "function",
+        "symbol": "imapclient.datetime_util.parse_to_datetime",
+        "start": 14,
+        "end": 36,
+        "code": "def parse_to_datetime(timestamp: bytes, normalise: bool = True) -> datetime:\n    \"\"\"Convert an IMAP datetime string to a datetime.\n\n    If normalise is True (the default), then the returned datetime\n    will be timezone-naive but adjusted to the local time.\n\n    If normalise is False, then the returned datetime will be\n    unadjusted but will contain timezone information as per the input.\n    \"\"\"\n    time_tuple = parsedate_tz(_munge(timestamp))\n    if time_tuple is None:\n        raise ValueError(\"couldn't parse datetime %r\" % timestamp)\n\n    tz_offset_seconds = time_tuple[-1]\n    tz = None\n    if tz_offset_seconds is not None:\n        tz = FixedOffset(tz_offset_seconds / 60)\n\n    dt = datetime(*time_tuple[:6], tzinfo=tz)\n    if normalise and tz:\n        dt = datetime_to_native(dt)\n\n    return dt"
+      },
+      {
+        "file": "imapclient/datetime_util.py",
+        "name": "datetime_to_native",
+        "kind": "function",
+        "symbol": "imapclient.datetime_util.datetime_to_native",
+        "start": 39,
+        "end": 40,
+        "code": "def datetime_to_native(dt: datetime) -> datetime:\n    return dt.astimezone(FixedOffset.for_system()).replace(tzinfo=None)"
+      },
+      {
+        "file": "imapclient/imapclient.py",
+        "name": "_normalise_search_criteria",
+        "kind": "function",
+        "symbol": "imapclient.imapclient._normalise_search_criteria",
+        "start": 1826,
+        "end": 1850,
+        "code": "def _normalise_search_criteria(criteria, charset=None):\n    from .datetime_util import format_criteria_date\n    if not criteria:\n        raise exceptions.InvalidCriteriaError(\"no criteria specified\")\n    if not charset:\n        charset = \"us-ascii\"\n\n    if isinstance(criteria, (str, bytes)):\n        return [to_bytes(criteria, charset)]\n\n    out = []\n    for item in criteria:\n        if isinstance(item, int):\n            out.append(str(item).encode(\"ascii\"))\n        elif isinstance(item, (datetime, date)):\n            out.append(format_criteria_date(item))\n        elif isinstance(item, (list, tuple)):\n            # Process nested criteria list and wrap in parens.\n            inner = _normalise_search_criteria(item)\n            inner[0] = b\"(\" + inner[0]\n            inner[-1] = inner[-1] + b\")\"\n            out.extend(inner)  # flatten\n        else:\n            out.append(_quoted.maybe(to_bytes(item, charset)))\n    return out"
+      },
+      {
+        "file": "imapclient/imapclient.py",
+        "name": "IMAPClient.append",
+        "kind": "function",
+        "symbol": "imapclient.imapclient.IMAPClient.append",
+        "start": 1395,
+        "end": 1424,
+        "code": "    def append(self, folder, msg, flags=(), msg_time=None):\n        \"\"\"Append a message to *folder*.\n\n        *msg* should be a string contains the full message including\n        headers.\n\n        *flags* should be a sequence of message flags to set. If not\n        specified no flags will be set.\n\n        *msg_time* is an optional datetime instance specifying the\n        date and time to set on the message. The server will set a\n        time if it isn't specified. If *msg_time* contains timezone\n        information (tzinfo), this will be honoured. Otherwise the\n        local machine's time zone sent to the server.\n\n        Returns the APPEND response as returned by the server.\n        \"\"\"\n        if msg_time:\n            time_val = '\"%s\"' % datetime_to_INTERNALDATE(msg_time)\n            time_val = to_unicode(time_val)\n        else:\n            time_val = None\n        return self._command_and_check(\n            \"append\",\n            self._normalise_folder(folder),\n            seq_to_parenstr(flags),\n            time_val,\n            to_bytes(msg),\n            unpack=True,\n        )"
+      },
+      {
+        "file": "imapclient/imapclient.py",
+        "name": "IMAPClient.multiappend.chunks",
+        "kind": "function",
+        "symbol": "imapclient.imapclient.IMAPClient.multiappend.chunks",
+        "start": 1439,
+        "end": 1448,
+        "code": "        def chunks():\n            for m in msgs:\n                if isinstance(m, dict):\n                    if \"flags\" in m:\n                        yield to_bytes(seq_to_parenstr(m[\"flags\"]))\n                    if \"date\" in m:\n                        yield to_bytes('\"%s\"' % datetime_to_INTERNALDATE(m[\"date\"]))\n                    yield _literal(to_bytes(m[\"msg\"]))\n                else:\n                    yield _literal(to_bytes(m))"
+      }
+    ],
+    "unresolved": [
+      "imapclient/imapclient.py:function: datetime_to_INTERNALDATE usage in append/multiappend"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 3773
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 24231,
+    "completion_tokens": 351,
+    "total_tokens": 24582,
+    "seconds": 48.01382923126221,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 55.84759259223938,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

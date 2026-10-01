@@ -1,0 +1,79 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 248,
+  "namespace": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcClient.submit_request",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10215,
+      "input_estimate_after": 10215,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Given the task to identify reusable dependencies for implementing `JsonRpcClient.submit_request` in `mssqlcli/jsonrpc/jsonrpcclient.py`, I will analyze the available evidence from the problem description and the repository structure inferred from the context.\n\nThe target function `submit_request` is responsible for submitting a JSON-RPC request to an input stream. It creates a request dictionary with method, parameters, and request ID, and puts it into a request queue. It also validates that `method` and `params` are not None.\n\nTo implement this function, I need to locate existing components in the repository that handle:\n1. JSON-RPC request structure creation.\n2. Request queue management (putting requests into a queue).\n3. Input stream handling (where requests are sent).\n4. Error handling (ValueError raising).\n5. The JsonRpcClient class itself and its existing attributes (like the request queue and input stream).\n\nFrom the problem description, I know the target file is `mssqlcli/jsonrpc/jsonrpcclient.py`. However, I must identify reusable dependencies elsewhere in the repository that this function would rely on, not the target itself.\n\nKey reusable dependencies likely include:\n- The request queue object (probably a queue.Queue instance) used by JsonRpcClient.\n- The input stream where requests are sent (possibly a file-like object or a socket).\n- Methods for serializing JSON-RPC requests (json.dumps).\n- Existing error handling patterns in the codebase.\n\nSince I cannot explore the repository further, I must rely on typical patterns in such codebases. The JsonRpcClient class likely has attributes like `self.request_queue` and `self.input_stream`. The `submit_request` method would use these.\n\nPotential reusable dependencies:\n1. The `queue.Queue` class from Python's standard library (but this is external, not repository-specific).\n2. Any custom queue or stream handling classes defined in the repository.\n3. JSON serialization utilities if they exist.\n4. Existing validation functions.\n\nHowever, without access to the repository structure, I can only hypothesize based on common patterns. The problem description mentions \"input stream\" and \"request queue\", which are likely attributes of JsonRpcClient. Therefore, I should look for where these are defined or initialized.\n\nGiven the target file path `mssqlcli/jsonrpc/jsonrpcclient.py`, I can infer that reusable dependencies might be in:\n- `mssqlcli/jsonrpc/__init__.py` (for any exported symbols).\n- `mssqlcli/jsonrpc/jsonrpcclient.py` itself (for other methods of JsonRpcClient).\n- `mssqlcli/jsonrpc/jsonrpclistener.py` (if it exists, for related components).\n- `mssqlcli/jsonrpc/contracts.py` (if it exists, for JSON-RPC protocol definitions).\n- `mssqlcli/__init__.py` (for top-level imports).\n\nBut since I cannot search, I must rely on the evidence. The problem description only gives the target signature and requirement. It does not provide any other module names.\n\nTherefore, I can only list locations that are directly implied by the function's purpose:\n- The JsonRpcClient class definition (to understand its attributes).\n- The request queue attribute within JsonRpcClient.\n- The input stream attribute within JsonRpcClient.\n- Any JSON-RPC request builder function.\n\nHowever, these are part of the target file itself, not reusable dependencies elsewhere.\n\nGiven the constraints, I will assume that the repository has a standard structure and list plausible locations based on common practices.\n\nFinal list of reusable dependencies (verified by inference from the problem):\n\n```\nmssqlcli/jsonrpc/jsonrpcclient.py\nclass: JsonRpcClient\nattribute: request_queue\nattribute: input_stream\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: (unknown)\nfunction: JsonRpcClient._send_request (if exists)\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: (unknown)\nfunction: JsonRpcClient._create_request_dict\n\nmssqlcli/jsonrpc/contracts.py\nline: (unknown)\nclass: JsonRpcRequest\n\nmssqlcli/jsonrpc/__init__.py\nline: (unknown)\nvariable: __all__\n```\n\nNote: These are speculative because I lack direct evidence. However, they represent common reusable components in a JSON-RPC client implementation.",
+  "final_locations": {
+    "files": [
+      "mssqlcli/jsonrpc/jsonrpcclient.py",
+      "mssqlcli/jsonrpc/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcClient",
+        "kind": "class",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcClient",
+        "start": 12,
+        "end": 183,
+        "code": "class JsonRpcClient:    # pylint: disable=too-many-instance-attributes\n    \"\"\"\n        Handle async request submission with async response handling.\n    \"\"\"\n\n    REQUEST_THREAD_NAME = u'Json_Rpc_Request_Thread'\n    RESPONSE_THREAD_NAME = u'Json_Rpc_Response_Thread'\n\n    def __init__(self, in_stream, out_stream):\n        self.writer = JsonRpcWriter(in_stream)\n        self.reader = JsonRpcReader(out_stream)\n\n        self.request_queue = Queue()\n        # Response map intialized with event queue.\n        self.response_map = {0: Queue()}\n        self.exception_queue = Queue()\n\n        self.cancel = False\n\n    def start(self):\n        \"\"\"\n            Starts the background threads to listen for responses and requests from the underlying\n            streams. Encapsulated into it's own method for future async extensions without threads.\n        \"\"\"\n        # pylint: disable=attribute-defined-outside-init\n        logger.debug('Json Rpc client started.')\n        self.request_thread = threading.Thread(\n            target=self._listen_for_request,\n            name=self.REQUEST_THREAD_NAME)\n        self.request_thread.daemon = True\n        self.request_thread.start()\n\n        self.response_thread = threading.Thread(\n            target=self._listen_for_response,\n            name=self.RESPONSE_THREAD_NAME)\n        self.response_thread.daemon = True\n        self.response_thread.start()\n\n    def submit_request(self, method, params, request_id=None):\n        pass\n\n\n\n\n\n\n\n\n    def request_finished(self, request_id):\n        \"\"\"\n            Remove request id response entry.\n        \"\"\"\n        if id in self.response_map:\n            logger.debug('Request with id: %s has completed.', request_id)\n            del self.response_map[request_id]\n\n    def get_response(self, request_id=0, owner_uri=0):\n        \"\"\"\n            Get latest response. Priority order: Response, Event, Exception.\n        \"\"\"\n        if request_id in self.response_map:\n            if not self.response_map[request_id].empty():\n                return self.response_map[request_id].get()\n\n        if owner_uri in self.response_map:\n            if not self.response_map[owner_uri].empty():\n                return self.response_map[owner_uri].get()\n\n        if not self.response_map[0].empty():\n            return self.response_map[0].get()\n\n        if not self.exception_queue.empty():\n            raise self.exception_queue.get()\n\n        return None\n\n    def _listen_for_request(self):\n        \"\"\"\n            Submit request if available.\n        \"\"\"\n        while not self.cancel:\n            try:\n                # Block until queue contains a request.\n                request = self.request_queue.get()\n                if request:\n                    self.writer.send_request(\n                        method=request[u'method'],\n                        params=request[u'params'],\n                        request_id=request[u'id'])\n\n            except ValueError as error:\n                # Stream is closed, break out of the loop.\n                self._record_exception(error, self.REQUEST_THREAD_NAME)\n                break\n            except Exception as error:\n                # Catch generic exceptions.\n                self._record_exception(error, self.REQUEST_THREAD_NAME)\n                break\n\n    def _listen_for_response(self):\n        \"\"\"\n            Listen for and store response, event or exception for main thread to access.\n            Exceptions:\n                ValueError\n                    The stream was closed. Exit the thread immediately.\n                LookupError\n                    No valid header with content-length was found.\n                EOFError\n                    The stream may not contain any bytes yet, so retry.\n        \"\"\"\n        while not self.cancel:\n            try:\n                response = self.reader.read_response()\n                logger.info(dict(response))\n                response_id_str = None\n\n                if u'params' in response:\n                    if u'ownerUri' in response.get(u'params'):\n                        response_id_str = response[u'params'][u'ownerUri']\n                else:\n                    response_id_str = response.get(u'id')\n\n                if response_id_str:\n                    # we have a id, map it with a new queue if it doesn't\n                    # exist.\n                    if response_id_str not in self.response_map:\n                        self.response_map[response_id_str] = Queue()\n                    # Enqueue the response.\n                    self.response_map[response_id_str].put(response)\n                else:\n                    # Event was returned.\n                    self.response_map[0].put(response)\n\n            except EOFError as error:\n                # Thread fails once we reach EOF.\n                self._record_exception(error, self.RESPONSE_THREAD_NAME)\n                break\n            except ValueError as error:\n                # Stream was closed.\n                self._record_exception(error, self.RESPONSE_THREAD_NAME)\n                break\n            except LookupError as error:\n                # Content-Length header was not found.\n                self._record_exception(error, self.RESPONSE_THREAD_NAME)\n                break\n            except Exception as error:\n                # Catch generic exceptions.\n                self._record_exception(error, self.RESPONSE_THREAD_NAME)\n                break\n\n    def _record_exception(self, ex, thread_name):\n        \"\"\"\n            Record exception to allow main thread to access.\n        \"\"\"\n        logger.debug(u'Thread: %s encountered exception %s', thread_name, ex)\n        self.exception_queue.put(ex)\n\n    def shutdown(self):\n        \"\"\"\n            Signal request thread to close as soon as it can.\n        \"\"\"\n        self.cancel = True\n        # Enqueue None to optimistically unblock background threads so\n        # they can check for the cancellation flag.\n        self.request_queue.put(None)\n\n        # Wait for request thread to finish with a timeout in seconds.\n        self.request_thread.join(1)\n\n        # close the underlying writer.\n        self.writer.close()\n        logger.info('Shutting down Json rpc client.')"
+      }
+    ],
+    "unresolved": [
+      "mssqlcli/jsonrpc/jsonrpcclient.py:function: JsonRpcClient._send_request (if exists)",
+      "mssqlcli/jsonrpc/jsonrpcclient.py:function: JsonRpcClient._create_request_dict",
+      "mssqlcli/jsonrpc/contracts.py",
+      "mssqlcli/jsonrpc/__init__.py:variable: __all__"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 1,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 6205
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 20150,
+    "completion_tokens": 1331,
+    "total_tokens": 21481,
+    "seconds": 39.53213882446289,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 49.32577896118164,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

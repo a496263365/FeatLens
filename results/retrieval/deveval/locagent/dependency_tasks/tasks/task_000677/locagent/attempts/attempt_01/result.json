@@ -1,0 +1,96 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 677,
+  "namespace": "msticpy.analysis.anomalous_sequence.utils.cmds_only.compute_likelihood_window",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nmsticpy/analysis/anomalous_sequence/utils/data_structures.py\nclass: StateMatrix\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_params_values.py\nfunction: compute_likelihood_window\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_only.py\nfunction: compute_likelihood_window\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_params_only.py\nfunction: compute_likelihood_window\n\nmsticpy/analysis/anomalous_sequence/model.py\nfunction: Model._compute_probs_cmds\n```",
+  "final_locations": {
+    "files": [
+      "msticpy/analysis/anomalous_sequence/utils/data_structures.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_values.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_only.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_only.py",
+      "msticpy/analysis/anomalous_sequence/model.py"
+    ],
+    "entities": [
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/data_structures.py",
+        "name": "StateMatrix",
+        "kind": "class",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix",
+        "start": 14,
+        "end": 73,
+        "code": "class StateMatrix(dict):\n    \"\"\"Class for storing trained counts/probabilities.\"\"\"\n\n    def __init__(self, states: Union[dict, defaultdict], unk_token: str):\n        \"\"\"\n        Containr for dict of counts/probs or dict of dicts of cond counts/probs.\n\n        If you try and retrieve the count/probability for an unseen\n        command/param/value from the resulting object, it will return\n        the value associated with the `unk_token` key.\n\n        Parameters\n        ----------\n        states: Union[dict, defaultdict]\n            Either a dict representing counts or probabilities.\n            Or a dict of dicts representing\n            conditional counts or conditional probabilities.\n            E.g.::\n\n                {'Set-Mailbox': 20,'##UNK##': 1}\n\n            or::\n\n                {'Set-Mailbox': {'Set-Mailbox': 5, '##UNK##': 1},\n                '##UNK##': {'Set-Mailbox': 1, '##UNK##': 1}}\n\n        unk_token: str\n            dummy token to signify an unseen command (e.g. \"##UNK##\").\n            This token should be present in the `states` keys. And if `states`\n            is a dict of dicts, then the `unk_token` should be present in\n            the keys of the outer dict and all the inner dicts.\n\n        \"\"\"\n        super().__init__(states)\n        if unk_token not in states:\n            raise MsticpyException(\"`unk_token` should be a key in `states`\")\n        self.states = dict(states)\n        self.unk_token = unk_token\n        for key, val in self.states.items():\n            if isinstance(val, dict):\n                self.states[key] = StateMatrix(self.states[key], unk_token)\n\n    def __getitem__(self, item):\n        \"\"\"\n        Get value or self.unk_token for unseen cmds/params/values.\n\n        Parameters\n        ----------\n        item:\n            desired key to retrieve value for from the dictionary\n\n        Returns\n        -------\n        Value associated with the key `item` if it exists, else the\n        value associated with the `unk_token`\n\n        \"\"\"\n        if item not in self.states:\n            return self.states[self.unk_token]\n        return self.states[item]"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/cmds_params_values.py",
+        "name": "compute_likelihood_window",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.cmds_params_values.compute_likelihood_window",
+        "start": 339,
+        "end": 443,
+        "code": "def compute_likelihood_window(\n    window: List[Cmd],\n    prior_probs: Union[StateMatrix, dict],\n    trans_probs: Union[StateMatrix, dict],\n    param_cond_cmd_probs: Union[StateMatrix, dict],\n    value_cond_param_probs: Union[StateMatrix, dict],\n    modellable_params: set,\n    use_start_token: bool,\n    use_end_token: bool,\n    start_token: str = None,\n    end_token: str = None,\n) -> float:\n    \"\"\"\n    Compute the likelihood of the input `window`.\n\n    Parameters\n    ----------\n    window: List[Cmd]\n        part or all of a session, where a session is a list the Cmd datatype\n        an example session::\n\n            [\n                Cmd(name='Set-User', params={'Identity': 'blahblah', 'Force': 'true'}),\n                Cmd(name='Set-Mailbox',\n                    params={'Identity': 'blahblah', 'AuditEnabled': 'false'})\n            ]\n\n    prior_probs: Union[StateMatrix, dict]\n        computed probabilities of individual commands\n    trans_probs: Union[StateMatrix, dict]\n        computed probabilities of sequences of commands (length 2)\n    param_cond_cmd_probs: Union[StateMatrix, dict]\n        computed probabilities of the params conditional on the commands\n    value_cond_param_probs: Union[StateMatrix, dict]\n        computed probabilities of the values conditional on the params\n    modellable_params: set\n        set of params for which we will also include the probabilties\n        of their values in the calculation of the likelihood\n    use_start_token: bool\n        if set to True, the start_token will be prepended to the\n        window before the likelihood calculation is done\n    use_end_token: bool\n        if set to True, the end_token will be appended to the window\n        before the likelihood calculation is done\n    start_token: str\n        dummy command to signify the start of the session (e.g. \"##START##\")\n    end_token: str\n        dummy command to signify the end of the session (e.g. \"##END##\")\n\n    Returns\n    -------\n    likelihood of the window\n\n    \"\"\"\n    if use_start_token:\n        if start_token is None:\n            raise MsticpyException(\n                \"start_token should not be None, when use_start_token is True\"\n            )\n    if use_end_token:\n        if end_token is None:\n            raise MsticpyException(\n                \"end_token should not be None, when use_end_token is True\"\n            )\n\n    w_len = len(window)\n    if w_len == 0:\n        return np.nan\n    prob: float = 1\n\n    cur_cmd = window[0].name\n    params = window[0].params\n    param_vals_prob = compute_prob_setofparams_given_cmd(\n        cmd=cur_cmd,\n        params_with_vals=params,\n        param_cond_cmd_probs=param_cond_cmd_probs,\n        value_cond_param_probs=value_cond_param_probs,\n        modellable_params=modellable_params,\n        use_geo_mean=True,\n    )\n\n    if use_start_token:\n        prob *= trans_probs[start_token][cur_cmd] * param_vals_prob\n    else:\n        prob *= prior_probs[cur_cmd] * param_vals_prob\n\n    for i in range(1, w_len):\n        prev, cur = window[i - 1], window[i]\n        prev_cmd, cur_cmd = prev.name, cur.name\n        cur_par = cur.params\n        prob *= trans_probs[prev_cmd][cur_cmd]\n        param_vals_prob = compute_prob_setofparams_given_cmd(\n            cmd=cur_cmd,\n            params_with_vals=cur_par,\n            param_cond_cmd_probs=param_cond_cmd_probs,\n            value_cond_param_probs=value_cond_param_probs,\n            modellable_params=modellable_params,\n            use_geo_mean=True,\n        )\n        prob *= param_vals_prob\n\n    if use_end_token:\n        prob *= trans_probs[cur_cmd][end_token]\n\n    return prob"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/cmds_params_only.py",
+        "name": "compute_likelihood_window",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.cmds_params_only.compute_likelihood_window",
+        "start": 224,
+        "end": 315,
+        "code": "def compute_likelihood_window(\n    window: List[Cmd],\n    prior_probs: Union[StateMatrix, dict],\n    trans_probs: Union[StateMatrix, dict],\n    param_cond_cmd_probs: Union[StateMatrix, dict],\n    use_start_token: bool,\n    use_end_token: bool,\n    start_token: str = None,\n    end_token: str = None,\n) -> float:\n    \"\"\"\n    Compute the likelihood of the input `window`.\n\n    Parameters\n    ----------\n    window: List[Cmd]\n        part or all of a session, where a session is a list of the Cmd datatype\n        an example session::\n\n            [Cmd(name='Set-User', params={'Identity', 'Force'}), Cmd(name='Set-Mailbox',\n            params={'Identity', 'AuditEnabled'})]\n\n    prior_probs: Union[StateMatrix, dict]\n        computed probabilities of individual commands\n    trans_probs: Union[StateMatrix, dict]\n         computed probabilities of sequences of commands (length 2)\n    param_cond_cmd_probs: Union[StateMatrix, dict]\n        computed probabilities of the params conditional on the commands\n    use_start_token: bool\n        if set to True, the start_token will be prepended to the window\n        before the likelihood calculation is done\n    use_end_token: bool\n        if set to True, the end_token will be appended to the window\n        before the likelihood calculation is done\n    start_token: str\n        dummy command to signify the start of the session (e.g. \"##START##\")\n    end_token: str\n        dummy command to signify the end of the session (e.g. \"##END##\")\n\n    Returns\n    -------\n    likelihood of the window\n\n    \"\"\"\n    if use_end_token:\n        if end_token is None:\n            raise MsticpyException(\n                \"end_token should not be None, when use_end_token is True\"\n            )\n\n    if use_start_token:\n        if start_token is None:\n            raise MsticpyException(\n                \"start_token should not be None, when use_start_token is True\"\n            )\n\n    w_len = len(window)\n    if w_len == 0:\n        return np.nan\n    prob: float = 1\n\n    cur_cmd = window[0].name\n    params = window[0].params\n    param_cond_prob = compute_prob_setofparams_given_cmd(\n        cmd=cur_cmd,\n        params=params,\n        param_cond_cmd_probs=param_cond_cmd_probs,\n        use_geo_mean=True,\n    )\n\n    if use_start_token:\n        prob *= trans_probs[start_token][cur_cmd] * param_cond_prob\n    else:\n        prob *= prior_probs[cur_cmd] * param_cond_prob\n\n    for i in range(1, w_len):\n        prev, cur = window[i - 1], window[i]\n        prev_cmd, cur_cmd = prev.name, cur.name\n        cur_par = cur.params\n        prob *= trans_probs[prev_cmd][cur_cmd]\n        param_cond_prob = compute_prob_setofparams_given_cmd(\n            cmd=cur_cmd,\n            params=cur_par,\n            param_cond_cmd_probs=param_cond_cmd_probs,\n            use_geo_mean=True,\n        )\n        prob *= param_cond_prob\n\n    if use_end_token:\n        prob *= trans_probs[cur_cmd][end_token]\n\n    return prob"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/model.py",
+        "name": "Model._compute_probs_cmds",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.model.Model._compute_probs_cmds",
+        "start": 619,
+        "end": 633,
+        "code": "    def _compute_probs_cmds(self):\n        \"\"\"Compute the individual and transition command probabilties.\"\"\"\n        if self.seq1_counts is None:\n            raise MsticpyException(\"seq1_counts attribute should not be None\")\n        if self.seq2_counts is None:\n            raise MsticpyException(\"seq2_counts attribute should not be None\")\n\n        prior_probs, trans_probs = probabilities.compute_cmds_probs(\n            seq1_counts=self.seq1_counts,\n            seq2_counts=self.seq2_counts,\n            unk_token=self.unk_token,\n        )\n\n        self.prior_probs = prior_probs\n        self.trans_probs = trans_probs"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix"
+    ],
+    "exact_hit_dependencies": [
+      "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix"
+    ],
+    "returned_entities": 4,
+    "returned_files": 5,
+    "unresolved_locations": 0,
+    "returned_code_chars": 9280
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 31986,
+    "completion_tokens": 316,
+    "total_tokens": 32302,
+    "seconds": 45.77690291404724,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 96.17371201515198,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

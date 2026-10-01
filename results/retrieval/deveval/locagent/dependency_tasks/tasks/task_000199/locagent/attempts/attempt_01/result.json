@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 199,
+  "namespace": "bplustree.memory.WAL.checkpoint",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6913,
+      "input_estimate_after": 6913,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nbplustree/memory.py\nline: 62\nfunction: fsync_file_and_dir\n\nbplustree/memory.py\nline: 52\nfunction: write_to_file\n\nbplustree/memory.py\nline: -1\nclass: WAL\nfunction: _load_wal\n\nbplustree/memory.py\nline: 68\nfunction: read_from_file\n\nbplustree/memory.py\nline: 23\nfunction: open_file_in_dir\n```",
+  "final_locations": {
+    "files": [
+      "bplustree/memory.py"
+    ],
+    "entities": [
+      {
+        "file": "bplustree/memory.py",
+        "name": "fsync_file_and_dir",
+        "kind": "function",
+        "symbol": "bplustree.memory.fsync_file_and_dir",
+        "start": 62,
+        "end": 65,
+        "code": "def fsync_file_and_dir(file_fileno: int, dir_fileno: Optional[int]):\n    os.fsync(file_fileno)\n    if dir_fileno is not None:\n        os.fsync(dir_fileno)"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "write_to_file",
+        "kind": "function",
+        "symbol": "bplustree.memory.write_to_file",
+        "start": 52,
+        "end": 59,
+        "code": "def write_to_file(file_fd: io.FileIO, dir_fileno: Optional[int],\n                  data: bytes, fsync: bool=True):\n    length_to_write = len(data)\n    written = 0\n    while written < length_to_write:\n        written = file_fd.write(data[written:])\n    if fsync:\n        fsync_file_and_dir(file_fd.fileno(), dir_fileno)"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "WAL",
+        "kind": "class",
+        "symbol": "bplustree.memory.WAL",
+        "start": 288,
+        "end": 429,
+        "code": "class WAL:\n\n    __slots__ = ['filename', '_fd', '_dir_fd', '_page_size',\n                 '_committed_pages', '_not_committed_pages', 'needs_recovery']\n\n    FRAME_HEADER_LENGTH = (\n        FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES\n    )\n\n    def __init__(self, filename: str, page_size: int):\n        self.filename = filename + '-wal'\n        self._fd, self._dir_fd = open_file_in_dir(self.filename)\n        self._page_size = page_size\n        self._committed_pages = dict()\n        self._not_committed_pages = dict()\n\n        self._fd.seek(0, io.SEEK_END)\n        if self._fd.tell() == 0:\n            self._create_header()\n            self.needs_recovery = False\n        else:\n            logger.warning('Found an existing WAL file, '\n                           'the B+Tree was not closed properly')\n            self.needs_recovery = True\n            self._load_wal()\n\n    def checkpoint(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def _create_header(self):\n        data = self._page_size.to_bytes(OTHERS_BYTES, ENDIAN)\n        self._fd.seek(0)\n        write_to_file(self._fd, self._dir_fd, data, True)\n\n    def _load_wal(self):\n        self._fd.seek(0)\n        header_data = read_from_file(self._fd, 0, OTHERS_BYTES)\n        assert int.from_bytes(header_data, ENDIAN) == self._page_size\n\n        while True:\n            try:\n                self._load_next_frame()\n            except ReachedEndOfFile:\n                break\n        if self._not_committed_pages:\n            logger.warning('WAL has uncommitted data, discarding it')\n            self._not_committed_pages = dict()\n\n    def _load_next_frame(self):\n        start = self._fd.tell()\n        stop = start + self.FRAME_HEADER_LENGTH\n        data = read_from_file(self._fd, start, stop)\n\n        frame_type = int.from_bytes(data[0:FRAME_TYPE_BYTES], ENDIAN)\n        page = int.from_bytes(\n            data[FRAME_TYPE_BYTES:FRAME_TYPE_BYTES+PAGE_REFERENCE_BYTES],\n            ENDIAN\n        )\n\n        frame_type = FrameType(frame_type)\n        if frame_type is FrameType.PAGE:\n            self._fd.seek(stop + self._page_size)\n\n        self._index_frame(frame_type, page, stop)\n\n    def _index_frame(self, frame_type: FrameType, page: int, page_start: int):\n        if frame_type is FrameType.PAGE:\n            self._not_committed_pages[page] = page_start\n        elif frame_type is FrameType.COMMIT:\n            self._committed_pages.update(self._not_committed_pages)\n            self._not_committed_pages = dict()\n        elif frame_type is FrameType.ROLLBACK:\n            self._not_committed_pages = dict()\n        else:\n            assert False\n\n    def _add_frame(self, frame_type: FrameType, page: Optional[int]=None,\n                   page_data: Optional[bytes]=None):\n        if frame_type is FrameType.PAGE and (not page or not page_data):\n            raise ValueError('PAGE frame without page data')\n        if page_data and len(page_data) != self._page_size:\n            raise ValueError('Page data is different from page size')\n        if not page:\n            page = 0\n        if frame_type is not FrameType.PAGE:\n            page_data = b''\n        data = (\n            frame_type.value.to_bytes(FRAME_TYPE_BYTES, ENDIAN) +\n            page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +\n            page_data\n        )\n        self._fd.seek(0, io.SEEK_END)\n        write_to_file(self._fd, self._dir_fd, data,\n                      fsync=frame_type != FrameType.PAGE)\n        self._index_frame(frame_type, page, self._fd.tell() - self._page_size)\n\n    def get_page(self, page: int) -> Optional[bytes]:\n        page_start = None\n        for store in (self._not_committed_pages, self._committed_pages):\n            page_start = store.get(page)\n            if page_start:\n                break\n\n        if not page_start:\n            return None\n\n        return read_from_file(self._fd, page_start,\n                              page_start + self._page_size)\n\n    def set_page(self, page: int, page_data: bytes):\n        self._add_frame(FrameType.PAGE, page, page_data)\n\n    def commit(self):\n        # Commit is a no-op when there is no uncommitted pages\n        if self._not_committed_pages:\n            self._add_frame(FrameType.COMMIT)\n\n    def rollback(self):\n        # Rollback is a no-op when there is no uncommitted pages\n        if self._not_committed_pages:\n            self._add_frame(FrameType.ROLLBACK)\n\n    def __repr__(self):\n        return '<WAL: {}>'.format(self.filename)"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "read_from_file",
+        "kind": "function",
+        "symbol": "bplustree.memory.read_from_file",
+        "start": 68,
+        "end": 79,
+        "code": "def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:\n    length = stop - start\n    assert length >= 0\n    file_fd.seek(start)\n    data = bytes()\n    while file_fd.tell() < stop:\n        read_data = file_fd.read(stop - file_fd.tell())\n        if read_data == b'':\n            raise ReachedEndOfFile('Read until the end of file')\n        data += read_data\n    assert len(data) == length\n    return data"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "open_file_in_dir",
+        "kind": "function",
+        "symbol": "bplustree.memory.open_file_in_dir",
+        "start": 23,
+        "end": 49,
+        "code": "def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:\n    \"\"\"Open a file and its directory.\n\n    The file is opened in binary mode and created if it does not exist.\n    Both file descriptors must be closed after use to prevent them from\n    leaking.\n\n    On Windows, the directory is not opened, as it is useless.\n    \"\"\"\n    directory = os.path.dirname(path)\n    if not os.path.isdir(directory):\n        raise ValueError('No directory {}'.format(directory))\n\n    if not os.path.exists(path):\n        file_fd = open(path, mode='x+b', buffering=0)\n    else:\n        file_fd = open(path, mode='r+b', buffering=0)\n\n    if platform.system() == 'Windows':\n        # Opening a directory is not possible on Windows, but that is not\n        # a problem since Windows does not need to fsync the directory in\n        # order to persist metadata\n        dir_fd = None\n    else:\n        dir_fd = os.open(directory, os.O_RDONLY)\n\n    return file_fd, dir_fd"
+      }
+    ],
+    "unresolved": [
+      "bplustree/memory.py:line: -1",
+      "bplustree/memory.py:function: _load_wal"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.2222222222222222,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "bplustree.memory.fsync_file_and_dir",
+      "bplustree.memory.logger",
+      "bplustree.memory.read_from_file"
+    ],
+    "exact_hit_dependencies": [
+      "bplustree.memory.fsync_file_and_dir",
+      "bplustree.memory.read_from_file"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 6300
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 28086,
+    "completion_tokens": 2123,
+    "total_tokens": 30209,
+    "seconds": 73.46173572540283,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 75.57616567611694,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

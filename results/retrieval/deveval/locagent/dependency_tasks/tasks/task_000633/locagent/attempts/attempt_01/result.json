@@ -1,0 +1,130 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 633,
+  "namespace": "asyncssh.public_key.SSHKey.generate_x509_user_certificate",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nasyncssh/public_key.py\nline: 823\nfunction: SSHKey.generate_x509_user_certificate\n\nasyncssh/public_key.py\nline: 1901\nfunction: SSHX509Certificate.generate\n\nasyncssh/public_key.py\nline: 1922\nfunction: SSHX509Certificate.construct_from_der\n\nasyncssh/public_key.py\nline: 1934\nfunction: SSHX509Certificate.validate_chain\n\nasyncssh/crypto/x509.py\nline: 232\nclass: X509Certificate\n\nasyncssh/crypto/x509.py\nline: 285\nfunction: X509Certificate.validate\n\nasyncssh/public_key.py\nline: 2022\nfunction: SSHX509CertificateChain.validate_chain\n\nasyncssh/connection.py\nline: (multiple)\nfunction: SSHConnection._validate_x509_host_certificate_chain\nfunction: SSHServerConnection._validate_x509_certificate_chain\n```",
+  "final_locations": {
+    "files": [
+      "asyncssh/public_key.py",
+      "asyncssh/crypto/x509.py",
+      "asyncssh/connection.py"
+    ],
+    "entities": [
+      {
+        "file": "asyncssh/public_key.py",
+        "name": "SSHX509Certificate.generate",
+        "kind": "function",
+        "symbol": "asyncssh.public_key.SSHX509Certificate.generate",
+        "start": 1901,
+        "end": 1919,
+        "code": "    def generate(cls, signing_key: 'SSHKey', key: 'SSHKey', subject: str,\n                 issuer: Optional[str], serial: Optional[int],\n                 valid_after: int, valid_before: int, ca: bool,\n                 ca_path_len: Optional[int], purposes: X509CertPurposes,\n                 user_principals: _CertPrincipals,\n                 host_principals: _CertPrincipals, hash_name: str,\n                 comment: _Comment) -> 'SSHX509Certificate':\n        \"\"\"Generate a new X.509 certificate\"\"\"\n\n        key = key.convert_to_public()\n\n        x509_cert = generate_x509_certificate(signing_key.pyca_key,\n                                              key.pyca_key, subject, issuer,\n                                              serial, valid_after, valid_before,\n                                              ca, ca_path_len, purposes,\n                                              user_principals, host_principals,\n                                              hash_name, comment)\n\n        return cls(key, x509_cert)"
+      },
+      {
+        "file": "asyncssh/public_key.py",
+        "name": "SSHX509Certificate.construct_from_der",
+        "kind": "function",
+        "symbol": "asyncssh.public_key.SSHX509Certificate.construct_from_der",
+        "start": 1922,
+        "end": 1932,
+        "code": "    def construct_from_der(cls, data: bytes,\n                           comment: _Comment = None) -> 'SSHX509Certificate':\n        \"\"\"Construct an SSH X.509 certificate from DER data\"\"\"\n\n        try:\n            x509_cert = import_x509_certificate(data)\n            key = import_public_key(x509_cert.key_data)\n        except ValueError as exc:\n            raise KeyImportError(str(exc)) from None\n\n        return cls(key, x509_cert, comment)"
+      },
+      {
+        "file": "asyncssh/public_key.py",
+        "name": "SSHX509Certificate.validate_chain",
+        "kind": "function",
+        "symbol": "asyncssh.public_key.SSHX509Certificate.validate_chain",
+        "start": 1934,
+        "end": 1951,
+        "code": "    def validate_chain(self, trust_chain: Sequence['SSHX509Certificate'],\n                       trusted_certs: Sequence['SSHX509Certificate'],\n                       trusted_cert_paths: Sequence[FilePath],\n                       purposes: X509CertPurposes, user_principal: str = '',\n                       host_principal: str = '') -> None:\n        \"\"\"Validate an X.509 certificate chain\"\"\"\n\n        trust_store = set(c for c in trust_chain if c.subject != c.issuer) | \\\n            set(c for c in trusted_certs)\n\n        if trusted_cert_paths:\n            self._expand_trust_store(self, trusted_cert_paths, trust_store)\n\n            for c in trust_chain:\n                self._expand_trust_store(c, trusted_cert_paths, trust_store)\n\n        self.x509_cert.validate([c.x509_cert for c in trust_store],\n                                purposes, user_principal, host_principal)"
+      },
+      {
+        "file": "asyncssh/crypto/x509.py",
+        "name": "X509Certificate",
+        "kind": "class",
+        "symbol": "asyncssh.crypto.x509.X509Certificate",
+        "start": 232,
+        "end": 311,
+        "code": "class X509Certificate:\n    \"\"\"A shim around PyCA and PyOpenSSL for X.509 certificates\"\"\"\n\n    def __init__(self, cert: x509.Certificate, data: bytes):\n        self.data = data\n\n        self.subject = X509Name(cert.subject)\n        self.issuer = X509Name(cert.issuer)\n        self.key_data = cert.public_key().public_bytes(\n            Encoding.DER, PublicFormat.SubjectPublicKeyInfo)\n\n        self.openssl_cert = crypto.X509.from_cryptography(cert)\n        self.subject_hash = hex(self.openssl_cert.get_subject().hash())[2:]\n        self.issuer_hash = hex(self.openssl_cert.get_issuer().hash())[2:]\n\n        try:\n            self.purposes: Optional[Set[bytes]] = \\\n                set(cert.extensions.get_extension_for_class(\n                    x509.ExtendedKeyUsage).value)\n        except x509.ExtensionNotFound:\n            self.purposes = None\n\n        try:\n            sans = cert.extensions.get_extension_for_class(\n                x509.SubjectAlternativeName).value\n\n            self.user_principals = sans.get_values_for_type(x509.RFC822Name)\n            self.host_principals = sans.get_values_for_type(x509.DNSName) + \\\n                [str(ip) for ip in sans.get_values_for_type(x509.IPAddress)]\n        except x509.ExtensionNotFound:\n            cn = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)\n            principals = [cast(str, attr.value) for attr in cn]\n\n            self.user_principals = principals\n            self.host_principals = principals\n\n        try:\n            comment = cert.extensions.get_extension_for_oid(_nscomment_oid)\n            comment_der = cast(x509.UnrecognizedExtension, comment.value).value\n            self.comment: Optional[bytes] = \\\n                cast(IA5String, der_decode(comment_der)).value\n        except x509.ExtensionNotFound:\n            self.comment = None\n\n    def __eq__(self, other: object) -> bool:\n        if not isinstance(other, X509Certificate): # pragma: no cover\n            return NotImplemented\n\n        return self.data == other.data\n\n    def __hash__(self) -> int:\n        return hash(self.data)\n\n    def validate(self, trust_store: Sequence['X509Certificate'],\n                 purposes: _Purposes, user_principal: str,\n                 host_principal: str) -> None:\n        \"\"\"Validate an X.509 certificate\"\"\"\n\n        purpose_oids = _to_purpose_oids(purposes)\n\n        if purpose_oids and self.purposes and not purpose_oids & self.purposes:\n            raise ValueError('Certificate purpose mismatch')\n\n        if user_principal and user_principal not in self.user_principals:\n            raise ValueError('Certificate user principal mismatch')\n\n        if host_principal and host_principal not in self.host_principals:\n            raise ValueError('Certificate host principal mismatch')\n\n        x509_store = crypto.X509Store()\n\n        for c in trust_store:\n            x509_store.add_cert(c.openssl_cert)\n\n        try:\n            x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert,\n                                               None)\n            x509_ctx.verify_certificate()\n        except crypto.X509StoreContextError as exc:\n            raise ValueError(f'X.509 chain validation error: {exc}') from None"
+      },
+      {
+        "file": "asyncssh/crypto/x509.py",
+        "name": "X509Certificate.validate",
+        "kind": "function",
+        "symbol": "asyncssh.crypto.x509.X509Certificate.validate",
+        "start": 285,
+        "end": 311,
+        "code": "    def validate(self, trust_store: Sequence['X509Certificate'],\n                 purposes: _Purposes, user_principal: str,\n                 host_principal: str) -> None:\n        \"\"\"Validate an X.509 certificate\"\"\"\n\n        purpose_oids = _to_purpose_oids(purposes)\n\n        if purpose_oids and self.purposes and not purpose_oids & self.purposes:\n            raise ValueError('Certificate purpose mismatch')\n\n        if user_principal and user_principal not in self.user_principals:\n            raise ValueError('Certificate user principal mismatch')\n\n        if host_principal and host_principal not in self.host_principals:\n            raise ValueError('Certificate host principal mismatch')\n\n        x509_store = crypto.X509Store()\n\n        for c in trust_store:\n            x509_store.add_cert(c.openssl_cert)\n\n        try:\n            x509_ctx = crypto.X509StoreContext(x509_store, self.openssl_cert,\n                                               None)\n            x509_ctx.verify_certificate()\n        except crypto.X509StoreContextError as exc:\n            raise ValueError(f'X.509 chain validation error: {exc}') from None"
+      },
+      {
+        "file": "asyncssh/public_key.py",
+        "name": "SSHX509CertificateChain.validate_chain",
+        "kind": "function",
+        "symbol": "asyncssh.public_key.SSHX509CertificateChain.validate_chain",
+        "start": 2022,
+        "end": 2037,
+        "code": "    def validate_chain(self, trusted_certs: Sequence[SSHX509Certificate],\n                       trusted_cert_paths: Sequence[FilePath],\n                       revoked_certs: Set[SSHX509Certificate],\n                       purposes: X509CertPurposes, user_principal: str = '',\n                       host_principal: str = '') -> None:\n        \"\"\"Validate an X.509 certificate chain\"\"\"\n\n        if revoked_certs:\n            for cert in self._certs:\n                if cert in revoked_certs:\n                    raise ValueError('Revoked X.509 certificate in '\n                                     'certificate chain')\n\n        self._certs[0].validate_chain(self._certs[1:], trusted_certs,\n                                      trusted_cert_paths, purposes,\n                                      user_principal, host_principal)"
+      },
+      {
+        "file": "asyncssh/connection.py",
+        "name": "SSHConnection._validate_x509_host_certificate_chain",
+        "kind": "function",
+        "symbol": "asyncssh.connection.SSHConnection._validate_x509_host_certificate_chain",
+        "start": 1141,
+        "end": 1169,
+        "code": "    def _validate_x509_host_certificate_chain(\n            self, host: str, cert: SSHX509CertificateChain) -> SSHKey:\n        \"\"\"Validate an X.509 host certificate\"\"\"\n\n        if (self._x509_revoked_subjects and\n                any(pattern.matches(cert.subject)\n                    for pattern in self._x509_revoked_subjects)):\n            raise ValueError('X.509 subject name is revoked')\n\n        if (self._x509_trusted_subjects and\n                not any(pattern.matches(cert.subject)\n                        for pattern in self._x509_trusted_subjects)):\n            raise ValueError('X.509 subject name is not trusted')\n\n        # Only validate hostname against X.509 certificate host\n        # principals when there are no X.509 trusted subject\n        # entries matched in known_hosts.\n        if self._x509_trusted_subjects:\n            host = ''\n\n        assert self._x509_trusted_certs is not None\n\n        cert.validate_chain(self._x509_trusted_certs,\n                            self._x509_trusted_cert_paths,\n                            self._x509_revoked_certs,\n                            self._x509_purposes,\n                            host_principal=host)\n\n        return cert.key"
+      },
+      {
+        "file": "asyncssh/connection.py",
+        "name": "SSHServerConnection._validate_x509_certificate_chain",
+        "kind": "function",
+        "symbol": "asyncssh.connection.SSHServerConnection._validate_x509_certificate_chain",
+        "start": 5436,
+        "end": 5469,
+        "code": "    async def _validate_x509_certificate_chain(\n            self, username: str, cert: SSHX509CertificateChain) -> \\\n                Optional[SSHKey]:\n        \"\"\"Validate an X.509 client certificate for the specified user\"\"\"\n\n        if not self._authorized_client_keys:\n            return None\n\n        options, trusted_cert = \\\n            self._authorized_client_keys.validate_x509(\n                cert, self._peer_host, self._peer_addr)\n\n        if options is None:\n            return None\n\n        self._key_options = options\n\n        if self.get_key_option('principals'):\n            username = ''\n\n        assert self._x509_trusted_certs is not None\n        trusted_certs = list(self._x509_trusted_certs)\n\n        if trusted_cert:\n            trusted_certs += [trusted_cert]\n\n        try:\n            cert.validate_chain(trusted_certs, self._x509_trusted_cert_paths,\n                                set(), self._x509_purposes,\n                                user_principal=username)\n        except ValueError:\n            return None\n\n        return cert.key"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [
+      "asyncssh.public_key.X509CertPurposes",
+      "asyncssh.public_key._CertPrincipals",
+      "asyncssh.public_key._Comment"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 9775
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 30035,
+    "completion_tokens": 662,
+    "total_tokens": 30697,
+    "seconds": 30.172481060028076,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 134.56337881088257,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

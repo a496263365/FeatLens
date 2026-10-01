@@ -1,0 +1,124 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2233,
+  "namespace": "boltons.cacheutils.cached",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 15887,
+      "input_estimate_after": 15887,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the reusable dependencies for implementing the `cached` decorator. The `cached` function at line 543 is currently just a stub with `pass`, but there are several existing components in the same file that should be reused:\n\n1. **`CachedFunction` class** - This is the core implementation that the `cached` decorator should instantiate and return.\n2. **`make_cache_key` function** - This is the default key generation function used by `CachedFunction`.\n3. **`_HashedKey` class** - Used internally by `make_cache_key` for efficient hashing.\n4. **`_KWARG_MARK` sentinel** - Used in `make_cache_key` to separate positional and keyword arguments.\n5. **`cachedmethod` function** - Provides a pattern for how to structure the decorator factory.\n\nHere are the specific locations containing reusable dependencies:\n\n```\nboltons/cacheutils.py\nline: 449\nclass: CachedFunction\nfunction: __init__\nfunction: __call__\n\nboltons/cacheutils.py\nline: 409\nfunction: make_cache_key\n\nboltons/cacheutils.py\nline: 392\nclass: _HashedKey\nfunction: __init__\nfunction: __hash__\n\nboltons/cacheutils.py\nline: 86\nline: 87\nvariable: _KWARG_MARK\n\nboltons/cacheutils.py\nline: 581\nfunction: cachedmethod\n```",
+  "final_locations": {
+    "files": [
+      "boltons/cacheutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "CachedFunction",
+        "kind": "class",
+        "symbol": "boltons.cacheutils.CachedFunction",
+        "start": 449,
+        "end": 484,
+        "code": "class CachedFunction(object):\n    \"\"\"This type is used by :func:`cached`, below. Instances of this\n    class are used to wrap functions in caching logic.\n    \"\"\"\n    def __init__(self, func, cache, scoped=True, typed=False, key=None):\n        self.func = func\n        if callable(cache):\n            self.get_cache = cache\n        elif not (callable(getattr(cache, '__getitem__', None))\n                  and callable(getattr(cache, '__setitem__', None))):\n            raise TypeError('expected cache to be a dict-like object,'\n                            ' or callable returning a dict-like object, not %r'\n                            % cache)\n        else:\n            def _get_cache():\n                return cache\n            self.get_cache = _get_cache\n        self.scoped = scoped\n        self.typed = typed\n        self.key_func = key or make_cache_key\n\n    def __call__(self, *args, **kwargs):\n        cache = self.get_cache()\n        key = self.key_func(args, kwargs, typed=self.typed)\n        try:\n            ret = cache[key]\n        except KeyError:\n            ret = cache[key] = self.func(*args, **kwargs)\n        return ret\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        if self.typed or not self.scoped:\n            return (\"%s(func=%r, scoped=%r, typed=%r)\"\n                    % (cn, self.func, self.scoped, self.typed))\n        return \"%s(func=%r)\" % (cn, self.func)"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "make_cache_key",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.make_cache_key",
+        "start": 409,
+        "end": 443,
+        "code": "def make_cache_key(args, kwargs, typed=False,\n                   kwarg_mark=_KWARG_MARK,\n                   fasttypes=frozenset([int, str, frozenset, type(None)])):\n    \"\"\"Make a generic key from a function's positional and keyword\n    arguments, suitable for use in caches. Arguments within *args* and\n    *kwargs* must be `hashable`_. If *typed* is ``True``, ``3`` and\n    ``3.0`` will be treated as separate keys.\n\n    The key is constructed in a way that is flat as possible rather than\n    as a nested structure that would take more memory.\n\n    If there is only a single argument and its data type is known to cache\n    its hash value, then that argument is returned without a wrapper.  This\n    saves space and improves lookup speed.\n\n    >>> tuple(make_cache_key(('a', 'b'), {'c': ('d')}))\n    ('a', 'b', _KWARG_MARK, ('c', 'd'))\n\n    .. _hashable: https://docs.python.org/2/glossary.html#term-hashable\n    \"\"\"\n\n    # key = [func_name] if func_name else []\n    # key.extend(args)\n    key = list(args)\n    if kwargs:\n        sorted_items = sorted(kwargs.items())\n        key.append(kwarg_mark)\n        key.extend(sorted_items)\n    if typed:\n        key.extend([type(v) for v in args])\n        if kwargs:\n            key.extend([type(v) for k, v in sorted_items])\n    elif len(key) == 1 and type(key[0]) in fasttypes:\n        return key[0]\n    return _HashedKey(key)"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "_HashedKey",
+        "kind": "class",
+        "symbol": "boltons.cacheutils._HashedKey",
+        "start": 392,
+        "end": 406,
+        "code": "class _HashedKey(list):\n    \"\"\"The _HashedKey guarantees that hash() will be called no more than once\n    per cached function invocation.\n    \"\"\"\n    __slots__ = 'hash_value'\n\n    def __init__(self, key):\n        self[:] = key\n        self.hash_value = hash(tuple(key))\n\n    def __hash__(self):\n        return self.hash_value\n\n    def __repr__(self):\n        return '%s(%s)' % (self.__class__.__name__, list.__repr__(self))"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "_MISSING",
+        "kind": "variable",
+        "symbol": "boltons.cacheutils._MISSING",
+        "start": 86,
+        "end": 86,
+        "code": "    _MISSING = make_sentinel(var_name='_MISSING')"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "_KWARG_MARK",
+        "kind": "variable",
+        "symbol": "boltons.cacheutils._KWARG_MARK",
+        "start": 87,
+        "end": 87,
+        "code": "    _KWARG_MARK = make_sentinel(var_name='_KWARG_MARK')"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "cachedmethod",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.cachedmethod",
+        "start": 581,
+        "end": 620,
+        "code": "def cachedmethod(cache, scoped=True, typed=False, key=None):\n    \"\"\"Similar to :func:`cached`, ``cachedmethod`` is used to cache\n    methods based on their arguments, using any :class:`dict`-like\n    *cache* object.\n\n    Args:\n        cache (str/Mapping/callable): Can be the name of an attribute\n            on the instance, any Mapping/:class:`dict`-like object, or\n            a callable which returns a Mapping.\n        scoped (bool): Whether the method itself and the object it is\n            bound to are part of the cache keys. ``True`` by default,\n            different methods will not read one another's cache\n            results. ``False`` can be useful for certain shared cache\n            use cases. More advanced behavior can be produced through\n            the *key* arguments.\n        typed (bool): Whether to factor argument types into the cache\n            check. Default ``False``, setting to ``True`` causes the\n            cache keys for ``3`` and ``3.0`` to be considered unequal.\n        key (callable): A callable with a signature that matches\n            :func:`make_cache_key` that returns a tuple of hashable\n            values to be used as the key in the cache.\n\n    >>> class Lowerer(object):\n    ...     def __init__(self):\n    ...         self.cache = LRI()\n    ...\n    ...     @cachedmethod('cache')\n    ...     def lower(self, text):\n    ...         return text.lower()\n    ...\n    >>> lowerer = Lowerer()\n    >>> lowerer.lower('WOW WHO COULD GUESS CACHING COULD BE SO NEAT')\n    'wow who could guess caching could be so neat'\n    >>> len(lowerer.cache)\n    1\n\n    \"\"\"\n    def cached_method_decorator(func):\n        return CachedMethod(func, cache, scoped=scoped, typed=typed, key=key)\n    return cached_method_decorator"
+      }
+    ],
+    "unresolved": [
+      "boltons/cacheutils.py:function: __init__",
+      "boltons/cacheutils.py:function: __call__",
+      "boltons/cacheutils.py:function: __init__",
+      "boltons/cacheutils.py:function: __hash__",
+      "boltons/cacheutils.py:variable: _KWARG_MARK"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 5061
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 49760,
+    "completion_tokens": 748,
+    "total_tokens": 50508,
+    "seconds": 112.4283516407013,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 128.99198198318481,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

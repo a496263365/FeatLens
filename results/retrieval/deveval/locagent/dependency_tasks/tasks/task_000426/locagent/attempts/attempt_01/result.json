@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 426,
+  "namespace": "falcon.asgi.reader.BufferedReader.read_until",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8579,
+      "input_estimate_after": 8579,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `read_until` method in `falcon/asgi/reader.py:BufferedReader`. These are existing functions and patterns that should be reused:\n\n```\nfalcon/asgi/reader.py\nline: 94\nfunction: BufferedReader._iter_delimited\n\nfalcon/asgi/reader.py\nline: 176\nfunction: BufferedReader._read_from\n\nfalcon/asgi/reader.py\nline: 155\nfunction: BufferedReader._consume_delimiter\n\nfalcon/asgi/reader.py\nline: 263\nfunction: BufferedReader.pipe_until\n\nfalcon/asgi/reader.py\nline: 80\nfunction: BufferedReader._iter_with_buffer\n```",
+  "final_locations": {
+    "files": [
+      "falcon/asgi/reader.py"
+    ],
+    "entities": [
+      {
+        "file": "falcon/asgi/reader.py",
+        "name": "BufferedReader._iter_delimited",
+        "kind": "function",
+        "symbol": "falcon.asgi.reader.BufferedReader._iter_delimited",
+        "start": 94,
+        "end": 153,
+        "code": "    async def _iter_delimited(self, delimiter, size_hint=0):\n        delimiter_len_1 = len(delimiter) - 1\n        if not 0 <= delimiter_len_1 < self._chunk_size:\n            raise ValueError('delimiter length must be within [1, chunk_size]')\n\n        if self._buffer_len > self._buffer_pos:\n            pos = self._buffer.find(delimiter, self._buffer_pos)\n            if pos == 0:\n                return\n            if pos > 0:\n                if 0 < size_hint < pos - self._buffer_pos:\n                    buffer_pos = self._buffer_pos\n                    self._buffer_pos += size_hint\n                    yield self._buffer[buffer_pos : self._buffer_pos]\n                buffer_pos = self._buffer_pos\n                self._buffer_pos = pos\n                yield self._buffer[buffer_pos:pos]\n                return\n\n            if 0 < size_hint < (self._buffer_len - self._buffer_pos - delimiter_len_1):\n                buffer_pos = self._buffer_pos\n                self._buffer_pos += size_hint\n                yield self._buffer[buffer_pos : self._buffer_pos]\n\n        if self._buffer_pos > 0:\n            self._trim_buffer()\n\n        async for chunk in self._source:\n            offset = self._buffer_len - delimiter_len_1\n            if offset > 0:\n                fragment = self._buffer[offset:] + chunk[:delimiter_len_1]\n                pos = fragment.find(delimiter)\n                if pos < 0:\n                    output = self._buffer\n                    self._buffer = chunk\n                    self._buffer_len = len(chunk)\n                    yield output\n                else:\n                    self._buffer += chunk\n                    self._buffer_len += len(chunk)\n                    self._buffer_pos = offset + pos\n                    # PERF(vytas): local1 + local2 is faster than self._attr\n                    #   (still true on CPython 3.8)\n                    yield self._buffer[: offset + pos]\n                    return\n            elif self._buffer:\n                self._buffer += chunk\n                self._buffer_len += len(chunk)\n            else:\n                self._buffer = chunk\n                self._buffer_len = len(chunk)\n\n            pos = self._buffer.find(delimiter)\n            if pos >= 0:  # pragma: no py39,py310 cover\n                if pos > 0:\n                    self._buffer_pos = pos\n                    yield self._buffer[:pos]\n                return\n\n        yield self._buffer"
+      },
+      {
+        "file": "falcon/asgi/reader.py",
+        "name": "BufferedReader._read_from",
+        "kind": "function",
+        "symbol": "falcon.asgi.reader.BufferedReader._read_from",
+        "start": 176,
+        "end": 219,
+        "code": "    async def _read_from(self, source, size=-1):\n        if size == -1 or size is None:\n            result = io.BytesIO()\n            async for chunk in source:\n                result.write(chunk)\n            return result.getvalue()\n\n        if size <= 0:\n            return b''\n\n        remaining = size\n\n        if size <= self._max_join_size:\n            result = []\n            async for chunk in source:\n                chunk_len = len(chunk)\n                if remaining < chunk_len:\n                    result.append(chunk[:remaining])\n                    self._prepend_buffer(chunk[remaining:])\n                    break\n\n                result.append(chunk)\n                remaining -= chunk_len\n                if remaining == 0:  # pragma: no py39,py310 cover\n                    break\n\n            # PERF(vytas) Don't join unless necessary.\n            return result[0] if len(result) == 1 else b''.join(result)\n\n        # NOTE(vytas): size > self._max_join_size\n        result = io.BytesIO()\n        async for chunk in source:\n            chunk_len = len(chunk)\n            if remaining < chunk_len:\n                result.write(chunk[:remaining])\n                self._prepend_buffer(chunk[remaining:])\n                break\n\n            result.write(chunk)\n            remaining -= chunk_len\n            if remaining == 0:  # pragma: no py39,py310 cover\n                break\n\n        return result.getvalue()"
+      },
+      {
+        "file": "falcon/asgi/reader.py",
+        "name": "BufferedReader._consume_delimiter",
+        "kind": "function",
+        "symbol": "falcon.asgi.reader.BufferedReader._consume_delimiter",
+        "start": 155,
+        "end": 159,
+        "code": "    async def _consume_delimiter(self, delimiter):\n        delimiter_len = len(delimiter)\n        if await self.peek(delimiter_len) != delimiter:\n            raise DelimiterError('expected delimiter missing')\n        self._buffer_pos += delimiter_len"
+      },
+      {
+        "file": "falcon/asgi/reader.py",
+        "name": "BufferedReader.pipe_until",
+        "kind": "function",
+        "symbol": "falcon.asgi.reader.BufferedReader.pipe_until",
+        "start": 263,
+        "end": 269,
+        "code": "    async def pipe_until(self, delimiter, destination=None, consume_delimiter=False):\n        async for chunk in self._iter_delimited(delimiter):\n            if destination is not None:\n                await destination.write(chunk)\n\n        if consume_delimiter:\n            await self._consume_delimiter(delimiter)"
+      },
+      {
+        "file": "falcon/asgi/reader.py",
+        "name": "BufferedReader._iter_with_buffer",
+        "kind": "function",
+        "symbol": "falcon.asgi.reader.BufferedReader._iter_with_buffer",
+        "start": 80,
+        "end": 92,
+        "code": "    async def _iter_with_buffer(self, size_hint=0):\n        if self._buffer_len > self._buffer_pos:\n            if 0 < size_hint < self._buffer_len - self._buffer_pos:\n                buffer_pos = self._buffer_pos\n                self._buffer_pos += size_hint\n                yield self._buffer[buffer_pos : self._buffer_pos]\n\n            buffer_pos = self._buffer_pos\n            self._buffer_pos = self._buffer_len\n            yield self._buffer[buffer_pos : self._buffer_len]\n\n        async for chunk in self._source:\n            yield chunk"
+      }
+    ],
+    "unresolved": [
+      "Based on the evidence available, I can identify the following reusable dependencies for implementing the `read_until` method in `falcon/asgi/reader.py:BufferedReader`. These are existing functions and patterns that should be reused:"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "falcon.asgi.reader.BufferedReader._consume_delimiter",
+      "falcon.asgi.reader.BufferedReader._iter_delimited",
+      "falcon.asgi.reader.BufferedReader._read_from"
+    ],
+    "exact_hit_dependencies": [
+      "falcon.asgi.reader.BufferedReader._consume_delimiter",
+      "falcon.asgi.reader.BufferedReader._iter_delimited",
+      "falcon.asgi.reader.BufferedReader._read_from"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4971
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 28349,
+    "completion_tokens": 605,
+    "total_tokens": 28954,
+    "seconds": 88.0812873840332,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 106.50456738471985,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

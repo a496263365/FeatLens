@@ -1,0 +1,129 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 726,
+  "namespace": "pyt.vulnerabilities.trigger_definitions_parser.parse",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4106,
+      "input_estimate_after": 4106,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `parse` function in `pyt/vulnerabilities/trigger_definitions_parser.py`:\n\n```\npyt/vulnerabilities/trigger_definitions_parser.py\nline: 5\nclass: Definitions\nline: 13\nclass: Source\nline: 16\nclass: Sink\nline: 65\nfunction: Sink.from_json\n\npyt/vulnerabilities/vulnerabilities.py\nline: 24\nfunction: identify_triggers\nline: 50\nfunction: find_triggers\n```",
+  "final_locations": {
+    "files": [
+      "pyt/vulnerabilities/trigger_definitions_parser.py",
+      "pyt/vulnerabilities/vulnerabilities.py"
+    ],
+    "entities": [
+      {
+        "file": "pyt/vulnerabilities/trigger_definitions_parser.py",
+        "name": "Definitions",
+        "kind": "variable",
+        "symbol": "pyt.vulnerabilities.trigger_definitions_parser.Definitions",
+        "start": 5,
+        "end": 11,
+        "code": "Definitions = namedtuple(\n    'Definitions',\n    (\n        'sources',\n        'sinks'\n    )\n)"
+      },
+      {
+        "file": "pyt/vulnerabilities/trigger_definitions_parser.py",
+        "name": "Source",
+        "kind": "variable",
+        "symbol": "pyt.vulnerabilities.trigger_definitions_parser.Source",
+        "start": 13,
+        "end": 13,
+        "code": "Source = namedtuple('Source', ('trigger_word'))"
+      },
+      {
+        "file": "pyt/vulnerabilities/trigger_definitions_parser.py",
+        "name": "Sink",
+        "kind": "class",
+        "symbol": "pyt.vulnerabilities.trigger_definitions_parser.Sink",
+        "start": 16,
+        "end": 66,
+        "code": "class Sink:\n    def __init__(\n        self, trigger, *,\n        unlisted_args_propagate=True,\n        arg_dict=None,\n        sanitisers=None,\n    ):\n        self._trigger = trigger\n        self.sanitisers = sanitisers or []\n        self.arg_list_propagates = not unlisted_args_propagate\n\n        if trigger[-1] != '(':\n            if self.arg_list_propagates or arg_dict:\n                raise ValueError(\"Propagation options specified, but trigger word isn't a function call\")\n\n        arg_dict = {} if arg_dict is None else arg_dict\n        self.arg_position_to_kwarg = {\n            position: name for name, position in arg_dict.items() if position is not None\n        }\n        self.kwarg_list = set(arg_dict.keys())\n\n    def arg_propagates(self, index):\n        kwarg = self.get_kwarg_from_position(index)\n        return self.kwarg_propagates(kwarg)\n\n    def kwarg_propagates(self, keyword):\n        in_list = keyword in self.kwarg_list\n        return self.arg_list_propagates == in_list\n\n    def get_kwarg_from_position(self, index):\n        return self.arg_position_to_kwarg.get(index)\n\n    @property\n    def all_arguments_propagate_taint(self):\n        if self.kwarg_list:\n            return False\n        return True\n\n    @property\n    def call(self):\n        if self._trigger[-1] == '(':\n            return self._trigger[:-1]\n        return None\n\n    @property\n    def trigger_word(self):\n        return self._trigger\n\n    @classmethod\n    def from_json(cls, key, data):\n        return cls(trigger=key, **data)"
+      },
+      {
+        "file": "pyt/vulnerabilities/trigger_definitions_parser.py",
+        "name": "Sink.from_json",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.trigger_definitions_parser.Sink.from_json",
+        "start": 65,
+        "end": 66,
+        "code": "    def from_json(cls, key, data):\n        return cls(trigger=key, **data)"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "identify_triggers",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.identify_triggers",
+        "start": 24,
+        "end": 59,
+        "code": "def identify_triggers(\n    cfg,\n    sources,\n    sinks,\n    lattice,\n    nosec_lines\n):\n    \"\"\"Identify sources, sinks and sanitisers in a CFG.\n\n    Args:\n        cfg(CFG): CFG to find sources, sinks and sanitisers in.\n        sources(tuple): list of sources, a source is a (source, sanitiser) tuple.\n        sinks(tuple): list of sources, a sink is a (sink, sanitiser) tuple.\n        nosec_lines(set): lines with # nosec whitelisting\n\n    Returns:\n        Triggers tuple with sink and source nodes and a sanitiser node dict.\n    \"\"\"\n    assignment_nodes = filter_cfg_nodes(cfg, AssignmentNode)\n    tainted_nodes = filter_cfg_nodes(cfg, TaintedNode)\n    tainted_trigger_nodes = [\n        TriggerNode(\n            Source('Framework function URL parameter'),\n            cfg_node=node\n        ) for node in tainted_nodes\n    ]\n    sources_in_file = find_triggers(assignment_nodes, sources, nosec_lines)\n    sources_in_file.extend(tainted_trigger_nodes)\n\n    find_secondary_sources(assignment_nodes, sources_in_file, lattice)\n\n    sinks_in_file = find_triggers(cfg.nodes, sinks, nosec_lines)\n\n    sanitiser_node_dict = build_sanitiser_node_dict(cfg, sinks_in_file)\n\n    return Triggers(sources_in_file, sinks_in_file, sanitiser_node_dict)"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "find_triggers",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.find_triggers",
+        "start": 129,
+        "end": 148,
+        "code": "def find_triggers(\n    nodes,\n    trigger_words,\n    nosec_lines\n):\n    \"\"\"Find triggers from the trigger_word_list in the nodes.\n\n    Args:\n        nodes(list[Node]): the nodes to find triggers in.\n        trigger_word_list(list[Union[Sink, Source]]): list of trigger words to look for.\n        nosec_lines(set): lines with # nosec whitelisting\n\n    Returns:\n        List of found TriggerNodes\n    \"\"\"\n    trigger_nodes = list()\n    for node in nodes:\n        if node.line_number not in nosec_lines:\n            trigger_nodes.extend(iter(label_contains(node, trigger_words)))\n    return trigger_nodes"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "pyt.vulnerabilities.trigger_definitions_parser.Definitions",
+      "pyt.vulnerabilities.trigger_definitions_parser.Sink",
+      "pyt.vulnerabilities.trigger_definitions_parser.Sink.from_json",
+      "pyt.vulnerabilities.trigger_definitions_parser.Source"
+    ],
+    "exact_hit_dependencies": [
+      "pyt.vulnerabilities.trigger_definitions_parser.Definitions",
+      "pyt.vulnerabilities.trigger_definitions_parser.Sink",
+      "pyt.vulnerabilities.trigger_definitions_parser.Sink.from_json",
+      "pyt.vulnerabilities.trigger_definitions_parser.Source"
+    ],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3570
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17905,
+    "completion_tokens": 543,
+    "total_tokens": 18448,
+    "seconds": 40.4866669178009,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 45.09858965873718,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

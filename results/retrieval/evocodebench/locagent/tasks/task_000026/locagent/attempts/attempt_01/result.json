@@ -1,0 +1,176 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 26,
+  "namespace": "litdata.streaming.combined.CombinedStreamingDataset.load_state_dict",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11520,
+      "input_estimate_after": 11520,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I'll identify the key reusable dependencies for implementing the `load_state_dict` method in `litdata/streaming/combined.py`. The implementation needs to:\n\n1. Update the state of each dataset within the CombinedStreamingDataset\n2. Update the number of samples yielded to avoid repeating samples\n3. Handle the state dictionary structure created by the `_state_dict` function\n\nHere are the key locations containing reusable dependencies:\n\n```\nlitdata/streaming/dataset.py\nline: 314\nline: 338\nclass: StreamingDataset\nfunction: state_dict\nfunction: load_state_dict\n\nlitdata/streaming/combined.py\nline: 168\nline: 172\nfunction: _CombinedDatasetIterator.state_dict\nfunction: _state_dict\n\nlitdata/streaming/combined.py\nline: 56\nline: 90\nclass: CombinedStreamingDataset\nvariable: _num_samples_yielded\nvariable: _iterator\n\nlitdata/streaming/combined.py\nline: 144\nline: 146\nclass: _CombinedDatasetIterator\nvariable: _num_samples_yielded\nline: 147\n\nlitdata/streaming/dataset.py\nline: 174\nline: 187\nclass: StreamingDataset\nfunction: _resume\nfunction: _validate_state_dict\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/dataset.py",
+      "litdata/streaming/combined.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/dataset.py",
+        "name": "StreamingDataset.state_dict",
+        "kind": "function",
+        "symbol": "litdata.streaming.dataset.StreamingDataset.state_dict",
+        "start": 314,
+        "end": 336,
+        "code": "    def state_dict(self, num_samples_yielded: int, num_workers: int, batch_size: int) -> Dict[str, Any]:\n        if _is_in_dataloader_worker():\n            raise RuntimeError(\"The method `state_dict` should only be called in the main process.\")\n\n        if self._state_dict is not None:\n            self._state_dict[\"num_samples_yielded\"] = num_samples_yielded\n            return self._state_dict\n\n        state = {\n            \"num_samples_yielded\": num_samples_yielded,\n            \"num_workers\": num_workers,\n            \"batch_size\": batch_size,\n            \"current_epoch\": self.current_epoch,\n            \"input_dir_path\": self.input_dir.path,\n            \"input_dir_url\": self.input_dir.url,\n            \"item_loader\": self.item_loader.state_dict() if self.item_loader else None,\n            \"drop_last\": self.drop_last,\n            \"seed\": self.seed,\n            \"world_size\": self.distributed_env.world_size,\n            \"shuffle\": self.shuffle,\n        }\n\n        return state"
+      },
+      {
+        "file": "litdata/streaming/dataset.py",
+        "name": "StreamingDataset.load_state_dict",
+        "kind": "function",
+        "symbol": "litdata.streaming.dataset.StreamingDataset.load_state_dict",
+        "start": 338,
+        "end": 341,
+        "code": "    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:\n        if state_dict:\n            # the state is restored within the workers\n            self._state_dict = state_dict"
+      },
+      {
+        "file": "litdata/streaming/dataset.py",
+        "name": "StreamingDataset",
+        "kind": "class",
+        "symbol": "litdata.streaming.dataset.StreamingDataset",
+        "start": 38,
+        "end": 401,
+        "code": "class StreamingDataset(IterableDataset):\n    \"\"\"The streaming dataset can be used once your data have been optimised using the DatasetOptimiser class.\"\"\"\n\n    def __init__(\n        self,\n        input_dir: Union[str, \"Dir\"],\n        item_loader: Optional[BaseItemLoader] = None,\n        shuffle: bool = False,\n        drop_last: Optional[bool] = None,\n        seed: int = 42,\n        serializers: Optional[Dict[str, Serializer]] = None,\n        max_cache_size: Union[int, str] = \"100GB\",\n    ) -> None:\n        \"\"\"The streaming dataset can be used once your data have been optimised using the DatasetOptimiser class.\n\n        Arguments:\n            input_dir: Path to the folder where the input data is stored.\n            item_loader: The logic to load an item from a chunk.\n            shuffle: Whether to shuffle the data.\n            drop_last: If `True`, drops the last items to ensure that\n                all processes/workers return the same amount of data.\n                The argument `drop_last` is set to `True` in a distributed setting\n                and `False` otherwise.\n            seed: Random seed for shuffling.\n            serializers: The serializers used to serialize and deserialize the chunks.\n            max_cache_size: The maximum cache size used by the StreamingDataset.\n\n        \"\"\"\n        super().__init__()\n        if not isinstance(shuffle, bool):\n            raise ValueError(f\"Shuffle should be a boolean. Found {shuffle}\")\n\n        input_dir = _resolve_dir(input_dir)\n\n        self.input_dir = input_dir\n\n        self.item_loader = item_loader\n        self.shuffle: bool = shuffle\n        self.distributed_env = _DistributedEnv.detect()\n\n        if self.distributed_env.world_size > 1:\n            if drop_last is False:\n                logger.warn(\n                    \"You're operating within a distributed environment and have disabled the `drop_last` option. \"\n                    \"Please note that this configuration may lead to training interruptions if your system depends \"\n                    \"on distributed collectives.\"\n                )\n            else:\n                drop_last = True\n\n        self.drop_last = drop_last or False\n\n        self.seed = seed\n        self.max_cache_size = max_cache_size\n\n        self.cache: Optional[Cache] = None\n        self.worker_env: Optional[_WorkerEnv] = None\n        self.worker_chunks: List[int] = []\n        self.worker_intervals: List[List[int]] = []\n        self.current_indexes: List[int] = []\n        self.chunk_index = 0\n        self.num_chunks: Optional[int] = None\n        self.global_index = 0\n        self.index = 0\n        self.has_triggered_download = False\n        self.min_items_per_replica: Optional[int] = None\n        self.current_epoch = 1\n        self.random_state = None\n        self.shuffler: Optional[Shuffle] = None\n        self.serializers = serializers\n        self._state_dict: Optional[Dict[str, Any]] = None\n\n    def set_shuffle(self, shuffle: bool) -> None:\n        self.shuffle = shuffle\n\n    def set_epoch(self, current_epoch: int) -> None:\n        \"\"\"Set the current epoch to the dataset on epoch starts.\n\n        When using the StreamingDataLoader, this is done automatically\n\n        \"\"\"\n        # If the state dict has been reloaded, don't override the current epoch\n        # The StreamingDataloader would clean this out\n        if self._state_dict is None:\n            self.current_epoch = current_epoch\n\n    def _create_cache(self, worker_env: _WorkerEnv) -> Cache:\n        if _should_replace_path(self.input_dir.path):\n            cache_path = _try_create_cache_dir(\n                input_dir=self.input_dir.path if self.input_dir.path else self.input_dir.url\n            )\n            if cache_path is not None:\n                self.input_dir.path = cache_path\n\n        cache = Cache(\n            input_dir=self.input_dir,\n            item_loader=self.item_loader,\n            chunk_bytes=1,\n            serializers=self.serializers,\n            max_cache_size=self.max_cache_size,\n        )\n        cache._reader._try_load_config()\n\n        if not cache.filled:\n            raise ValueError(\n                f\"The provided dataset `{self.input_dir}` doesn't contain any {_INDEX_FILENAME} file.\"\n                \" HINT: Did you successfully optimize a dataset to the provided `input_dir`?\"\n            )\n\n        return cache\n\n    def _create_shuffler(self, cache: Cache) -> Shuffle:\n        seed = self.seed\n        drop_last = self.drop_last\n        if self._state_dict is not None:\n            state: Dict[str, Any] = self._state_dict\n            seed = state[\"seed\"]\n            drop_last = state[\"drop_last\"]\n        return FullShuffle(cache, seed, drop_last) if self.shuffle else NoShuffle(cache, seed, drop_last)\n\n    def __len__(self) -> int:\n        if self.shuffler is None:\n            cache = self._create_cache(worker_env=_WorkerEnv.detect())\n            self.shuffler = self._create_shuffler(cache)\n        return self.shuffler.get_len(self.distributed_env, self.current_epoch)\n\n    def __iter__(self) -> \"StreamingDataset\":\n        # When the StreamingDataset is used within map or optimize, let's refetch the distributed env.\n        if os.getenv(\"DATA_OPTIMIZER_GLOBAL_RANK\"):\n            self.distributed_env = _DistributedEnv.detect()\n\n        self.worker_env = _WorkerEnv.detect()\n        self.cache = self._create_cache(worker_env=self.worker_env)\n        self.shuffler = self._create_shuffler(self.cache)\n\n        # Handle restart\n        if self._state_dict:\n            self._validate_state_dict()\n            state: Dict[str, Any] = self._state_dict\n            self.current_epoch = state[\"current_epoch\"]\n\n        chunks_per_replica, intervals_per_replica = self.shuffler.get_chunks_and_intervals_per_ranks(\n            self.distributed_env, self.current_epoch\n        )\n        chunks_replica = chunks_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n        intervals_replica = intervals_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n\n        # Handle restart\n        if self._state_dict:\n            self._resume(chunks_replica, intervals_replica)\n        else:\n            chunks_per_replica, intervals_per_replica = self.shuffler.get_chunks_and_intervals_per_ranks(\n                self.distributed_env, self.current_epoch\n            )\n            chunks_replica = chunks_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n            intervals_replica = intervals_per_replica[\n                self.distributed_env.global_rank % self.distributed_env.world_size\n            ]\n\n            self.worker_chunks = []\n            self.worker_intervals = []\n\n            for i, (chunk_index, chunk_interval) in enumerate(zip(chunks_replica, intervals_replica)):\n                if i % self.worker_env.world_size != self.worker_env.rank:\n                    continue\n                self.worker_chunks.append(chunk_index)\n                self.worker_intervals.append(chunk_interval)\n\n            self.num_chunks = len(self.worker_chunks)\n\n            self.current_indexes = []\n            self.chunk_index = 0\n            self.global_index = 0\n            self.index = 0\n\n        self.has_triggered_download = False\n        self.last_time = time()\n\n        return self\n\n    def _resume(self, chunks_replica: List[int], intervals_replica: List[Any]) -> None:\n        assert self._state_dict\n        assert self.worker_env\n        assert self.shuffler\n\n        state: Dict[str, Any] = self._state_dict\n\n        num_workers = state[\"num_workers\"]\n        batch_size = state[\"batch_size\"]\n\n        # TODO: Implement elastic sampling where the number of workers, ranks can change.\n        num_samples_yielded = self._state_dict[\"num_samples_yielded\"]\n\n        # replay sampling from each worker / chunks using the batch size\n        workers_chunks, workers_intervals = _associate_chunks_to_workers(\n            num_workers, self.worker_env, chunks_replica, intervals_replica\n        )\n        indexes = _replay_sampling(num_samples_yielded, batch_size, num_workers)\n        chunks_index, indexes = _replay_chunks_sampling(workers_intervals, indexes)\n\n        # select the chunks and intervals associated to this worker\n        worker_rank = self.worker_env.rank\n        self.num_chunks = len(workers_intervals[worker_rank])\n        self.chunk_index = chunks_index[worker_rank]\n        self.worker_chunks = workers_chunks[worker_rank]\n        self.worker_intervals = workers_intervals[worker_rank]\n\n        # replay the indexes for the current chunks\n        interval = self.worker_intervals[self.chunk_index]\n        current_indexes = np.arange(interval[0], interval[1])\n\n        # re-shuffle the indexes\n        current_indexes = self.shuffler(current_indexes, self.num_chunks, self.current_epoch, self.chunk_index)\n\n        # skip any indexes already consumed\n        current_indexes = current_indexes[indexes[worker_rank] :]\n        self.current_indexes = current_indexes\n\n        self.global_index = num_samples_yielded\n\n        # bump the chunk_index\n        self.chunk_index += 1\n\n    def __getitem__(self, index: Union[ChunkedIndex, int]) -> Any:\n        if self.cache is None:\n            self.worker_env = _WorkerEnv.detect()\n            self.cache = self._create_cache(worker_env=self.worker_env)\n            self.shuffler = self._create_shuffler(self.cache)\n        if isinstance(index, int):\n            index = ChunkedIndex(index, self.cache._get_chunk_index_from_index(index))\n        return self.cache[index]\n\n    def __next__(self) -> Any:\n        # Prevent to create more batch on a given process\n        if self.global_index >= len(self):\n            self.current_epoch += 1\n            raise StopIteration\n\n        # Lazily re-populate the interval to reduce memory usage.\n        if len(self.current_indexes) == 0:\n            if self.chunk_index == self.num_chunks:\n                self.current_epoch += 1\n                raise StopIteration\n\n            # reset index\n            self.index = 0\n\n            interval = self.worker_intervals[self.chunk_index]\n            current_indexes = np.arange(interval[0], interval[1])\n\n            assert self.shuffler is not None\n            assert self.num_chunks is not None\n            self.current_indexes = self.shuffler(current_indexes, self.num_chunks, self.current_epoch, self.chunk_index)\n\n            self.chunk_index += 1\n\n        # Get the first index\n        index = self.current_indexes.pop(0)\n\n        # Call the `__getitem__` method.\n        data = self.__getitem__(\n            ChunkedIndex(\n                index=index,\n                chunk_index=self.worker_chunks[self.chunk_index - 1],\n                # We provide the chunks indexes only one the first\n                chunk_indexes=None if self.has_triggered_download else self.worker_chunks,\n                is_last_index=(self.chunk_index - 1) == len(self.worker_intervals) and len(self.current_indexes) == 1,\n            )\n        )\n\n        self.has_triggered_download = True\n        self.global_index += 1\n        self.index += 1\n\n        return data\n\n    def state_dict(self, num_samples_yielded: int, num_workers: int, batch_size: int) -> Dict[str, Any]:\n        if _is_in_dataloader_worker():\n            raise RuntimeError(\"The method `state_dict` should only be called in the main process.\")\n\n        if self._state_dict is not None:\n            self._state_dict[\"num_samples_yielded\"] = num_samples_yielded\n            return self._state_dict\n\n        state = {\n            \"num_samples_yielded\": num_samples_yielded,\n            \"num_workers\": num_workers,\n            \"batch_size\": batch_size,\n            \"current_epoch\": self.current_epoch,\n            \"input_dir_path\": self.input_dir.path,\n            \"input_dir_url\": self.input_dir.url,\n            \"item_loader\": self.item_loader.state_dict() if self.item_loader else None,\n            \"drop_last\": self.drop_last,\n            \"seed\": self.seed,\n            \"world_size\": self.distributed_env.world_size,\n            \"shuffle\": self.shuffle,\n        }\n\n        return state\n\n    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:\n        if state_dict:\n            # the state is restored within the workers\n            self._state_dict = state_dict\n\n    def _validate_state_dict(self) -> None:\n        assert self._state_dict\n        assert self.worker_env\n        assert self.cache\n\n        state: Dict[str, Any] = self._state_dict\n\n        if state[\"shuffle\"] != self.shuffle:\n            raise ValueError(\n                \"The provided `shuffle` state doesn't match the current one. \"\n                f\"Found `{self.shuffle}` instead of `{state['shuffle']}`.\"\n            )\n\n        if state[\"num_workers\"] != self.worker_env.world_size:\n            raise ValueError(\n                \"The provided `num_workers` state doesn't match the current one. \"\n                f\"Found `{self.worker_env.world_size}` instead of `{state['num_workers']}`.\"\n            )\n\n        # Note: We need to check whether the path has been resolved to its associated cache.\n        # In this case, validate the cache folder is the same.\n        if _should_replace_path(state[\"input_dir_path\"]):\n            cache_path = _try_create_cache_dir(\n                input_dir=state[\"input_dir_path\"] if state[\"input_dir_path\"] else state[\"input_dir_url\"]\n            )\n            if cache_path != self.input_dir.path:\n                raise ValueError(\n                    \"The provided `input_dir` path state doesn't match the current one. \"\n                    f\"Found `{self.input_dir.path}` instead of `{cache_path}`.\"\n                )\n        elif state[\"input_dir_path\"] != self.input_dir.path:\n            raise ValueError(\n                \"The provided `input_dir` path state doesn't match the current one. \"\n                f\"Found `{self.input_dir.path}` instead of `{state['input_dir_path']}`.\"\n            )\n\n        if state[\"input_dir_url\"] != self.input_dir.url:\n            raise ValueError(\n                \"The provided `input_dir` URL state doesn't match the current one. \"\n                f\"Found `{self.input_dir.url}` instead of `{state['input_dir_url']}`.\"\n            )\n\n        if state[\"seed\"] != self.seed:\n            raise ValueError(\n                \"The provided `seed` state doesn't match the current one. \"\n                f\"Found `{self.seed}` instead of `{state['seed']}`.\"\n            )\n\n        if self.item_loader and state[\"item_loader\"] != self.item_loader.state_dict():\n            raise ValueError(\n                \"The provided `item_loader` state doesn't match the current one. \"\n                f\"Found `{self.item_loader.state_dict()}` instead of `{state['item_loader']}`.\"\n            )\n\n        if state[\"drop_last\"] != self.drop_last:\n            raise ValueError(\n                \"The provided `drop_last` state doesn't match the current one. \"\n                f\"Found `{self.drop_last}` instead of `{state['drop_last']}`.\"\n            )"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "_CombinedDatasetIterator.state_dict",
+        "kind": "function",
+        "symbol": "litdata.streaming.combined._CombinedDatasetIterator.state_dict",
+        "start": 168,
+        "end": 169,
+        "code": "    def state_dict(self, num_workers: int = 0, batch_size: int = 1) -> Dict[str, Any]:\n        return _state_dict(self._datasets, self._num_samples_yielded, num_workers, batch_size)"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "_state_dict",
+        "kind": "function",
+        "symbol": "litdata.streaming.combined._state_dict",
+        "start": 172,
+        "end": 180,
+        "code": "def _state_dict(\n    datasets: List[StreamingDataset], num_samples_yielded: List[int], num_workers: int = 0, batch_size: int = 1\n) -> Dict[str, Any]:\n    return {\n        str(dataset_idx): dataset.state_dict(\n            num_samples_yielded=num_samples_yielded[dataset_idx], num_workers=num_workers, batch_size=batch_size\n        )\n        for dataset_idx, dataset in enumerate(datasets)\n    }"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "CombinedStreamingDataset.__init__",
+        "kind": "function",
+        "symbol": "litdata.streaming.combined.CombinedStreamingDataset.__init__",
+        "start": 38,
+        "end": 57,
+        "code": "    def __init__(\n        self, datasets: List[StreamingDataset], seed: int = 42, weights: Optional[Sequence[float]] = None\n    ) -> None:\n        self._check_datasets(datasets)\n\n        self._seed = seed\n        self._datasets = datasets\n        self._weights = weights\n        num_datasets = len(datasets)\n\n        if weights is None:\n            # Inversely weighted based on length\n            self._weights = [1 / float(num_datasets)] * num_datasets\n        else:\n            self._weights = [w / sum(weights) for w in weights]\n\n        self._iterator: Optional[_CombinedDatasetIterator] = None\n        self._use_streaming_dataloader = False\n        self._num_samples_yielded: Optional[List[int]] = None\n        self._current_epoch = 0"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "CombinedStreamingDataset.__iter__",
+        "kind": "function",
+        "symbol": "litdata.streaming.combined.CombinedStreamingDataset.__iter__",
+        "start": 82,
+        "end": 99,
+        "code": "    def __iter__(self) -> Iterator[Any]:\n        assert self._weights\n\n        worker_env = _WorkerEnv.detect()\n\n        num_samples_yielded = None\n\n        if self._num_samples_yielded is not None and worker_env.rank in self._num_samples_yielded:\n            num_samples_yielded = self._num_samples_yielded[worker_env.rank]\n\n        self._iterator = _CombinedDatasetIterator(\n            self._datasets,\n            self._seed,\n            self._weights,\n            self._use_streaming_dataloader,\n            num_samples_yielded,\n        )\n        return self._iterator"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "CombinedStreamingDataset",
+        "kind": "class",
+        "symbol": "litdata.streaming.combined.CombinedStreamingDataset",
+        "start": 26,
+        "end": 111,
+        "code": "class CombinedStreamingDataset(IterableDataset):\n    \"\"\"The `CombinedStreamingDataset` enables to stream data from multiple StreamingDataset with the sampling ratio of\n    your choice.\n\n    Addtionally, the `CombinedStreamingDataset` keeps track of the number of samples fetched to enable resumability\n    of the datasets.\n\n    Note that due to the random sampling, the number of samples returned from the iterator is variable and a function\n    of the given seed. The combined dataset will raise a StopIteration as soon as any of the datasets is exhausted.\n\n    \"\"\"\n\n    def __init__(\n        self, datasets: List[StreamingDataset], seed: int = 42, weights: Optional[Sequence[float]] = None\n    ) -> None:\n        self._check_datasets(datasets)\n\n        self._seed = seed\n        self._datasets = datasets\n        self._weights = weights\n        num_datasets = len(datasets)\n\n        if weights is None:\n            # Inversely weighted based on length\n            self._weights = [1 / float(num_datasets)] * num_datasets\n        else:\n            self._weights = [w / sum(weights) for w in weights]\n\n        self._iterator: Optional[_CombinedDatasetIterator] = None\n        self._use_streaming_dataloader = False\n        self._num_samples_yielded: Optional[List[int]] = None\n        self._current_epoch = 0\n\n    def set_epoch(self, current_epoch: int) -> None:\n        \"\"\"Set the current epoch to the datasets on epoch starts.\n\n        When using the StreamingDataLoader, this is done automatically\n\n        \"\"\"\n        self._current_epoch = current_epoch\n        for dataset in self._datasets:\n            dataset.set_epoch(current_epoch)\n\n    def set_shuffle(self, shuffle: bool) -> None:\n        \"\"\"Set the current shuffle to the datasets.\"\"\"\n        for dataset in self._datasets:\n            dataset.set_shuffle(shuffle)\n\n    def _check_datasets(self, datasets: List[StreamingDataset]) -> None:\n        if any(not isinstance(d, StreamingDataset) for d in datasets):\n            raise RuntimeError(\"The provided datasets should be instances of the StreamingDataset.\")\n\n    def _set_use_streaming_dataloader(self, use_streaming_dataloader: bool) -> None:\n        # Used to prevent returning num_samples_yielded when using PyTorch DataLoader\n        self._use_streaming_dataloader = use_streaming_dataloader\n\n    def __iter__(self) -> Iterator[Any]:\n        assert self._weights\n\n        worker_env = _WorkerEnv.detect()\n\n        num_samples_yielded = None\n\n        if self._num_samples_yielded is not None and worker_env.rank in self._num_samples_yielded:\n            num_samples_yielded = self._num_samples_yielded[worker_env.rank]\n\n        self._iterator = _CombinedDatasetIterator(\n            self._datasets,\n            self._seed,\n            self._weights,\n            self._use_streaming_dataloader,\n            num_samples_yielded,\n        )\n        return self._iterator\n\n    def state_dict(\n        self, num_workers: int, batch_size: int, num_samples_yielded: Optional[List[int]] = None\n    ) -> Dict[str, Any]:\n        if self._iterator is None:\n            if num_samples_yielded is None:\n                return {}\n            return _state_dict(self._datasets, num_samples_yielded, num_workers, batch_size)\n        return self._iterator.state_dict(num_workers, batch_size)\n\n    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:\n        pass"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "_CombinedDatasetIterator.__init__",
+        "kind": "function",
+        "symbol": "litdata.streaming.combined._CombinedDatasetIterator.__init__",
+        "start": 129,
+        "end": 149,
+        "code": "    def __init__(\n        self,\n        datasets: List[StreamingDataset],\n        seed: int,\n        weights: Sequence[float],\n        use_streaming_dataloader: bool,\n        num_samples_yielded: Optional[Any] = None,\n    ) -> None:\n        self._datasets = datasets\n        self._dataset_iters = [iter(dataset) for dataset in datasets]\n        self._dataset_indexes = list(range(len(datasets)))\n        self._num_samples_yielded = [0 for _ in range(len(datasets))]\n        self._weights = weights\n        self._rng = random.Random(seed)\n\n        if num_samples_yielded is not None:\n            self._num_samples_yielded = num_samples_yielded\n            for _ in range(sum(num_samples_yielded)):\n                self._rng.choices(self._dataset_indexes, weights=self._weights, k=1)\n\n        self._use_streaming_dataloader = use_streaming_dataloader"
+      },
+      {
+        "file": "litdata/streaming/combined.py",
+        "name": "_CombinedDatasetIterator",
+        "kind": "class",
+        "symbol": "litdata.streaming.combined._CombinedDatasetIterator",
+        "start": 128,
+        "end": 169,
+        "code": "class _CombinedDatasetIterator(Iterator):\n    def __init__(\n        self,\n        datasets: List[StreamingDataset],\n        seed: int,\n        weights: Sequence[float],\n        use_streaming_dataloader: bool,\n        num_samples_yielded: Optional[Any] = None,\n    ) -> None:\n        self._datasets = datasets\n        self._dataset_iters = [iter(dataset) for dataset in datasets]\n        self._dataset_indexes = list(range(len(datasets)))\n        self._num_samples_yielded = [0 for _ in range(len(datasets))]\n        self._weights = weights\n        self._rng = random.Random(seed)\n\n        if num_samples_yielded is not None:\n            self._num_samples_yielded = num_samples_yielded\n            for _ in range(sum(num_samples_yielded)):\n                self._rng.choices(self._dataset_indexes, weights=self._weights, k=1)\n\n        self._use_streaming_dataloader = use_streaming_dataloader\n\n    def __next__(self) -> Any:\n        # randomly select a dataset index\n        (dataset_index,) = self._rng.choices(self._dataset_indexes, weights=self._weights, k=1)\n\n        # keep track the sample was fetched\n        self._num_samples_yielded[dataset_index] += 1\n\n        sample = next(self._dataset_iters[dataset_index])\n\n        # return a new sample\n        if self._use_streaming_dataloader:\n            return {\n                __SAMPLES_KEY__: sample,\n                __NUM_SAMPLES_YIELDED_KEY__: self._num_samples_yielded,\n            }\n        return sample\n\n    def state_dict(self, num_workers: int = 0, batch_size: int = 1) -> Dict[str, Any]:\n        return _state_dict(self._datasets, self._num_samples_yielded, num_workers, batch_size)"
+      },
+      {
+        "file": "litdata/streaming/dataset.py",
+        "name": "StreamingDataset.__iter__",
+        "kind": "function",
+        "symbol": "litdata.streaming.dataset.StreamingDataset.__iter__",
+        "start": 164,
+        "end": 216,
+        "code": "    def __iter__(self) -> \"StreamingDataset\":\n        # When the StreamingDataset is used within map or optimize, let's refetch the distributed env.\n        if os.getenv(\"DATA_OPTIMIZER_GLOBAL_RANK\"):\n            self.distributed_env = _DistributedEnv.detect()\n\n        self.worker_env = _WorkerEnv.detect()\n        self.cache = self._create_cache(worker_env=self.worker_env)\n        self.shuffler = self._create_shuffler(self.cache)\n\n        # Handle restart\n        if self._state_dict:\n            self._validate_state_dict()\n            state: Dict[str, Any] = self._state_dict\n            self.current_epoch = state[\"current_epoch\"]\n\n        chunks_per_replica, intervals_per_replica = self.shuffler.get_chunks_and_intervals_per_ranks(\n            self.distributed_env, self.current_epoch\n        )\n        chunks_replica = chunks_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n        intervals_replica = intervals_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n\n        # Handle restart\n        if self._state_dict:\n            self._resume(chunks_replica, intervals_replica)\n        else:\n            chunks_per_replica, intervals_per_replica = self.shuffler.get_chunks_and_intervals_per_ranks(\n                self.distributed_env, self.current_epoch\n            )\n            chunks_replica = chunks_per_replica[self.distributed_env.global_rank % self.distributed_env.world_size]\n            intervals_replica = intervals_per_replica[\n                self.distributed_env.global_rank % self.distributed_env.world_size\n            ]\n\n            self.worker_chunks = []\n            self.worker_intervals = []\n\n            for i, (chunk_index, chunk_interval) in enumerate(zip(chunks_replica, intervals_replica)):\n                if i % self.worker_env.world_size != self.worker_env.rank:\n                    continue\n                self.worker_chunks.append(chunk_index)\n                self.worker_intervals.append(chunk_interval)\n\n            self.num_chunks = len(self.worker_chunks)\n\n            self.current_indexes = []\n            self.chunk_index = 0\n            self.global_index = 0\n            self.index = 0\n\n        self.has_triggered_download = False\n        self.last_time = time()\n\n        return self"
+      }
+    ],
+    "unresolved": [
+      "litdata/streaming/dataset.py:function: state_dict",
+      "litdata/streaming/dataset.py:function: load_state_dict",
+      "litdata/streaming/combined.py:variable: _num_samples_yielded",
+      "litdata/streaming/combined.py:variable: _iterator",
+      "litdata/streaming/combined.py:variable: _num_samples_yielded",
+      "litdata/streaming/dataset.py:function: _resume",
+      "litdata/streaming/dataset.py:function: _validate_state_dict"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "litdata.streaming.combined.CombinedStreamingDataset._datasets",
+      "litdata.streaming.combined.CombinedStreamingDataset._num_samples_yielded",
+      "litdata.streaming.combined.CombinedStreamingDataset._use_streaming_dataloader"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 11,
+    "returned_files": 2,
+    "unresolved_locations": 7,
+    "returned_code_chars": 26245
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 31630,
+    "completion_tokens": 682,
+    "total_tokens": 32312,
+    "seconds": 125.15677070617676,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 233.76763343811035,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

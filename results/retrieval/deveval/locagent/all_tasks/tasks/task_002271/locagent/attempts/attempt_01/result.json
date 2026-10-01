@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2271,
+  "namespace": "sacred.config.config_scope.dedent_line",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 14293,
+      "input_estimate_after": 14293,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `dedent_line` function in `sacred/config/config_scope.py`. The function should remove common leading whitespace from an input line based on a given indent. Looking at the existing codebase, I can identify several relevant locations that contain reusable functionality for string manipulation, whitespace handling, and dedenting operations.\n\nKey observations from the evidence:\n1. The `dedent_function_body` function (lines 167-179) calls `dedent_line` and shows the expected usage pattern.\n2. The `get_function_body` function (lines 97-145) uses `textwrap.dedent` for dedenting entire code blocks.\n3. There are several string manipulation functions in the codebase that handle whitespace, stripping, and indentation.\n4. The `is_empty_or_comment` and `iscomment` functions (lines 148-154) show how to check for empty lines and comments.\n5. The `re.match(r\"^\\s*\", line).group()` pattern in line 175 shows how to extract leading whitespace.\n\nHere are the reusable dependencies:\n\n```\nsacred/config/config_scope.py\nline: 148\nfunction: is_empty_or_comment\n\nsacred/config/config_scope.py\nline: 153\nfunction: iscomment\n\nsacred/config/config_scope.py\nline: 175\nline: 176\npattern: re.match(r\"^\\s*\", line).group()\n\nsacred/config/config_scope.py\nline: 99\nimport: textwrap.dedent\nusage: textwrap.dedent(\"\".join(func_code_lines))\n\nsacred/arg_parser.py\nline: 10\nimport: textwrap\nline: 103\nfunction: textwrap.wrap\nline: 194\nusage: description.strip()\n```",
+  "final_locations": {
+    "files": [
+      "sacred/config/config_scope.py",
+      "sacred/arg_parser.py"
+    ],
+    "entities": [
+      {
+        "file": "sacred/config/config_scope.py",
+        "name": "is_empty_or_comment",
+        "kind": "function",
+        "symbol": "sacred.config.config_scope.is_empty_or_comment",
+        "start": 148,
+        "end": 150,
+        "code": "def is_empty_or_comment(line):\n    sline = line.strip()\n    return sline == \"\" or sline.startswith(\"#\")"
+      },
+      {
+        "file": "sacred/config/config_scope.py",
+        "name": "iscomment",
+        "kind": "function",
+        "symbol": "sacred.config.config_scope.iscomment",
+        "start": 153,
+        "end": 154,
+        "code": "def iscomment(line):\n    return line.strip().startswith(\"#\")"
+      },
+      {
+        "file": "sacred/config/config_scope.py",
+        "name": "dedent_function_body",
+        "kind": "function",
+        "symbol": "sacred.config.config_scope.dedent_function_body",
+        "start": 167,
+        "end": 179,
+        "code": "def dedent_function_body(body):\n    lines = body.split(\"\\n\")\n    # find indentation by first line\n    indent = \"\"\n    for line in lines:\n        if is_empty_or_comment(line):\n            continue\n        else:\n            indent = re.match(r\"^\\s*\", line).group()\n            break\n\n    out_lines = [dedent_line(line, indent) for line in lines]\n    return \"\\n\".join(out_lines)"
+      },
+      {
+        "file": "sacred/config/config_scope.py",
+        "name": "get_function_body",
+        "kind": "function",
+        "symbol": "sacred.config.config_scope.get_function_body",
+        "start": 97,
+        "end": 145,
+        "code": "def get_function_body(func):\n    func_code_lines, start_idx = inspect.getsourcelines(func)\n    func_code = textwrap.dedent(\"\".join(func_code_lines))\n    # Lines are now dedented\n    func_code_lines = func_code.splitlines(True)\n    func_ast = ast.parse(func_code)\n    first_code = func_ast.body[0].body[0]\n    line_offset = first_code.lineno\n    col_offset = first_code.col_offset\n\n    # Add also previous empty / comment lines\n    acceptable_tokens = {\n        token.NEWLINE,\n        token.INDENT,\n        token.DEDENT,\n        token.COMMENT,\n        token.ENDMARKER,\n    }\n    last_token_type_acceptable = True\n    line_offset_fixed = line_offset\n    col_offset_fixed = col_offset\n    iterator = iter(func_code_lines)\n    for parsed_token in generate_tokens(lambda: next(iterator)):\n\n        token_acceptable = parsed_token.type in acceptable_tokens or (\n            parsed_token.type == token.NL and last_token_type_acceptable\n        )\n\n        # If the token ends after the start of the first code,\n        # we have finished\n        if parsed_token.end[0] > line_offset or (\n            parsed_token.end[0] == line_offset and parsed_token.end[1] >= col_offset\n        ):\n            break\n\n        if not token_acceptable:\n            line_offset_fixed = parsed_token.end[0]\n            col_offset_fixed = parsed_token.end[1]\n\n        last_token_type_acceptable = token_acceptable\n\n    func_body = (\n        # First line, without first part if needed\n        func_code_lines[line_offset_fixed - 1][col_offset_fixed:]\n        # Rest of the lines\n        + \"\".join(func_code_lines[line_offset_fixed:])\n    )\n\n    return func_body, start_idx + line_offset_fixed"
+      },
+      {
+        "file": "sacred/arg_parser.py",
+        "name": "_format_options_usage",
+        "kind": "function",
+        "symbol": "sacred.arg_parser._format_options_usage",
+        "start": 73,
+        "end": 109,
+        "code": "def _format_options_usage(options):\n    \"\"\"\n    Format the Options-part of the usage text.\n\n    Parameters\n    ----------\n        options : list[sacred.commandline_options.CommandLineOption]\n            A list of all supported commandline options.\n\n    Returns\n    -------\n        str\n            Text formatted as a description for the commandline options\n\n    \"\"\"\n    options_usage = \"\"\n    for op in options:\n        short, long = op.get_flags()\n        if op.arg:\n            flag = \"{short} {arg} {long}={arg}\".format(\n                short=short, long=long, arg=op.arg\n            )\n        else:\n            flag = \"{short} {long}\".format(short=short, long=long)\n\n        if isinstance(op, CLIOption):\n            doc = op.get_description()\n        else:\n            # legacy\n            doc = inspect.cleandoc(op.__doc__)\n        wrapped_description = textwrap.wrap(\n            doc, width=79, initial_indent=\" \" * 32, subsequent_indent=\" \" * 32\n        )\n        wrapped_description = \"\\n\".join(wrapped_description).strip()\n\n        options_usage += \"  {:28}  {}\\n\".format(flag, wrapped_description)\n    return options_usage"
+      },
+      {
+        "file": "sacred/arg_parser.py",
+        "name": "format_usage",
+        "kind": "function",
+        "symbol": "sacred.arg_parser.format_usage",
+        "start": 169,
+        "end": 199,
+        "code": "def format_usage(program_name, description, commands=None, options=()):\n    \"\"\"\n    Construct the usage text.\n\n    Parameters\n    ----------\n        program_name : str\n            Usually the name of the python file that contains the experiment.\n        description : str\n            description of this experiment (usually the docstring).\n        commands : dict[str, func]\n            Dictionary of supported commands.\n            Each entry should be a tuple of (name, function).\n        options : list[sacred.commandline_options.CommandLineOption]\n            A list of all supported commandline options.\n\n    Returns\n    -------\n        str\n            The complete formatted usage text for this experiment.\n            It adheres to the structure required by ``docopt``.\n\n    \"\"\"\n    usage = USAGE_TEMPLATE.format(\n        program_name=quote(program_name),\n        description=description.strip() if description else \"\",\n        options=_format_options_usage(options),\n        arguments=_format_arguments_usage(options),\n        commands=_format_command_usage(commands),\n    )\n    return usage"
+      }
+    ],
+    "unresolved": [
+      "sacred/arg_parser.py:line: 10",
+      "sacred/arg_parser.py:function: textwrap.wrap"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 4433
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 32055,
+    "completion_tokens": 788,
+    "total_tokens": 32843,
+    "seconds": 94.367023229599,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 107.58652758598328,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

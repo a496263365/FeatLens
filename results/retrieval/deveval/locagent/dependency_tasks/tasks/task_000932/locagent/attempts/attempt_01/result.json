@@ -1,0 +1,89 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 932,
+  "namespace": "prometheus_client.exposition.choose_encoder",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nprometheus_client/exposition.py\nline: 241\nfunction: choose_encoder\n\nprometheus_client/exposition.py\nline: 98\nfunction: _bake_output\n\nprometheus_client/exposition.py\nline: 259\nclass: MetricsHandler\n\nprometheus_client/asgi.py\nfunction: make_asgi_app.prometheus_app\n\nprometheus_client/exposition.py\nfunction: make_wsgi_app.prometheus_app\n```",
+  "final_locations": {
+    "files": [
+      "prometheus_client/exposition.py",
+      "prometheus_client/asgi.py"
+    ],
+    "entities": [
+      {
+        "file": "prometheus_client/exposition.py",
+        "name": "_bake_output",
+        "kind": "function",
+        "symbol": "prometheus_client.exposition._bake_output",
+        "start": 98,
+        "end": 110,
+        "code": "def _bake_output(registry, accept_header, accept_encoding_header, params, disable_compression):\n    \"\"\"Bake output for metrics output.\"\"\"\n    # Choose the correct plain text format of the output.\n    encoder, content_type = choose_encoder(accept_header)\n    if 'name[]' in params:\n        registry = registry.restricted_registry(params['name[]'])\n    output = encoder(registry)\n    headers = [('Content-Type', content_type)]\n    # If gzip encoding required, gzip the output.\n    if not disable_compression and gzip_accepted(accept_encoding_header):\n        output = gzip.compress(output)\n        headers.append(('Content-Encoding', 'gzip'))\n    return '200 OK', headers, output"
+      },
+      {
+        "file": "prometheus_client/exposition.py",
+        "name": "MetricsHandler",
+        "kind": "class",
+        "symbol": "prometheus_client.exposition.MetricsHandler",
+        "start": 259,
+        "end": 294,
+        "code": "class MetricsHandler(BaseHTTPRequestHandler):\n    \"\"\"HTTP handler that gives metrics from ``REGISTRY``.\"\"\"\n    registry: CollectorRegistry = REGISTRY\n\n    def do_GET(self) -> None:\n        # Prepare parameters\n        registry = self.registry\n        accept_header = self.headers.get('Accept')\n        accept_encoding_header = self.headers.get('Accept-Encoding')\n        params = parse_qs(urlparse(self.path).query)\n        # Bake output\n        status, headers, output = _bake_output(registry, accept_header, accept_encoding_header, params, False)\n        # Return output\n        self.send_response(int(status.split(' ')[0]))\n        for header in headers:\n            self.send_header(*header)\n        self.end_headers()\n        self.wfile.write(output)\n\n    def log_message(self, format: str, *args: Any) -> None:\n        \"\"\"Log nothing.\"\"\"\n\n    @classmethod\n    def factory(cls, registry: CollectorRegistry) -> type:\n        \"\"\"Returns a dynamic MetricsHandler class tied\n           to the passed registry.\n        \"\"\"\n        # This implementation relies on MetricsHandler.registry\n        #  (defined above and defaulted to REGISTRY).\n\n        # As we have unicode_literals, we need to create a str()\n        #  object for type().\n        cls_name = str(cls.__name__)\n        MyMetricsHandler = type(cls_name, (cls, object),\n                                {\"registry\": registry})\n        return MyMetricsHandler"
+      },
+      {
+        "file": "prometheus_client/asgi.py",
+        "name": "make_asgi_app.prometheus_app",
+        "kind": "function",
+        "symbol": "prometheus_client.asgi.make_asgi_app.prometheus_app",
+        "start": 11,
+        "end": 38,
+        "code": "    async def prometheus_app(scope, receive, send):\n        assert scope.get(\"type\") == \"http\"\n        # Prepare parameters\n        params = parse_qs(scope.get('query_string', b''))\n        accept_header = \",\".join([\n            value.decode(\"utf8\") for (name, value) in scope.get('headers')\n            if name.decode(\"utf8\").lower() == 'accept'\n        ])\n        accept_encoding_header = \",\".join([\n            value.decode(\"utf8\") for (name, value) in scope.get('headers')\n            if name.decode(\"utf8\").lower() == 'accept-encoding'\n        ])\n        # Bake output\n        status, headers, output = _bake_output(registry, accept_header, accept_encoding_header, params, disable_compression)\n        formatted_headers = []\n        for header in headers:\n            formatted_headers.append(tuple(x.encode('utf8') for x in header))\n        # Return output\n        payload = await receive()\n        if payload.get(\"type\") == \"http.request\":\n            await send(\n                {\n                    \"type\": \"http.response.start\",\n                    \"status\": int(status.split(' ')[0]),\n                    \"headers\": formatted_headers,\n                }\n            )\n            await send({\"type\": \"http.response.body\", \"body\": output})"
+      },
+      {
+        "file": "prometheus_client/exposition.py",
+        "name": "make_wsgi_app.prometheus_app",
+        "kind": "function",
+        "symbol": "prometheus_client.exposition.make_wsgi_app.prometheus_app",
+        "start": 116,
+        "end": 131,
+        "code": "    def prometheus_app(environ, start_response):\n        # Prepare parameters\n        accept_header = environ.get('HTTP_ACCEPT')\n        accept_encoding_header = environ.get('HTTP_ACCEPT_ENCODING')\n        params = parse_qs(environ.get('QUERY_STRING', ''))\n        if environ['PATH_INFO'] == '/favicon.ico':\n            # Serve empty response for browsers\n            status = '200 OK'\n            headers = [('', '')]\n            output = b''\n        else:\n            # Bake output\n            status, headers, output = _bake_output(registry, accept_header, accept_encoding_header, params, disable_compression)\n        # Return output\n        start_response(status, headers)\n        return [output]"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4044
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 15333,
+    "completion_tokens": 300,
+    "total_tokens": 15633,
+    "seconds": 21.42608070373535,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 29.0138897895813,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

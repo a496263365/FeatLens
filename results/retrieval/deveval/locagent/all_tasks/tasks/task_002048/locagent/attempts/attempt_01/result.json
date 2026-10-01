@@ -1,0 +1,95 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2048,
+  "namespace": "sqlite_utils.utils.decode_base64_values",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 15999,
+      "input_estimate_after": 15999,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `decode_base64_values` function:\n\n```\nsqlite_utils/cli.py\nline: 3211\nfunction: json_binary\n\nsqlite_utils/cli.py\nline: -1\nimport: base64\n\nsqlite_utils/utils.py\nline: 1\nimport: base64\n\nsqlite_utils/cli.py\nline: 1069\nline: 1070\ncontext: decode_base64_values usage\n\nsqlite_utils/cli.py\nline: 3218\nfunction: verify_is_dict\n```",
+  "final_locations": {
+    "files": [
+      "sqlite_utils/cli.py",
+      "sqlite_utils/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "sqlite_utils/cli.py",
+        "name": "json_binary",
+        "kind": "function",
+        "symbol": "sqlite_utils.cli.json_binary",
+        "start": 3211,
+        "end": 3215,
+        "code": "def json_binary(value):\n    if isinstance(value, bytes):\n        return {\"$base64\": True, \"encoded\": base64.b64encode(value).decode(\"latin-1\")}\n    else:\n        raise TypeError"
+      },
+      {
+        "file": "sqlite_utils/cli.py",
+        "name": "insert_upsert_implementation",
+        "kind": "function",
+        "symbol": "sqlite_utils.cli.insert_upsert_implementation",
+        "start": 911,
+        "end": 1113,
+        "code": "def insert_upsert_implementation(\n    path,\n    table,\n    file,\n    pk,\n    flatten,\n    nl,\n    csv,\n    tsv,\n    empty_null,\n    lines,\n    text,\n    convert,\n    imports,\n    delimiter,\n    quotechar,\n    sniff,\n    no_headers,\n    encoding,\n    batch_size,\n    stop_after,\n    alter,\n    upsert,\n    ignore=False,\n    replace=False,\n    truncate=False,\n    not_null=None,\n    default=None,\n    detect_types=None,\n    analyze=False,\n    load_extension=None,\n    silent=False,\n    bulk_sql=None,\n    functions=None,\n):\n    db = sqlite_utils.Database(path)\n    _load_extensions(db, load_extension)\n    if functions:\n        _register_functions(db, functions)\n    if (delimiter or quotechar or sniff or no_headers) and not tsv:\n        csv = True\n    if (nl + csv + tsv) >= 2:\n        raise click.ClickException(\"Use just one of --nl, --csv or --tsv\")\n    if (csv or tsv) and flatten:\n        raise click.ClickException(\"--flatten cannot be used with --csv or --tsv\")\n    if empty_null and not (csv or tsv):\n        raise click.ClickException(\"--empty-null can only be used with --csv or --tsv\")\n    if encoding and not (csv or tsv):\n        raise click.ClickException(\"--encoding must be used with --csv or --tsv\")\n    if pk and len(pk) == 1:\n        pk = pk[0]\n    encoding = encoding or \"utf-8-sig\"\n\n    # The --sniff option needs us to buffer the file to peek ahead\n    sniff_buffer = None\n    decoded_buffer = None\n    if sniff:\n        sniff_buffer = io.BufferedReader(file, buffer_size=4096)\n        decoded_buffer = io.TextIOWrapper(sniff_buffer, encoding=encoding)\n    else:\n        decoded_buffer = io.TextIOWrapper(file, encoding=encoding)\n\n    tracker = None\n    with file_progress(decoded_buffer, silent=silent) as decoded:\n        if csv or tsv:\n            if sniff:\n                # Read first 2048 bytes and use that to detect\n                first_bytes = sniff_buffer.peek(2048)\n                dialect = csv_std.Sniffer().sniff(\n                    first_bytes.decode(encoding, \"ignore\")\n                )\n            else:\n                dialect = \"excel-tab\" if tsv else \"excel\"\n            csv_reader_args = {\"dialect\": dialect}\n            if delimiter:\n                csv_reader_args[\"delimiter\"] = delimiter\n            if quotechar:\n                csv_reader_args[\"quotechar\"] = quotechar\n            reader = csv_std.reader(decoded, **csv_reader_args)\n            first_row = next(reader)\n            if no_headers:\n                headers = [\"untitled_{}\".format(i + 1) for i in range(len(first_row))]\n                reader = itertools.chain([first_row], reader)\n            else:\n                headers = first_row\n            if empty_null:\n                docs = (\n                    dict(zip(headers, [None if cell == \"\" else cell for cell in row]))\n                    for row in reader\n                )\n            else:\n                docs = (dict(zip(headers, row)) for row in reader)\n            if detect_types:\n                tracker = TypeTracker()\n                docs = tracker.wrap(docs)\n        elif lines:\n            docs = ({\"line\": line.strip()} for line in decoded)\n        elif text:\n            docs = ({\"text\": decoded.read()},)\n        else:\n            try:\n                if nl:\n                    docs = (json.loads(line) for line in decoded if line.strip())\n                else:\n                    docs = json.load(decoded)\n                    if isinstance(docs, dict):\n                        docs = [docs]\n            except json.decoder.JSONDecodeError as ex:\n                raise click.ClickException(\n                    \"Invalid JSON - use --csv for CSV or --tsv for TSV files\\n\\nJSON error: {}\".format(\n                        ex\n                    )\n                )\n            if flatten:\n                docs = (_flatten(doc) for doc in docs)\n\n    if stop_after:\n        docs = itertools.islice(docs, stop_after)\n\n    if convert:\n        variable = \"row\"\n        if lines:\n            variable = \"line\"\n        elif text:\n            variable = \"text\"\n        fn = _compile_code(convert, imports, variable=variable)\n        if lines:\n            docs = (fn(doc[\"line\"]) for doc in docs)\n        elif text:\n            # Special case: this is allowed to be an iterable\n            text_value = list(docs)[0][\"text\"]\n            fn_return = fn(text_value)\n            if isinstance(fn_return, dict):\n                docs = [fn_return]\n            else:\n                try:\n                    docs = iter(fn_return)\n                except TypeError:\n                    raise click.ClickException(\"--convert must return dict or iterator\")\n        else:\n            docs = (fn(doc) or doc for doc in docs)\n\n    extra_kwargs = {\n        \"ignore\": ignore,\n        \"replace\": replace,\n        \"truncate\": truncate,\n        \"analyze\": analyze,\n    }\n    if not_null:\n        extra_kwargs[\"not_null\"] = set(not_null)\n    if default:\n        extra_kwargs[\"defaults\"] = dict(default)\n    if upsert:\n        extra_kwargs[\"upsert\"] = upsert\n\n    # docs should all be dictionaries\n    docs = (verify_is_dict(doc) for doc in docs)\n\n    # Apply {\"$base64\": true, ...} decoding, if needed\n    docs = (decode_base64_values(doc) for doc in docs)\n\n    # For bulk_sql= we use cursor.executemany() instead\n    if bulk_sql:\n        if batch_size:\n            doc_chunks = chunks(docs, batch_size)\n        else:\n            doc_chunks = [docs]\n        for doc_chunk in doc_chunks:\n            with db.conn:\n                db.conn.cursor().executemany(bulk_sql, doc_chunk)\n        return\n\n    try:\n        db[table].insert_all(\n            docs, pk=pk, batch_size=batch_size, alter=alter, **extra_kwargs\n        )\n    except Exception as e:\n        if (\n            isinstance(e, OperationalError)\n            and e.args\n            and \"has no column named\" in e.args[0]\n        ):\n            raise click.ClickException(\n                \"{}\\n\\nTry using --alter to add additional columns\".format(e.args[0])\n            )\n        # If we can find sql= and parameters= arguments, show those\n        variables = _find_variables(e.__traceback__, [\"sql\", \"parameters\"])\n        if \"sql\" in variables and \"parameters\" in variables:\n            raise click.ClickException(\n                \"{}\\n\\nsql = {}\\nparameters = {}\".format(\n                    str(e), variables[\"sql\"], variables[\"parameters\"]\n                )\n            )\n        else:\n            raise\n    if tracker is not None:\n        db[table].transform(types=tracker.types)\n\n    # Clean up open file-like objects\n    if sniff_buffer:\n        sniff_buffer.close()\n    if decoded_buffer:\n        decoded_buffer.close()"
+      },
+      {
+        "file": "sqlite_utils/cli.py",
+        "name": "verify_is_dict",
+        "kind": "function",
+        "symbol": "sqlite_utils.cli.verify_is_dict",
+        "start": 3218,
+        "end": 3223,
+        "code": "def verify_is_dict(doc):\n    if not isinstance(doc, dict):\n        raise click.ClickException(\n            \"Rows must all be dictionaries, got: {}\".format(repr(doc)[:1000])\n        )\n    return doc"
+      }
+    ],
+    "unresolved": [
+      "sqlite_utils/cli.py:line: -1",
+      "sqlite_utils/utils.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 7019
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 6,
+    "failed_requests": 1,
+    "prompt_tokens": 44867,
+    "completion_tokens": 510,
+    "total_tokens": 45377,
+    "seconds": 153.61541938781738,
+    "unknown_usage_requests": 1,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 163.90825605392456,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

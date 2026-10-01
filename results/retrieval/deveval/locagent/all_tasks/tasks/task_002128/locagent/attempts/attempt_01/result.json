@@ -1,0 +1,127 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2128,
+  "namespace": "diffprivlib.validation.clip_to_norm",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 28693,
+      "input_estimate_after": 27455,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 163,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 2323,
+          "retained_content_tokens": 1346
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on my analysis of the diffprivlib codebase, I've identified the key reusable dependencies for implementing the `clip_to_norm` function. The function needs to clip a 2-dimensional array to a given maximum norm, with specific error handling patterns that are consistent with other validation functions in the library.\n\nHere are the key locations containing reusable dependencies:\n\n```\ndiffprivlib/validation.py\nline: 167-201\nfunction: clip_to_bounds\n\ndiffprivlib/validation.py\nline: 60-132\nfunction: check_bounds\n\ndiffprivlib/validation.py\nline: 28-58\nfunction: check_epsilon_delta\n\ndiffprivlib/models/utils.py\nline: 83-90\nfunction: covariance_eig\nline: 83-84\n\ndiffprivlib/mechanisms/bingham.py\nline: 79-86\nfunction: Bingham._check_all\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/validation.py",
+      "diffprivlib/models/utils.py",
+      "diffprivlib/mechanisms/bingham.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "clip_to_bounds",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.clip_to_bounds",
+        "start": 167,
+        "end": 200,
+        "code": "def clip_to_bounds(array, bounds):\n    \"\"\"Clips the examples of a 2-dimensional array to given bounds.\n\n    Parameters\n    ----------\n    array : np.ndarray\n        Array to be clipped.  After clipping, all examples have a 2-norm of at most `clip`.\n\n    bounds : tuple\n        Tuple of bounds of the form (min, max) which the array is to be clipped to. `min` and `max` must be scalar,\n        unless array is 2-dimensional.\n\n    Returns\n    -------\n    array : np.ndarray\n        The clipped array.\n\n    \"\"\"\n    if not isinstance(array, np.ndarray):\n        raise TypeError(f\"Input array must be a numpy array, got {type(array)}.\")\n\n    lower, upper = check_bounds(bounds, np.size(bounds[0]), min_separation=0)\n    clipped_array = array.copy()\n\n    if np.allclose(lower, np.min(lower)) and np.allclose(upper, np.max(upper)):\n        clipped_array = np.clip(clipped_array, np.min(lower), np.max(upper))\n    else:\n        if array.ndim != 2:\n            raise ValueError(f\"For non-scalar bounds, input array must be 2-dimensional. Got {array.ndim} dimensions.\")\n\n        for feature in range(array.shape[1]):\n            clipped_array[:, feature] = np.clip(array[:, feature], lower[feature], upper[feature])\n\n    return clipped_array"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "check_bounds",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.check_bounds",
+        "start": 60,
+        "end": 132,
+        "code": "def check_bounds(bounds, shape=0, min_separation=0.0, dtype=float):\n    \"\"\"Input validation for the ``bounds`` parameter.\n\n    Checks that ``bounds`` is composed of a list of tuples of the form (lower, upper), where lower <= upper and both\n    are numeric.  Also checks that ``bounds`` contains the appropriate number of dimensions, and that there is a\n    ``min_separation`` between the bounds.\n\n    Parameters\n    ----------\n    bounds : tuple\n        Tuple of bounds of the form (min, max). `min` and `max` can either be scalars or 1-dimensional arrays.\n\n    shape : int, default: 0\n        Number of dimensions to be expected in ``bounds``.\n\n    min_separation : float, default: 0.0\n        The minimum separation between `lower` and `upper` of each dimension.  This separation is enforced if not\n        already satisfied.\n\n    dtype : data-type, default: float\n        Data type of the returned bounds.\n\n    Returns\n    -------\n    bounds : tuple\n\n    \"\"\"\n    if not isinstance(bounds, tuple):\n        raise TypeError(f\"Bounds must be specified as a tuple of (min, max), got {type(bounds)}.\")\n    if not isinstance(shape, Integral):\n        raise TypeError(f\"shape parameter must be integer-valued, got {type(shape)}.\")\n\n    lower, upper = bounds\n\n    if np.asarray(lower).size == 1 or np.asarray(upper).size == 1:\n        lower = np.ravel(lower).astype(dtype)\n        upper = np.ravel(upper).astype(dtype)\n    else:\n        lower = np.asarray(lower, dtype=dtype)\n        upper = np.asarray(upper, dtype=dtype)\n\n    if lower.shape != upper.shape:\n        raise ValueError(\"lower and upper bounds must be the same shape array\")\n    if lower.ndim > 1:\n        raise ValueError(\"lower and upper bounds must be scalar or a 1-dimensional array\")\n    if lower.size not in (1, shape):\n        raise ValueError(f\"lower and upper bounds must have {shape or 1} element(s), got {lower.size}.\")\n\n    n_bounds = lower.shape[0]\n\n    for i in range(n_bounds):\n        _lower = lower[i]\n        _upper = upper[i]\n\n        if not isinstance(_lower, Real) or not isinstance(_upper, Real):\n            raise TypeError(f\"Each bound must be numeric, got {_lower} ({type(_lower)}) and {_upper} ({type(_upper)}).\")\n\n        if _lower > _upper:\n            raise ValueError(f\"For each bound, lower bound must be smaller than upper bound, got {lower}, {upper})\")\n\n        if _upper - _lower < min_separation:\n            mid = (_upper + _lower) / 2\n            lower[i] = mid - min_separation / 2\n            upper[i] = mid + min_separation / 2\n\n    if shape == 0:\n        return lower.item(), upper.item()\n\n    if n_bounds == 1:\n        lower = np.ones(shape, dtype=dtype) * lower.item()\n        upper = np.ones(shape, dtype=dtype) * upper.item()\n\n    return lower, upper"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "check_epsilon_delta",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.check_epsilon_delta",
+        "start": 28,
+        "end": 57,
+        "code": "def check_epsilon_delta(epsilon, delta, allow_zero=False):\n    \"\"\"Checks that epsilon and delta are valid values for differential privacy.  Throws an error if checks fail,\n    otherwise returns nothing.\n\n    As well as the requirements of epsilon and delta separately, both cannot be simultaneously zero, unless\n    ``allow_zero`` is set to ``True``.\n\n    Parameters\n    ----------\n    epsilon : float\n        Epsilon parameter for differential privacy.  Must be non-negative.\n\n    delta : float\n        Delta parameter for differential privacy.  Must be on the unit interval, [0, 1].\n\n    allow_zero : bool, default: False\n        Allow epsilon and delta both be zero.\n\n    \"\"\"\n    if not isinstance(epsilon, Real) or not isinstance(delta, Real):\n        raise TypeError(\"Epsilon and delta must be numeric\")\n\n    if epsilon < 0:\n        raise ValueError(\"Epsilon must be non-negative\")\n\n    if not 0 <= delta <= 1:\n        raise ValueError(\"Delta must be in [0, 1]\")\n\n    if not allow_zero and epsilon + delta == 0:\n        raise ValueError(\"Epsilon and Delta cannot both be zero\")"
+      },
+      {
+        "file": "diffprivlib/models/utils.py",
+        "name": "covariance_eig",
+        "kind": "function",
+        "symbol": "diffprivlib.models.utils.covariance_eig",
+        "start": 31,
+        "end": 124,
+        "code": "def covariance_eig(array, epsilon=1.0, norm=None, dims=None, eigvals_only=False, random_state=None):\n    r\"\"\"\n    Return the eigenvalues and eigenvectors of the covariance matrix of `array`, satisfying differential privacy.\n\n    Paper link: http://papers.nips.cc/paper/9567-differentially-private-covariance-estimation.pdf\n\n    Parameters\n    ----------\n    array : array-like, shape (n_samples, n_features)\n        Matrix for which the covariance matrix is sought.\n\n    epsilon : float, default: 1.0\n        Privacy parameter :math:`\\epsilon`.\n\n    norm : float, optional\n        The max l2 norm of any row of the input array.  This defines the spread of data that will be protected by\n        differential privacy.\n\n        If not specified, the max norm is taken from the data, but will result in a :class:`.PrivacyLeakWarning`, as it\n        reveals information about the data.  To preserve differential privacy fully, `norm` should be selected\n        independently of the data, i.e. with domain knowledge.\n\n    dims : int, optional\n        Number of eigenvectors to return.  If `None`, return all eigenvectors.\n\n    eigvals_only : bool, default: False\n        Only return the eigenvalue estimates.  If True, all the privacy budget is spent on estimating the eigenvalues.\n\n    random_state : int or RandomState, optional\n        Controls the randomness of the model.  To obtain a deterministic behaviour during randomisation,\n        ``random_state`` has to be fixed to an integer.\n\n    Returns\n    -------\n    w : (n_features) array\n        The eigenvalues, each repeated according to its multiplicity.\n\n    v : (n_features, dims) array\n        The normalized (unit \"length\") eigenvectors, such that the column ``v[:,i]`` is the eigenvector corresponding to\n        the eigenvalue ``w[i]``.\n\n    \"\"\"\n\n    random_state = check_random_state(random_state)\n\n    n_features = array.shape[1]\n    dims = n_features if dims is None else min(dims, n_features)\n    if not isinstance(dims, Integral):\n        raise TypeError(f\"Number of requested dimensions must be integer-valued, got {type(dims)}\")\n    if dims < 0:\n        raise ValueError(f\"Number of requested dimensions must be non-negative, got {dims}\")\n\n    max_norm = np.linalg.norm(array, axis=1).max()\n    if norm is None:\n        warnings.warn(\"Data norm has not been specified and will be calculated on the data provided.  This will result \"\n                      \"in additional privacy leakage. To ensure differential privacy and no additional privacy \"\n                      \"leakage, specify `data_norm` at initialisation.\", PrivacyLeakWarning)\n        norm = max_norm\n    elif max_norm > norm and not np.isclose(max_norm, norm):\n        raise ValueError(f\"Rows of input array must have l2 norm of at most {norm}, got {max_norm}\")\n\n    cov = array.T.dot(array) / (norm ** 2)\n    eigvals = np.sort(np.linalg.eigvalsh(cov))[::-1]\n    epsilon_0 = epsilon if eigvals_only else epsilon / (dims + (dims != n_features))\n\n    mech_eigvals = LaplaceBoundedDomain(epsilon=epsilon_0, lower=0, upper=float(\"inf\"), sensitivity=2,\n                                        random_state=random_state)\n    noisy_eigvals = np.array([mech_eigvals.randomise(eigval) for eigval in eigvals]) * (norm ** 2)\n\n    if eigvals_only:\n        return noisy_eigvals\n\n    # When estimating all eigenvectors, we don't need to spend budget for the dth vector\n    epsilon_i = epsilon / (dims + (dims != n_features))\n    cov_i = cov\n    proj_i = np.eye(n_features)\n\n    theta = np.zeros((0, n_features))\n    mech_cov = Bingham(epsilon=epsilon_i, random_state=random_state)\n\n    for _ in range(dims):\n        if cov_i.size > 1:\n            u_i = mech_cov.randomise(cov_i)\n        else:\n            u_i = np.ones((1,))\n\n        theta_i = proj_i.T.dot(u_i)\n        theta = np.vstack((theta, theta_i))\n\n        if cov_i.size > 1:\n            proj_i = null_space(theta).T\n            cov_i = proj_i.dot(cov).dot(proj_i.T)\n\n    return noisy_eigvals, theta.T"
+      },
+      {
+        "file": "diffprivlib/mechanisms/bingham.py",
+        "name": "Bingham._check_all",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.bingham.Bingham._check_all",
+        "start": 75,
+        "end": 88,
+        "code": "    def _check_all(self, value):\n        super()._check_all(value)\n        self._check_sensitivity(self.sensitivity)\n\n        if not isinstance(value, np.ndarray):\n            raise TypeError(f\"Value to be randomised must be a numpy array, got {type(value)}\")\n        if value.ndim != 2:\n            raise ValueError(f\"Array must be 2-dimensional, got {value.ndim} dimensions\")\n        if value.shape[0] != value.shape[1]:\n            raise ValueError(f\"Array must be square, got {value.shape[0]} x {value.shape[1]}\")\n        if not np.allclose(value, value.T):\n            raise ValueError(\"Array must be symmetric, supplied array is not.\")\n\n        return True"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/validation.py:line: 167-201",
+      "diffprivlib/validation.py:line: 28-58"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 9703
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 54813,
+    "completion_tokens": 708,
+    "total_tokens": 55521,
+    "seconds": 49.07977318763733,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 60.16982102394104,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,124 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 21,
+  "namespace": "imapclient.imapclient.IMAPClient.select_folder",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3026,
+      "input_estimate_after": 3026,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nimapclient/imap4.py\nfunction: IMAP4.select\nfunction: IMAP4.examine\n\nimapclient/response_parser.py\nfunction: parse_response\nfunction: parse_message_list\n\nimapclient/util.py\nfunction: to_bytes\nfunction: assert_imap_protocol\n\nimapclient/imapclient.py\nfunction: _parse_untagged_response\nfunction: require_capability\n\nimapclient/imapclient.py\nline: 802\nfunction: IMAPClient.select_folder\n```",
+  "final_locations": {
+    "files": [
+      "imapclient/imap4.py",
+      "imapclient/response_parser.py",
+      "imapclient/util.py",
+      "imapclient/imapclient.py"
+    ],
+    "entities": [
+      {
+        "file": "imapclient/response_parser.py",
+        "name": "parse_response",
+        "kind": "function",
+        "symbol": "imapclient.response_parser.parse_response",
+        "start": 29,
+        "end": 36,
+        "code": "def parse_response(data: List[bytes]) -> Tuple[_Atom, ...]:\n    \"\"\"Pull apart IMAP command responses.\n\n    Returns nested tuples of appropriately typed objects.\n    \"\"\"\n    if data == [None]:\n        return tuple()\n    return tuple(gen_parsed_response(data))"
+      },
+      {
+        "file": "imapclient/response_parser.py",
+        "name": "parse_message_list",
+        "kind": "function",
+        "symbol": "imapclient.response_parser.parse_message_list",
+        "start": 42,
+        "end": 84,
+        "code": "def parse_message_list(data: List[Union[bytes, str]]) -> SearchIds:\n    \"\"\"Parse a list of message ids and return them as a list.\n\n    parse_response is also capable of doing this but this is\n    faster. This also has special handling of the optional MODSEQ part\n    of a SEARCH response.\n\n    The returned list is a SearchIds instance which has a *modseq*\n    attribute which contains the MODSEQ response (if returned by the\n    server).\n    \"\"\"\n    if len(data) != 1:\n        raise ValueError(\"unexpected message list data\")\n\n    message_data = data[0]\n    if not message_data:\n        return SearchIds()\n\n    if isinstance(message_data, bytes):\n        message_data = message_data.decode(\"ascii\")\n\n    m = _msg_id_pattern.match(message_data)\n    if not m:\n        raise ValueError(\"unexpected message list format\")\n\n    ids = SearchIds(int(n) for n in m.group(1).split())\n\n    # Parse any non-numeric part on the end using parse_response (this\n    # is likely to be the MODSEQ section).\n    extra = message_data[m.end(1) :]\n    if extra:\n        for item in parse_response([extra.encode(\"ascii\")]):\n            if (\n                isinstance(item, tuple)\n                and len(item) == 2\n                and cast(bytes, item[0]).lower() == b\"modseq\"\n            ):\n                if TYPE_CHECKING:\n                    assert isinstance(item[1], int)\n                ids.modseq = item[1]\n            elif isinstance(item, int):\n                ids.append(item)\n    return ids"
+      },
+      {
+        "file": "imapclient/util.py",
+        "name": "to_bytes",
+        "kind": "function",
+        "symbol": "imapclient.util.to_bytes",
+        "start": 27,
+        "end": 30,
+        "code": "def to_bytes(s: Union[bytes, str], charset: str = \"ascii\") -> bytes:\n    if isinstance(s, str):\n        return s.encode(charset)\n    return s"
+      },
+      {
+        "file": "imapclient/util.py",
+        "name": "assert_imap_protocol",
+        "kind": "function",
+        "symbol": "imapclient.util.assert_imap_protocol",
+        "start": 33,
+        "end": 42,
+        "code": "def assert_imap_protocol(condition: bool, message: Optional[bytes] = None) -> None:\n    from . import exceptions\n    if not condition:\n        msg = \"Server replied with a response that violates the IMAP protocol\"\n        if message:\n            # FIXME(jlvillal): This looks wrong as it repeats `msg` twice\n            msg += \"{}: {}\".format(\n                msg, message.decode(encoding=\"ascii\", errors=\"ignore\")\n            )\n        raise exceptions.ProtocolError(msg)"
+      },
+      {
+        "file": "imapclient/imapclient.py",
+        "name": "_parse_untagged_response",
+        "kind": "function",
+        "symbol": "imapclient.imapclient._parse_untagged_response",
+        "start": 1930,
+        "end": 1935,
+        "code": "def _parse_untagged_response(text):\n    assert_imap_protocol(text.startswith(b\"* \"))\n    text = text[2:]\n    if text.startswith((b\"OK \", b\"NO \")):\n        return tuple(text.split(b\" \", 1))\n    return parse_response([text])"
+      },
+      {
+        "file": "imapclient/imapclient.py",
+        "name": "require_capability",
+        "kind": "function",
+        "symbol": "imapclient.imapclient.require_capability",
+        "start": 169,
+        "end": 183,
+        "code": "def require_capability(capability):\n    \"\"\"Decorator raising CapabilityError when a capability is not available.\"\"\"\n\n    def actual_decorator(func):\n        @functools.wraps(func)\n        def wrapper(client, *args, **kwargs):\n            if not client.has_capability(capability):\n                raise exceptions.CapabilityError(\n                    \"Server does not support {} capability\".format(capability)\n                )\n            return func(client, *args, **kwargs)\n\n        return wrapper\n\n    return actual_decorator"
+      }
+    ],
+    "unresolved": [
+      "imapclient/imap4.py:function: IMAP4.select",
+      "imapclient/imap4.py:function: IMAP4.examine"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 4,
+    "unresolved_locations": 2,
+    "returned_code_chars": 3102
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 14917,
+    "completion_tokens": 3034,
+    "total_tokens": 17951,
+    "seconds": 92.84467911720276,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 96.89634370803833,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

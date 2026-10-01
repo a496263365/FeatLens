@@ -1,0 +1,112 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 219,
+  "namespace": "datasette.facets.DateFacet.facet_results",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5506,
+      "input_estimate_after": 5506,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndatasette/facets.py\nclass: Facet\nfunction: Facet.facet_results\n\ndatasette/database.py\nfunction: Database.execute\n\ndatasette/utils.py\nfunction: escape_sqlite\nfunction: path_with_added_args\n\ndatasette/facets.py\nclass: ColumnFacet\nfunction: ColumnFacet.facet_results\n```",
+  "final_locations": {
+    "files": [
+      "datasette/facets.py",
+      "datasette/database.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/facets.py",
+        "name": "Facet",
+        "kind": "class",
+        "symbol": "datasette.facets.Facet",
+        "start": 67,
+        "end": 153,
+        "code": "class Facet:\n    type = None\n\n    def __init__(\n        self,\n        ds,\n        request,\n        database,\n        sql=None,\n        table=None,\n        params=None,\n        metadata=None,\n        row_count=None,\n    ):\n        assert table or sql, \"Must provide either table= or sql=\"\n        self.ds = ds\n        self.request = request\n        self.database = database\n        # For foreign key expansion. Can be None for e.g. canned SQL queries:\n        self.table = table\n        self.sql = sql or f\"select * from [{table}]\"\n        self.params = params or []\n        self.metadata = metadata\n        # row_count can be None, in which case we calculate it ourselves:\n        self.row_count = row_count\n\n    def get_configs(self):\n        configs = load_facet_configs(self.request, self.metadata)\n        return configs.get(self.type) or []\n\n    def get_querystring_pairs(self):\n        # ?_foo=bar&_foo=2&empty= becomes:\n        # [('_foo', 'bar'), ('_foo', '2'), ('empty', '')]\n        return urllib.parse.parse_qsl(self.request.query_string, keep_blank_values=True)\n\n    def get_facet_size(self):\n        facet_size = self.ds.setting(\"default_facet_size\")\n        max_returned_rows = self.ds.setting(\"max_returned_rows\")\n        table_facet_size = None\n        if self.table:\n            tables_metadata = self.ds.metadata(\"tables\", database=self.database) or {}\n            table_metadata = tables_metadata.get(self.table) or {}\n            if table_metadata:\n                table_facet_size = table_metadata.get(\"facet_size\")\n        custom_facet_size = self.request.args.get(\"_facet_size\")\n        if custom_facet_size:\n            if custom_facet_size == \"max\":\n                facet_size = max_returned_rows\n            elif custom_facet_size.isdigit():\n                facet_size = int(custom_facet_size)\n            else:\n                # Invalid value, ignore it\n                custom_facet_size = None\n        if table_facet_size and not custom_facet_size:\n            if table_facet_size == \"max\":\n                facet_size = max_returned_rows\n            else:\n                facet_size = table_facet_size\n        return min(facet_size, max_returned_rows)\n\n    async def suggest(self):\n        return []\n\n    async def facet_results(self):\n        # returns ([results], [timed_out])\n        # TODO: Include \"hideable\" with each one somehow, which indicates if it was\n        # defined in metadata (in which case you cannot turn it off)\n        raise NotImplementedError\n\n    async def get_columns(self, sql, params=None):\n        # Detect column names using the \"limit 0\" trick\n        return (\n            await self.ds.execute(\n                self.database, f\"select * from ({sql}) limit 0\", params or []\n            )\n        ).columns\n\n    async def get_row_count(self):\n        if self.row_count is None:\n            self.row_count = (\n                await self.ds.execute(\n                    self.database,\n                    f\"select count(*) from ({self.sql})\",\n                    self.params,\n                )\n            ).rows[0][0]\n        return self.row_count"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "Facet.facet_results",
+        "kind": "function",
+        "symbol": "datasette.facets.Facet.facet_results",
+        "start": 130,
+        "end": 134,
+        "code": "    async def facet_results(self):\n        # returns ([results], [timed_out])\n        # TODO: Include \"hideable\" with each one somehow, which indicates if it was\n        # defined in metadata (in which case you cannot turn it off)\n        raise NotImplementedError"
+      },
+      {
+        "file": "datasette/database.py",
+        "name": "Database.execute",
+        "kind": "function",
+        "symbol": "datasette.database.Database.execute",
+        "start": 217,
+        "end": 268,
+        "code": "    async def execute(\n        self,\n        sql,\n        params=None,\n        truncate=False,\n        custom_time_limit=None,\n        page_size=None,\n        log_sql_errors=True,\n    ):\n        \"\"\"Executes sql against db_name in a thread\"\"\"\n        page_size = page_size or self.ds.page_size\n\n        def sql_operation_in_thread(conn):\n            time_limit_ms = self.ds.sql_time_limit_ms\n            if custom_time_limit and custom_time_limit < time_limit_ms:\n                time_limit_ms = custom_time_limit\n\n            with sqlite_timelimit(conn, time_limit_ms):\n                try:\n                    cursor = conn.cursor()\n                    cursor.execute(sql, params if params is not None else {})\n                    max_returned_rows = self.ds.max_returned_rows\n                    if max_returned_rows == page_size:\n                        max_returned_rows += 1\n                    if max_returned_rows and truncate:\n                        rows = cursor.fetchmany(max_returned_rows + 1)\n                        truncated = len(rows) > max_returned_rows\n                        rows = rows[:max_returned_rows]\n                    else:\n                        rows = cursor.fetchall()\n                        truncated = False\n                except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:\n                    if e.args == (\"interrupted\",):\n                        raise QueryInterrupted(e, sql, params)\n                    if log_sql_errors:\n                        sys.stderr.write(\n                            \"ERROR: conn={}, sql = {}, params = {}: {}\\n\".format(\n                                conn, repr(sql), params, e\n                            )\n                        )\n                        sys.stderr.flush()\n                    raise\n\n            if truncate:\n                return Results(rows, truncated, cursor.description)\n\n            else:\n                return Results(rows, False, cursor.description)\n\n        with trace(\"sql\", database=self.name, sql=sql.strip(), params=params):\n            results = await self.execute_fn(sql_operation_in_thread)\n        return results"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "ColumnFacet",
+        "kind": "class",
+        "symbol": "datasette.facets.ColumnFacet",
+        "start": 156,
+        "end": 287,
+        "code": "class ColumnFacet(Facet):\n    type = \"column\"\n\n    async def suggest(self):\n        row_count = await self.get_row_count()\n        columns = await self.get_columns(self.sql, self.params)\n        facet_size = self.get_facet_size()\n        suggested_facets = []\n        already_enabled = [c[\"config\"][\"simple\"] for c in self.get_configs()]\n        for column in columns:\n            if column in already_enabled:\n                continue\n            suggested_facet_sql = \"\"\"\n                select {column} as value, count(*) as n from (\n                    {sql}\n                ) where value is not null\n                group by value\n                limit {limit}\n            \"\"\".format(\n                column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1\n            )\n            distinct_values = None\n            try:\n                distinct_values = await self.ds.execute(\n                    self.database,\n                    suggested_facet_sql,\n                    self.params,\n                    truncate=False,\n                    custom_time_limit=self.ds.setting(\"facet_suggest_time_limit_ms\"),\n                )\n                num_distinct_values = len(distinct_values)\n                if (\n                    1 < num_distinct_values < row_count\n                    and num_distinct_values <= facet_size\n                    # And at least one has n > 1\n                    and any(r[\"n\"] > 1 for r in distinct_values)\n                ):\n                    suggested_facets.append(\n                        {\n                            \"name\": column,\n                            \"toggle_url\": self.ds.absolute_url(\n                                self.request,\n                                self.ds.urls.path(\n                                    path_with_added_args(\n                                        self.request, {\"_facet\": column}\n                                    )\n                                ),\n                            ),\n                        }\n                    )\n            except QueryInterrupted:\n                continue\n        return suggested_facets\n\n    async def facet_results(self):\n        facet_results = []\n        facets_timed_out = []\n\n        qs_pairs = self.get_querystring_pairs()\n\n        facet_size = self.get_facet_size()\n        for source_and_config in self.get_configs():\n            config = source_and_config[\"config\"]\n            source = source_and_config[\"source\"]\n            column = config.get(\"column\") or config[\"simple\"]\n            facet_sql = \"\"\"\n                select {col} as value, count(*) as count from (\n                    {sql}\n                )\n                where {col} is not null\n                group by {col} order by count desc, value limit {limit}\n            \"\"\".format(\n                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1\n            )\n            try:\n                facet_rows_results = await self.ds.execute(\n                    self.database,\n                    facet_sql,\n                    self.params,\n                    truncate=False,\n                    custom_time_limit=self.ds.setting(\"facet_time_limit_ms\"),\n                )\n                facet_results_values = []\n                facet_results.append(\n                    {\n                        \"name\": column,\n                        \"type\": self.type,\n                        \"hideable\": source != \"metadata\",\n                        \"toggle_url\": self.ds.urls.path(\n                            path_with_removed_args(self.request, {\"_facet\": column})\n                        ),\n                        \"results\": facet_results_values,\n                        \"truncated\": len(facet_rows_results) > facet_size,\n                    }\n                )\n                facet_rows = facet_rows_results.rows[:facet_size]\n                if self.table:\n                    # Attempt to expand foreign keys into labels\n                    values = [row[\"value\"] for row in facet_rows]\n                    expanded = await self.ds.expand_foreign_keys(\n                        self.database, self.table, column, values\n                    )\n                else:\n                    expanded = {}\n                for row in facet_rows:\n                    column_qs = column\n                    if column.startswith(\"_\"):\n                        column_qs = \"{}__exact\".format(column)\n                    selected = (column_qs, str(row[\"value\"])) in qs_pairs\n                    if selected:\n                        toggle_path = path_with_removed_args(\n                            self.request, {column_qs: str(row[\"value\"])}\n                        )\n                    else:\n                        toggle_path = path_with_added_args(\n                            self.request, {column_qs: row[\"value\"]}\n                        )\n                    facet_results_values.append(\n                        {\n                            \"value\": row[\"value\"],\n                            \"label\": expanded.get((column, row[\"value\"]), row[\"value\"]),\n                            \"count\": row[\"count\"],\n                            \"toggle_url\": self.ds.absolute_url(\n                                self.request, self.ds.urls.path(toggle_path)\n                            ),\n                            \"selected\": selected,\n                        }\n                    )\n            except QueryInterrupted:\n                facets_timed_out.append(column)\n\n        return facet_results, facets_timed_out"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "ColumnFacet.facet_results",
+        "kind": "function",
+        "symbol": "datasette.facets.ColumnFacet.facet_results",
+        "start": 210,
+        "end": 287,
+        "code": "    async def facet_results(self):\n        facet_results = []\n        facets_timed_out = []\n\n        qs_pairs = self.get_querystring_pairs()\n\n        facet_size = self.get_facet_size()\n        for source_and_config in self.get_configs():\n            config = source_and_config[\"config\"]\n            source = source_and_config[\"source\"]\n            column = config.get(\"column\") or config[\"simple\"]\n            facet_sql = \"\"\"\n                select {col} as value, count(*) as count from (\n                    {sql}\n                )\n                where {col} is not null\n                group by {col} order by count desc, value limit {limit}\n            \"\"\".format(\n                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1\n            )\n            try:\n                facet_rows_results = await self.ds.execute(\n                    self.database,\n                    facet_sql,\n                    self.params,\n                    truncate=False,\n                    custom_time_limit=self.ds.setting(\"facet_time_limit_ms\"),\n                )\n                facet_results_values = []\n                facet_results.append(\n                    {\n                        \"name\": column,\n                        \"type\": self.type,\n                        \"hideable\": source != \"metadata\",\n                        \"toggle_url\": self.ds.urls.path(\n                            path_with_removed_args(self.request, {\"_facet\": column})\n                        ),\n                        \"results\": facet_results_values,\n                        \"truncated\": len(facet_rows_results) > facet_size,\n                    }\n                )\n                facet_rows = facet_rows_results.rows[:facet_size]\n                if self.table:\n                    # Attempt to expand foreign keys into labels\n                    values = [row[\"value\"] for row in facet_rows]\n                    expanded = await self.ds.expand_foreign_keys(\n                        self.database, self.table, column, values\n                    )\n                else:\n                    expanded = {}\n                for row in facet_rows:\n                    column_qs = column\n                    if column.startswith(\"_\"):\n                        column_qs = \"{}__exact\".format(column)\n                    selected = (column_qs, str(row[\"value\"])) in qs_pairs\n                    if selected:\n                        toggle_path = path_with_removed_args(\n                            self.request, {column_qs: str(row[\"value\"])}\n                        )\n                    else:\n                        toggle_path = path_with_added_args(\n                            self.request, {column_qs: row[\"value\"]}\n                        )\n                    facet_results_values.append(\n                        {\n                            \"value\": row[\"value\"],\n                            \"label\": expanded.get((column, row[\"value\"]), row[\"value\"]),\n                            \"count\": row[\"count\"],\n                            \"toggle_url\": self.ds.absolute_url(\n                                self.request, self.ds.urls.path(toggle_path)\n                            ),\n                            \"selected\": selected,\n                        }\n                    )\n            except QueryInterrupted:\n                facets_timed_out.append(column)\n\n        return facet_results, facets_timed_out"
+      }
+    ],
+    "unresolved": [
+      "datasette/utils.py"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 16,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 14416
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16781,
+    "completion_tokens": 2091,
+    "total_tokens": 18872,
+    "seconds": 94.45360136032104,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 107.1904730796814,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

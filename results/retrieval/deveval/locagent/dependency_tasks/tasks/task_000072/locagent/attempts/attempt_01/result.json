@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 72,
+  "namespace": "hl7.parser._ParsePlan.container",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nhl7/parser.py\nline: 401\nclass: _ParsePlan\nfunction: container\n\nhl7/containers.py\nline: 835\nclass: Factory\nfunction: create_segment\nfunction: create_field\nfunction: create_repetition\nfunction: create_component\nfunction: create_message\n\nhl7/parser.py\nline: 390\nclass: _ParsePlan\nfunction: __init__\n\nhl7/parser.py\nline: 340\nfunction: create_parse_plan\n\nhl7/parser.py\nline: 295\nfunction: _split\n```",
+  "final_locations": {
+    "files": [
+      "hl7/parser.py",
+      "hl7/containers.py"
+    ],
+    "entities": [
+      {
+        "file": "hl7/parser.py",
+        "name": "_ParsePlan",
+        "kind": "class",
+        "symbol": "hl7.parser._ParsePlan",
+        "start": 383,
+        "end": 437,
+        "code": "class _ParsePlan(object):\n    \"\"\"Details on how to parse an HL7 message. Typically this object\n    should be created via :func:`hl7.create_parse_plan`\n    \"\"\"\n\n    # field, component, repetition, escape, subcomponent\n\n    def __init__(self, seperator, separators, containers, esc, factory):\n        # TODO test to see performance implications of the assertion\n        # since we generate the ParsePlan, this should never be in\n        # invalid state\n        assert len(containers) == len(separators[separators.find(seperator) :])\n        self.separator = seperator\n        self.separators = separators\n        self.containers = containers\n        self.esc = esc\n        self.factory = factory\n\n    def container(self, data):\n        pass\n\n\n\n\n\n\n\n\n\n    def next(self):\n        \"\"\"Generate the next level of the plan (essentially generates\n        a copy of this plan with the level of the container and the\n        seperator starting at the next index.\n        \"\"\"\n        if len(self.containers) > 1:\n            # Return a new instance of this class using the tails of\n            # the separators and containers lists. Use self.__class__()\n            # in case :class:`hl7.ParsePlan` is subclassed\n            return self.__class__(\n                self.separators[self.separators.find(self.separator) + 1],\n                self.separators,\n                self.containers[1:],\n                self.esc,\n                self.factory,\n            )\n        # When we have no separators and containers left, return None,\n        # which indicates that we have nothing further.\n        return None\n\n    def applies(self, text):\n        \"\"\"return True if the separator or those if the children are in the text\"\"\"\n        for s in self.separators[self.separators.find(self.separator) :]:\n            if text.find(s) >= 0:\n                return True\n        return False"
+      },
+      {
+        "file": "hl7/containers.py",
+        "name": "Factory",
+        "kind": "class",
+        "symbol": "hl7.containers.Factory",
+        "start": 835,
+        "end": 847,
+        "code": "class Factory(object):\n    \"\"\"Factory used to create each type of Container.\n\n    A subclass can be used to create specialized subclasses of each container.\n    \"\"\"\n\n    create_file = File  #: Create an instance of :py:class:`hl7.File`\n    create_batch = Batch  #: Create an instance of :py:class:`hl7.Batch`\n    create_message = Message  #: Create an instance of :py:class:`hl7.Message`\n    create_segment = Segment  #: Create an instance of :py:class:`hl7.Segment`\n    create_field = Field  #: Create an instance of :py:class:`hl7.Field`\n    create_repetition = Repetition  #: Create an instance of :py:class:`hl7.Repetition`\n    create_component = Component  #: Create an instance of :py:class:`hl7.Component`"
+      },
+      {
+        "file": "hl7/parser.py",
+        "name": "_ParsePlan.__init__",
+        "kind": "function",
+        "symbol": "hl7.parser._ParsePlan.__init__",
+        "start": 390,
+        "end": 399,
+        "code": "    def __init__(self, seperator, separators, containers, esc, factory):\n        # TODO test to see performance implications of the assertion\n        # since we generate the ParsePlan, this should never be in\n        # invalid state\n        assert len(containers) == len(separators[separators.find(seperator) :])\n        self.separator = seperator\n        self.separators = separators\n        self.containers = containers\n        self.esc = esc\n        self.factory = factory"
+      },
+      {
+        "file": "hl7/parser.py",
+        "name": "create_parse_plan",
+        "kind": "function",
+        "symbol": "hl7.parser.create_parse_plan",
+        "start": 339,
+        "end": 380,
+        "code": "def create_parse_plan(strmsg, factory=Factory):\n    \"\"\"Creates a plan on how to parse the HL7 message according to\n    the details stored within the message.\n    \"\"\"\n    # We will always use a carriage return to separate segments\n    separators = \"\\r\"\n\n    # Extract the rest of the separators. Defaults used if not present.\n    if strmsg[:3] not in (\"MSH\", \"FHS\", \"BHS\"):\n        raise ParseException(\n            \"First segment is {}, must be one of MHS, FHS or BHS\".format(strmsg[:3])\n        )\n    sep0 = strmsg[3]\n    seps = list(strmsg[3 : strmsg.find(sep0, 4)])\n\n    separators += seps[0]\n    if len(seps) > 2:\n        separators += seps[2]  # repetition separator\n    else:\n        separators += \"~\"  # repetition separator\n    if len(seps) > 1:\n        separators += seps[1]  # component separator\n    else:\n        separators += \"^\"  # component separator\n    if len(seps) > 4:\n        separators += seps[4]  # sub-component separator\n    else:\n        separators += \"&\"  # sub-component separator\n    if len(seps) > 3:\n        esc = seps[3]\n    else:\n        esc = \"\\\\\"\n\n    # The ordered list of containers to create\n    containers = [\n        factory.create_message,\n        factory.create_segment,\n        factory.create_field,\n        factory.create_repetition,\n        factory.create_component,\n    ]\n    return _ParsePlan(separators[0], separators, containers, esc, factory)"
+      },
+      {
+        "file": "hl7/parser.py",
+        "name": "_split",
+        "kind": "function",
+        "symbol": "hl7.parser._split",
+        "start": 295,
+        "end": 336,
+        "code": "def _split(text, plan):\n    \"\"\"Recursive function to split the *text* into an n-deep list,\n    according to the :py:class:`hl7._ParsePlan`.\n    \"\"\"\n    # Base condition, if we have used up all the plans\n    if not plan:\n        return text\n\n    if not plan.applies(text):\n        return plan.container([text])\n\n    # Parsing of the first segment is awkward because it contains\n    # the separator characters in a field\n    if plan.containers[0] == plan.factory.create_segment and text[:3] in [\n        \"MSH\",\n        \"BHS\",\n        \"FHS\",\n    ]:\n        seg = text[:3]\n        sep0 = text[3]\n        sep_end_off = text.find(sep0, 4)\n        seps = text[4:sep_end_off]\n        text = text[sep_end_off + 1 :]\n        data = [\n            plan.factory.create_field(\n                sequence=[seg], esc=plan.esc, separators=plan.separators\n            ),\n            plan.factory.create_field(\n                sequence=[sep0], esc=plan.esc, separators=plan.separators\n            ),\n            plan.factory.create_field(\n                sequence=[seps], esc=plan.esc, separators=plan.separators\n            ),\n        ]\n    else:\n        data = []\n\n    if text:\n        data = data + [_split(x, plan.next()) for x in text.split(plan.separator)]\n    # Return the instance of the current message part according\n    # to the plan\n    return plan.container(data)"
+      }
+    ],
+    "unresolved": [
+      "hl7/parser.py:function: container",
+      "hl7/containers.py:function: create_segment",
+      "hl7/containers.py:function: create_field",
+      "hl7/containers.py:function: create_repetition",
+      "hl7/containers.py:function: create_component",
+      "hl7/containers.py:function: create_message",
+      "hl7/parser.py:function: __init__"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "hl7.parser._ParsePlan.containers",
+      "hl7.parser._ParsePlan.esc",
+      "hl7.parser._ParsePlan.factory",
+      "hl7.parser._ParsePlan.separators"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 7,
+    "returned_code_chars": 5801
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 38891,
+    "completion_tokens": 1182,
+    "total_tokens": 40073,
+    "seconds": 68.90292263031006,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 71.61141085624695,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 535,
+  "namespace": "mopidy.internal.validation.check_uris",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4861,
+      "input_estimate_after": 4861,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmopidy/internal/validation.py\nline: 122\nfunction: check_uri\n\nmopidy/core/library.py\nline: 181\nfunction: LibraryController.get_images\n\nmopidy/models/fields.py\nline: 106\nclass: URI\n\nmopidy/stream/actor.py\nline: 57\nclass: StreamLibraryProvider\nfunction: lookup\n\nmopidy/stream/actor.py\nline: 103\nfunction: _unwrap_stream\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/internal/validation.py",
+      "mopidy/core/library.py",
+      "mopidy/models/fields.py",
+      "mopidy/stream/actor.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/internal/validation.py",
+        "name": "check_uri",
+        "kind": "function",
+        "symbol": "mopidy.internal.validation.check_uri",
+        "start": 122,
+        "end": 126,
+        "code": "def check_uri(arg, msg=\"Expected a valid URI, not {arg!r}\"):\n    if not isinstance(arg, str):\n        raise exceptions.ValidationError(msg.format(arg=arg))\n    elif urllib.parse.urlparse(arg).scheme == \"\":\n        raise exceptions.ValidationError(msg.format(arg=arg))"
+      },
+      {
+        "file": "mopidy/core/library.py",
+        "name": "LibraryController.get_images",
+        "kind": "function",
+        "symbol": "mopidy.core.library.LibraryController.get_images",
+        "start": 165,
+        "end": 204,
+        "code": "    def get_images(self, uris):\n        \"\"\"Lookup the images for the given URIs\n\n        Backends can use this to return image URIs for any URI they know about\n        be it tracks, albums, playlists. The lookup result is a dictionary\n        mapping the provided URIs to lists of images.\n\n        Unknown URIs or URIs the corresponding backend couldn't find anything\n        for will simply return an empty list for that URI.\n\n        :param uris: list of URIs to find images for\n        :type uris: list of string\n        :rtype: {uri: tuple of :class:`mopidy.models.Image`}\n\n        .. versionadded:: 1.0\n        \"\"\"\n        validation.check_uris(uris)\n\n        futures = {\n            backend: backend.library.get_images(backend_uris)\n            for (backend, backend_uris) in self._get_backends_to_uris(\n                uris\n            ).items()\n            if backend_uris\n        }\n\n        results = {uri: () for uri in uris}\n        for backend, future in futures.items():\n            with _backend_error_handling(backend):\n                if future.get() is None:\n                    continue\n                validation.check_instance(future.get(), Mapping)\n                for uri, images in future.get().items():\n                    if uri not in uris:\n                        raise exceptions.ValidationError(\n                            f\"Got unknown image URI: {uri}\"\n                        )\n                    validation.check_instances(images, models.Image)\n                    results[uri] += tuple(images)\n        return results"
+      },
+      {
+        "file": "mopidy/models/fields.py",
+        "name": "URI",
+        "kind": "class",
+        "symbol": "mopidy.models.fields.URI",
+        "start": 106,
+        "end": 115,
+        "code": "class URI(Identifier):\n    \"\"\"\n    :class:`Field` for storing URIs\n\n    Values will be interned, currently not validated.\n\n    :param default: default value for field\n    \"\"\"\n\n    pass  # TODO: validate URIs?"
+      },
+      {
+        "file": "mopidy/stream/actor.py",
+        "name": "StreamLibraryProvider",
+        "kind": "class",
+        "symbol": "mopidy.stream.actor.StreamLibraryProvider",
+        "start": 57,
+        "end": 81,
+        "code": "class StreamLibraryProvider(backend.LibraryProvider):\n    def lookup(self, uri):\n        if urllib.parse.urlsplit(uri).scheme not in self.backend.uri_schemes:\n            return []\n\n        if self.backend._blacklist_re.match(uri):\n            logger.debug(\"URI matched metadata lookup blacklist: %s\", uri)\n            return [Track(uri=uri)]\n\n        _, scan_result = _unwrap_stream(\n            uri,\n            timeout=self.backend._timeout,\n            scanner=self.backend._scanner,\n            requests_session=self.backend._session,\n        )\n\n        if scan_result:\n            track = tags.convert_tags_to_track(scan_result.tags).replace(\n                uri=uri, length=scan_result.duration\n            )\n        else:\n            logger.warning(\"Problem looking up %s\", uri)\n            track = Track(uri=uri)\n\n        return [track]"
+      },
+      {
+        "file": "mopidy/stream/actor.py",
+        "name": "_unwrap_stream",
+        "kind": "function",
+        "symbol": "mopidy.stream.actor._unwrap_stream",
+        "start": 103,
+        "end": 187,
+        "code": "def _unwrap_stream(uri, timeout, scanner, requests_session):\n    \"\"\"\n    Get a stream URI from a playlist URI, ``uri``.\n\n    Unwraps nested playlists until something that's not a playlist is found or\n    the ``timeout`` is reached.\n    \"\"\"\n\n    original_uri = uri\n    seen_uris = set()\n    deadline = time.time() + timeout\n\n    while time.time() < deadline:\n        if uri in seen_uris:\n            logger.info(\n                \"Unwrapping stream from URI (%s) failed: \"\n                \"playlist referenced itself\",\n                uri,\n            )\n            return None, None\n        else:\n            seen_uris.add(uri)\n\n        logger.debug(\"Unwrapping stream from URI: %s\", uri)\n\n        try:\n            scan_timeout = deadline - time.time()\n            if scan_timeout < 0:\n                logger.info(\n                    \"Unwrapping stream from URI (%s) failed: \"\n                    \"timed out in %sms\",\n                    uri,\n                    timeout,\n                )\n                return None, None\n            scan_result = scanner.scan(uri, timeout=scan_timeout)\n        except exceptions.ScannerError as exc:\n            logger.debug(\"GStreamer failed scanning URI (%s): %s\", uri, exc)\n            scan_result = None\n\n        if scan_result is not None:\n            has_interesting_mime = (\n                scan_result.mime is not None\n                and not scan_result.mime.startswith(\"text/\")\n                and not scan_result.mime.startswith(\"application/\")\n            )\n            if scan_result.playable or has_interesting_mime:\n                logger.debug(\n                    \"Unwrapped potential %s stream: %s\", scan_result.mime, uri\n                )\n                return uri, scan_result\n\n        download_timeout = deadline - time.time()\n        if download_timeout < 0:\n            logger.info(\n                \"Unwrapping stream from URI (%s) failed: timed out in %sms\",\n                uri,\n                timeout,\n            )\n            return None, None\n        content = http.download(\n            requests_session, uri, timeout=download_timeout / 1000\n        )\n\n        if content is None:\n            logger.info(\n                \"Unwrapping stream from URI (%s) failed: \"\n                \"error downloading URI %s\",\n                original_uri,\n                uri,\n            )\n            return None, None\n\n        uris = playlists.parse(content)\n        if not uris:\n            logger.debug(\n                \"Failed parsing URI (%s) as playlist; found potential stream.\",\n                uri,\n            )\n            return uri, None\n\n        # TODO Test streams and return first that seems to be playable\n        new_uri = uris[0]\n        logger.debug(\"Parsed playlist (%s) and found new URI: %s\", uri, new_uri)\n        uri = urllib.parse.urljoin(uri, new_uri)"
+      }
+    ],
+    "unresolved": [
+      "mopidy/stream/actor.py:function: lookup"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 4,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5704
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 22771,
+    "completion_tokens": 3617,
+    "total_tokens": 26388,
+    "seconds": 97.90919327735901,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 115.39894366264343,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

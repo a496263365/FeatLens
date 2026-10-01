@@ -1,0 +1,113 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2043,
+  "namespace": "mssqlcli.packages.parseutils.utils.find_prev_keyword",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4946,
+      "input_estimate_after": 4946,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `find_prev_keyword` function:\n\n```\nmssqlcli/packages/parseutils/utils.py\nline: 7-16\nvariable: cleanup_regex\n\nmssqlcli/packages/parseutils/utils.py\nline: 19-62\nfunction: last_word\n\nmssqlcli/packages/parseutils/utils.py\nline: 106-117\nfunction: is_open_quote\nfunction: _parsed_is_open_quote\n\nmssqlcli/packages/sqlcompletion.py\nline: (import reference)\nimports: mssqlcli/packages/parseutils/utils.py:find_prev_keyword\n\nmssqlcli/packages/parseutils/utils.py\nline: 119-138\nfunction: parse_partial_identifier\n```",
+  "final_locations": {
+    "files": [
+      "mssqlcli/packages/parseutils/utils.py",
+      "mssqlcli/packages/sqlcompletion.py"
+    ],
+    "entities": [
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "cleanup_regex",
+        "kind": "variable",
+        "symbol": "mssqlcli.packages.parseutils.utils.cleanup_regex",
+        "start": 7,
+        "end": 16,
+        "code": "cleanup_regex = {\n    # This matches only alphanumerics and underscores.\n    'alphanum_underscore': re.compile(r'(\\w+)$'),\n    # This matches everything except spaces, parens, colon, and comma\n    'many_punctuations': re.compile(r'([^():,\\s]+)$'),\n    # This matches everything except spaces, parens, colon, comma, and period\n    'most_punctuations': re.compile(r'([^\\.():,\\s]+)$'),\n    # This matches everything except a space.\n    'all_punctuations': re.compile(r'([^\\s]+)$'),\n}"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "last_word",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.last_word",
+        "start": 19,
+        "end": 62,
+        "code": "def last_word(text, include='alphanum_underscore'):\n    r\"\"\"\n    Find the last word in a sentence.\n\n    >>> last_word('abc')\n    'abc'\n    >>> last_word(' abc')\n    'abc'\n    >>> last_word('')\n    ''\n    >>> last_word(' ')\n    ''\n    >>> last_word('abc ')\n    ''\n    >>> last_word('abc def')\n    'def'\n    >>> last_word('abc def ')\n    ''\n    >>> last_word('abc def;')\n    ''\n    >>> last_word('bac $def')\n    'def'\n    >>> last_word('bac $def', include='most_punctuations')\n    '$def'\n    >>> last_word('bac \\def', include='most_punctuations')\n    '\\\\\\\\def'\n    >>> last_word('bac \\def;', include='most_punctuations')\n    '\\\\\\\\def;'\n    >>> last_word('bac::def', include='most_punctuations')\n    'def'\n    >>> last_word('\"foo*bar', include='most_punctuations')\n    '\"foo*bar'\n    \"\"\"\n\n    if not text:   # Empty string\n        return ''\n\n    if text[-1].isspace():\n        return ''\n    regex = cleanup_regex[include]\n    matches = regex.search(text)\n    if matches:\n        return matches.group(0)\n    return ''"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "is_open_quote",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.is_open_quote",
+        "start": 106,
+        "end": 111,
+        "code": "def is_open_quote(sql):\n    \"\"\"Returns true if the query contains an unclosed quote\"\"\"\n\n    # parsed can contain one or more semi-colon separated commands\n    parsed = sqlparse.parse(sql)\n    return any(_parsed_is_open_quote(p) for p in parsed)"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "_parsed_is_open_quote",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils._parsed_is_open_quote",
+        "start": 114,
+        "end": 116,
+        "code": "def _parsed_is_open_quote(parsed):\n    # Look for unmatched single quotes, or unmatched dollar sign quotes\n    return any(tok.match(Token.Error, (\"'\", '\"', \"$\")) for tok in parsed.flatten())"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "parse_partial_identifier",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.parse_partial_identifier",
+        "start": 119,
+        "end": 138,
+        "code": "def parse_partial_identifier(word):\n    \"\"\"Attempt to parse a (partially typed) word as an identifier\n\n    word may include a schema qualification, like `schema_name.partial_name`\n    or `schema_name.` There may also be unclosed quotation marks, like\n    `\"schema`, or `schema.\"partial_name`\n\n    :param word: string representing a (partially complete) identifier\n    :return: sqlparse.sql.Identifier, or None\n    \"\"\"\n\n    p = sqlparse.parse(word)[0]\n    n_tok = len(p.tokens)\n    if n_tok == 1 and isinstance(p.tokens[0], Identifier):\n        return p.tokens[0]\n    if p.token_next_by(m=(Error, '\"'))[1]:\n        # An unmatched double quote, e.g. '\"foo', 'foo.\"', or 'foo.\"bar'\n        # Close the double quote, then reparse\n        return parse_partial_identifier(word + '\"')\n    return None"
+      }
+    ],
+    "unresolved": [
+      "mssqlcli/packages/parseutils/utils.py:line: 106-117",
+      "imports: mssqlcli/packages/parseutils/utils.py:find_prev_keyword"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 2720
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21688,
+    "completion_tokens": 540,
+    "total_tokens": 22228,
+    "seconds": 39.31442975997925,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 43.246659994125366,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

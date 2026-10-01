@@ -1,0 +1,112 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 46,
+  "namespace": "litdata.processing.data_processor._download_data_target",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 18417,
+      "input_estimate_after": 18417,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `_download_data_target` function. The function needs to download files from a remote directory to a local cache directory, check if files already exist, and communicate via queues. Here are the key locations containing reusable code:\n\n```\nlitdata/processing/data_processor.py\nline: 169\nfunction: _remove_target\n\nlitdata/processing/data_processor.py\nline: 192\nfunction: _upload_fn\n\nlitdata/processing/data_processor.py\nline: 90\nfunction: _wait_for_file_to_exist\n\nlitdata/processing/data_processor.py\nline: 540\nclass: BaseWorker\nfunction: _start_downloaders\n\nlitdata/processing/data_processor.py\nline: 500\nclass: BaseWorker\nfunction: _collect_paths\n```",
+  "final_locations": {
+    "files": [
+      "litdata/processing/data_processor.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_remove_target",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._remove_target",
+        "start": 169,
+        "end": 189,
+        "code": "def _remove_target(input_dir: Dir, cache_dir: str, queue_in: Queue) -> None:\n    \"\"\"This function is used to delete files from the cache directory to minimise disk space.\"\"\"\n    while True:\n        # 1. Collect paths\n        paths = queue_in.get()\n\n        # 2. Terminate the process if we received a termination signal\n        if paths is None:\n            return\n\n        # 3. Iterate through the paths and delete them sequentially.\n        for path in paths:\n            if input_dir:\n                if not path.startswith(cache_dir) and input_dir.path is not None:\n                    path = path.replace(input_dir.path, cache_dir)\n\n                if os.path.exists(path):\n                    os.remove(path)\n\n            elif os.path.exists(path) and \"s3_connections\" not in path:\n                os.remove(path)"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_upload_fn",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._upload_fn",
+        "start": 192,
+        "end": 245,
+        "code": "def _upload_fn(upload_queue: Queue, remove_queue: Queue, cache_dir: str, output_dir: Dir) -> None:\n    \"\"\"This function is used to upload optimised chunks from a local to remote dataset directory.\"\"\"\n    obj = parse.urlparse(output_dir.url if output_dir.url else output_dir.path)\n\n    if obj.scheme == \"s3\":\n        s3 = S3Client()\n\n    while True:\n        data: Optional[Union[str, Tuple[str, str]]] = upload_queue.get()\n\n        tmpdir = None\n\n        if isinstance(data, str) or data is None:\n            local_filepath = data\n        else:\n            tmpdir, local_filepath = data\n\n        # Terminate the process if we received a termination signal\n        if local_filepath is None:\n            return\n\n        # Upload the file to the target cloud storage\n        if not local_filepath.startswith(cache_dir):\n            local_filepath = os.path.join(cache_dir, local_filepath)\n\n        if obj.scheme == \"s3\":\n            try:\n                if tmpdir is None:\n                    output_filepath = os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath))\n                else:\n                    output_filepath = os.path.join(str(obj.path).lstrip(\"/\"), local_filepath.replace(tmpdir, \"\")[1:])\n\n                s3.client.upload_file(\n                    local_filepath,\n                    obj.netloc,\n                    output_filepath,\n                )\n            except Exception as e:\n                print(e)\n\n        elif output_dir.path:\n            if tmpdir is None:\n                output_filepath = os.path.join(output_dir.path, os.path.basename(local_filepath))\n            else:\n                output_filepath = os.path.join(output_dir.path, local_filepath.replace(tmpdir, \"\")[1:])\n\n            os.makedirs(os.path.dirname(output_filepath), exist_ok=True)\n            shutil.move(local_filepath, output_filepath)\n        else:\n            raise ValueError(f\"The provided {output_dir.path} isn't supported.\")\n\n        # Inform the remover to delete the file\n        if remove_queue and os.path.exists(local_filepath):\n            remove_queue.put([local_filepath])"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_wait_for_file_to_exist",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._wait_for_file_to_exist",
+        "start": 90,
+        "end": 99,
+        "code": "def _wait_for_file_to_exist(s3: S3Client, obj: parse.ParseResult, sleep_time: int = 2) -> Any:\n    \"\"\"This function check.\"\"\"\n    while True:\n        try:\n            return s3.client.head_object(Bucket=obj.netloc, Key=obj.path.lstrip(\"/\"))\n        except botocore.exceptions.ClientError as e:\n            if \"the HeadObject operation: Not Found\" in str(e):\n                sleep(sleep_time)\n            else:\n                raise e"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "BaseWorker._start_downloaders",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor.BaseWorker._start_downloaders",
+        "start": 540,
+        "end": 563,
+        "code": "    def _start_downloaders(self) -> None:\n        if self.input_dir.path is None or self.reader is not None:\n            return\n\n        for _ in range(self.num_downloaders):\n            to_download_queue: Queue = Queue()\n            p = Process(\n                target=_download_data_target,\n                args=(\n                    self.input_dir,\n                    self.cache_data_dir,\n                    to_download_queue,\n                    self.ready_to_process_queue,\n                ),\n            )\n            p.start()\n            self.downloaders.append(p)\n            self.to_download_queues.append(to_download_queue)\n\n        for index, paths in enumerate(self.paths):\n            self.to_download_queues[index % self.num_downloaders].put((index, paths))\n\n        for downloader_index in range(self.num_downloaders):\n            self.to_download_queues[downloader_index].put(None)"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "BaseWorker",
+        "kind": "class",
+        "symbol": "litdata.processing.data_processor.BaseWorker",
+        "start": 349,
+        "end": 639,
+        "code": "class BaseWorker:\n    def __init__(\n        self,\n        worker_index: int,\n        num_workers: int,\n        node_rank: int,\n        data_recipe: \"DataRecipe\",\n        input_dir: Dir,\n        output_dir: Dir,\n        items: List[Any],\n        progress_queue: Queue,\n        error_queue: Queue,\n        stop_queue: Queue,\n        num_downloaders: int,\n        num_uploaders: int,\n        remove: bool,\n        reader: Optional[BaseReader] = None,\n    ) -> None:\n        \"\"\"The BaseWorker is responsible to process the user data.\"\"\"\n        self.worker_index = worker_index\n        self.num_workers = num_workers\n        self.node_rank = node_rank\n        self.data_recipe = data_recipe\n        self.input_dir = input_dir\n        self.output_dir = output_dir\n        self.items = items\n        self.num_items = len(self.items)\n        self.num_downloaders = num_downloaders\n        self.num_uploaders = num_uploaders\n        self.remove = remove\n        self.reader = reader\n        self.paths: List[List[str]] = []\n        self.remover: Optional[Process] = None\n        self.downloaders: List[Process] = []\n        self.uploaders: List[Process] = []\n        self.to_download_queues: List[Queue] = []\n        self.to_upload_queues: List[Queue] = []\n        self.stop_queue = stop_queue\n        self.ready_to_process_queue: Queue = Queue()\n        self.remove_queue: Queue = Queue()\n        self.progress_queue: Queue = progress_queue\n        self.error_queue: Queue = error_queue\n        self._counter = 0\n        self._last_time = time()\n        self._index_counter = 0\n\n    def run(self) -> None:\n        try:\n            self._setup()\n            self._loop()\n        except Exception:\n            traceback_format = traceback.format_exc()\n            print(traceback_format)\n            self.error_queue.put(traceback_format)\n        print(f\"Worker {str(_get_node_rank() * self.num_workers + self.worker_index)} is done.\")\n\n    def _setup(self) -> None:\n        self._set_environ_variables()\n        self._create_cache()\n        self._collect_paths()\n        self._start_downloaders()\n        self._start_uploaders()\n        self._start_remover()\n\n    def _loop(self) -> None:\n        num_downloader_finished = 0\n\n        while True:\n            index = self.ready_to_process_queue.get()\n\n            if index is None:\n                num_downloader_finished += 1\n                if num_downloader_finished == self.num_downloaders:\n                    print(f\"Worker {str(_get_node_rank() * self.num_workers + self.worker_index)} is terminating.\")\n\n                    if isinstance(self.data_recipe, DataChunkRecipe):\n                        self._handle_data_chunk_recipe_end()\n\n                    if self.output_dir.url if self.output_dir.url else self.output_dir.path:\n                        # Inform the uploaders they are doing working\n                        for i in range(self.num_uploaders):\n                            self.to_upload_queues[i].put(None)\n\n                        # Wait for them all to be finished\n                        for uploader in self.uploaders:\n                            uploader.join()\n\n                    if self.remove:\n                        assert self.remover\n                        self.remove_queue.put(None)\n                        self.remover.join()\n\n                    if self.progress_queue:\n                        self.progress_queue.put((self.worker_index, self._counter))\n                    return\n                continue\n\n            if isinstance(self.data_recipe, DataChunkRecipe):\n                self._handle_data_chunk_recipe(index)\n            else:\n                self._handle_data_transform_recipe(index)\n\n            self._counter += 1\n\n            # Don't send the last progress update, so the main thread awaits for the uploader and remover\n            if self.progress_queue and (time() - self._last_time) > 1 and self._counter < (self.num_items - 2):\n                self.progress_queue.put((self.worker_index, self._counter))\n                self._last_time = time()\n\n            if self.remove and self.input_dir.path is not None and self.reader is None:\n                self.remove_queue.put(self.paths[index])\n\n            try:\n                self.stop_queue.get(timeout=0.0001)\n                return\n            except Empty:\n                pass\n\n    def _set_environ_variables(self) -> None:\n        # set the optimizer global rank and world_size\n        os.environ[\"DATA_OPTIMIZER_GLOBAL_RANK\"] = str(_get_node_rank() * self.num_workers + self.worker_index)\n        os.environ[\"DATA_OPTIMIZER_NUM_WORKERS\"] = str(self.num_workers)\n\n    def _create_cache(self) -> None:\n        self.cache_data_dir = _get_cache_data_dir()\n        os.makedirs(self.cache_data_dir, exist_ok=True)\n\n        self.cache_chunks_dir = _get_cache_dir()\n        os.makedirs(self.cache_chunks_dir, exist_ok=True)\n\n        if isinstance(self.data_recipe, DataTransformRecipe):\n            return\n\n        self.cache = Cache(\n            self.cache_chunks_dir,\n            chunk_bytes=self.data_recipe.chunk_bytes,\n            chunk_size=self.data_recipe.chunk_size,\n            compression=self.data_recipe.compression,\n        )\n        self.cache._reader._rank = _get_node_rank() * self.num_workers + self.worker_index\n\n    def _try_upload(self, data: Optional[Union[str, Tuple[str, str]]]) -> None:\n        if not data or (self.output_dir.url if self.output_dir.url else self.output_dir.path) is None:\n            return\n\n        if isinstance(data, str):\n            assert os.path.exists(data), data\n        else:\n            assert os.path.exists(data[-1]), data\n\n        self.to_upload_queues[self._counter % self.num_uploaders].put(data)\n\n    def _collect_paths(self) -> None:\n        if self.input_dir.path is None or self.reader is not None:\n            for index in range(len(self.items)):\n                self.ready_to_process_queue.put(index)\n            for _ in range(self.num_downloaders):\n                self.ready_to_process_queue.put(None)\n            return\n\n        items = []\n        for item in self.items:\n            flattened_item, spec = tree_flatten(item)\n\n            # For speed reasons, we assume starting with `self.input_dir` is enough to be a real file.\n            # Other alternative would be too slow.\n            # TODO: Try using dictionary for higher accurary.\n            indexed_paths = {\n                index: _to_path(element)\n                for index, element in enumerate(flattened_item)\n                if _is_path(self.input_dir.path, element)\n            }\n\n            if len(indexed_paths) == 0:\n                raise ValueError(\n                    f\"The provided item {item} didn't contain any filepaths. The input_dir is {self.input_dir.path}.\"\n                )\n\n            paths = []\n            for index, path in indexed_paths.items():\n                paths.append(path)\n                if self.input_dir and not self.input_dir.path.startswith(\"/teamspace/studios/this_studio\"):\n                    path = path.replace(self.input_dir.path, self.cache_data_dir)\n                flattened_item[index] = path\n\n            self.paths.append(paths)\n\n            items.append(tree_unflatten(flattened_item, spec))\n\n        self.items = items\n\n    def _start_downloaders(self) -> None:\n        if self.input_dir.path is None or self.reader is not None:\n            return\n\n        for _ in range(self.num_downloaders):\n            to_download_queue: Queue = Queue()\n            p = Process(\n                target=_download_data_target,\n                args=(\n                    self.input_dir,\n                    self.cache_data_dir,\n                    to_download_queue,\n                    self.ready_to_process_queue,\n                ),\n            )\n            p.start()\n            self.downloaders.append(p)\n            self.to_download_queues.append(to_download_queue)\n\n        for index, paths in enumerate(self.paths):\n            self.to_download_queues[index % self.num_downloaders].put((index, paths))\n\n        for downloader_index in range(self.num_downloaders):\n            self.to_download_queues[downloader_index].put(None)\n\n    def _start_remover(self) -> None:\n        if not self.remove:\n            return\n\n        self.remover = Process(\n            target=_remove_target,\n            args=(\n                self.input_dir,\n                self.cache_data_dir,\n                self.remove_queue,\n            ),\n        )\n        self.remover.start()\n\n    def _start_uploaders(self) -> None:\n        if self.output_dir.path is None and self.output_dir.url is None:\n            return\n\n        for _ in range(self.num_uploaders):\n            to_upload_queue: Queue = Queue()\n            p = Process(\n                target=_upload_fn,\n                args=(\n                    to_upload_queue,\n                    self.remove_queue,\n                    self.cache_chunks_dir,\n                    self.output_dir,\n                ),\n            )\n            p.start()\n            self.uploaders.append(p)\n            self.to_upload_queues.append(to_upload_queue)\n\n    def _handle_data_chunk_recipe(self, index: int) -> None:\n        try:\n            current_item = self.items[index] if self.reader is None else self.reader.read(self.items[index])\n            item_data_or_generator = self.data_recipe.prepare_item(current_item)\n            if isinstance(item_data_or_generator, types.GeneratorType):\n                for item_data in item_data_or_generator:\n                    if item_data is not None:\n                        chunk_filepath = self.cache._add_item(self._index_counter, item_data)\n                        self._try_upload(chunk_filepath)\n                        self._index_counter += 1\n            elif item_data_or_generator is not None:\n                chunk_filepath = self.cache._add_item(self._index_counter, item_data_or_generator)\n                self._try_upload(chunk_filepath)\n                self._index_counter += 1\n        except Exception as e:\n            raise RuntimeError(f\"Failed processing {self.items[index]}\") from e\n\n    def _handle_data_chunk_recipe_end(self) -> None:\n        chunks_filepaths = self.cache.done()\n\n        if chunks_filepaths and len(self.to_upload_queues):\n            for i, chunk_filepath in enumerate(chunks_filepaths):\n                if isinstance(chunk_filepath, str) and os.path.exists(chunk_filepath):\n                    self.to_upload_queues[i % self.num_uploaders].put(chunk_filepath)\n\n    def _handle_data_transform_recipe(self, index: int) -> None:\n        # Don't use a context manager to avoid deleting files that are being uploaded.\n        output_dir = tempfile.mkdtemp()\n        item = self.items[index] if self.reader is None else self.reader.read(self.items[index])\n        item_data = self.data_recipe.prepare_item(item, str(output_dir), len(self.items) - 1 == index)\n        if item_data is not None:\n            raise ValueError(\n                \"When using a `DataTransformRecipe`, the `prepare_item` shouldn't return anything.\"\n                \" Simply store your files under the output_dir.\"\n            )\n        filepaths = []\n        for directory, _, filenames in os.walk(output_dir):\n            for filename in filenames:\n                filepaths.append(os.path.join(directory, filename))\n\n        for filepath in filepaths:\n            self._try_upload((output_dir, filepath))"
+      }
+    ],
+    "unresolved": [
+      "litdata/processing/data_processor.py:function: _start_downloaders",
+      "litdata/processing/data_processor.py:function: _collect_paths"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 15672
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 45315,
+    "completion_tokens": 606,
+    "total_tokens": 45921,
+    "seconds": 38.722103118896484,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 173.0070993900299,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

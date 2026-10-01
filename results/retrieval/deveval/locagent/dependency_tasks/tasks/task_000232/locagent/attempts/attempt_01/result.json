@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 232,
+  "namespace": "datasette.utils.derive_named_parameters",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10201,
+      "input_estimate_after": 10201,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I have identified the following reusable dependencies for implementing the `derive_named_parameters` function. These locations provide the necessary context, patterns, and dependencies that should be inspected or reused:\n\n```\ndatasette/utils/__init__.py\nline: 256\nfunction: validate_sql_select\n\ndatasette/utils/__init__.py\nline: 204\nclass: InvalidSql\n\ndatasette/views/database.py\nline: 255\nline: 256\nfunction: QueryView.data\n\ndatasette/utils/sqlite.py\nline: 24\nfunction: supports_table_xinfo\n\ndatasette/utils/__init__.py\nline: 12\nline: 13\nimport: re\n```",
+  "final_locations": {
+    "files": [
+      "datasette/utils/__init__.py",
+      "datasette/views/database.py",
+      "datasette/utils/sqlite.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "validate_sql_select",
+        "kind": "function",
+        "symbol": "datasette.utils.validate_sql_select",
+        "start": 256,
+        "end": 265,
+        "code": "def validate_sql_select(sql):\n    sql = \"\\n\".join(\n        line for line in sql.split(\"\\n\") if not line.strip().startswith(\"--\")\n    )\n    sql = sql.strip().lower()\n    if not any(r.match(sql) for r in allowed_sql_res):\n        raise InvalidSql(\"Statement must be a SELECT\")\n    for r, msg in disallawed_sql_res:\n        if r.search(sql):\n            raise InvalidSql(msg)"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "InvalidSql",
+        "kind": "class",
+        "symbol": "datasette.utils.InvalidSql",
+        "start": 204,
+        "end": 205,
+        "code": "class InvalidSql(Exception):\n    pass"
+      },
+      {
+        "file": "datasette/views/database.py",
+        "name": "QueryView.data",
+        "kind": "function",
+        "symbol": "datasette.views.database.QueryView.data",
+        "start": 214,
+        "end": 529,
+        "code": "    async def data(\n        self,\n        request,\n        sql,\n        editable=True,\n        canned_query=None,\n        metadata=None,\n        _size=None,\n        named_parameters=None,\n        write=False,\n    ):\n        database_route = tilde_decode(request.url_vars[\"database\"])\n        try:\n            db = self.ds.get_database(route=database_route)\n        except KeyError:\n            raise NotFound(\"Database not found: {}\".format(database_route))\n        database = db.name\n        params = {key: request.args.get(key) for key in request.args}\n        if \"sql\" in params:\n            params.pop(\"sql\")\n        if \"_shape\" in params:\n            params.pop(\"_shape\")\n\n        private = False\n        if canned_query:\n            # Respect canned query permissions\n            visible, private = await self.ds.check_visibility(\n                request.actor,\n                permissions=[\n                    (\"view-query\", (database, canned_query)),\n                    (\"view-database\", database),\n                    \"view-instance\",\n                ],\n            )\n            if not visible:\n                raise Forbidden(\"You do not have permission to view this query\")\n\n        else:\n            await self.ds.ensure_permissions(request.actor, [(\"execute-sql\", database)])\n\n        # Extract any :named parameters\n        named_parameters = named_parameters or await derive_named_parameters(\n            self.ds.get_database(database), sql\n        )\n        named_parameter_values = {\n            named_parameter: params.get(named_parameter) or \"\"\n            for named_parameter in named_parameters\n            if not named_parameter.startswith(\"_\")\n        }\n\n        # Set to blank string if missing from params\n        for named_parameter in named_parameters:\n            if named_parameter not in params and not named_parameter.startswith(\"_\"):\n                params[named_parameter] = \"\"\n\n        extra_args = {}\n        if params.get(\"_timelimit\"):\n            extra_args[\"custom_time_limit\"] = int(params[\"_timelimit\"])\n        if _size:\n            extra_args[\"page_size\"] = _size\n\n        templates = [f\"query-{to_css_class(database)}.html\", \"query.html\"]\n        if canned_query:\n            templates.insert(\n                0,\n                f\"query-{to_css_class(database)}-{to_css_class(canned_query)}.html\",\n            )\n\n        query_error = None\n\n        # Execute query - as write or as read\n        if write:\n            if request.method == \"POST\":\n                # If database is immutable, return an error\n                if not db.is_mutable:\n                    raise Forbidden(\"Database is immutable\")\n                body = await request.post_body()\n                body = body.decode(\"utf-8\").strip()\n                if body.startswith(\"{\") and body.endswith(\"}\"):\n                    params = json.loads(body)\n                    # But we want key=value strings\n                    for key, value in params.items():\n                        params[key] = str(value)\n                else:\n                    params = dict(parse_qsl(body, keep_blank_values=True))\n                # Should we return JSON?\n                should_return_json = (\n                    request.headers.get(\"accept\") == \"application/json\"\n                    or request.args.get(\"_json\")\n                    or params.get(\"_json\")\n                )\n                if canned_query:\n                    params_for_query = MagicParameters(params, request, self.ds)\n                else:\n                    params_for_query = params\n                ok = None\n                try:\n                    cursor = await self.ds.databases[database].execute_write(\n                        sql, params_for_query\n                    )\n                    message = metadata.get(\n                        \"on_success_message\"\n                    ) or \"Query executed, {} row{} affected\".format(\n                        cursor.rowcount, \"\" if cursor.rowcount == 1 else \"s\"\n                    )\n                    message_type = self.ds.INFO\n                    redirect_url = metadata.get(\"on_success_redirect\")\n                    ok = True\n                except Exception as e:\n                    message = metadata.get(\"on_error_message\") or str(e)\n                    message_type = self.ds.ERROR\n                    redirect_url = metadata.get(\"on_error_redirect\")\n                    ok = False\n                if should_return_json:\n                    return Response.json(\n                        {\n                            \"ok\": ok,\n                            \"message\": message,\n                            \"redirect\": redirect_url,\n                        }\n                    )\n                else:\n                    self.ds.add_message(request, message, message_type)\n                    return self.redirect(request, redirect_url or request.path)\n            else:\n\n                async def extra_template():\n                    return {\n                        \"request\": request,\n                        \"db_is_immutable\": not db.is_mutable,\n                        \"path_with_added_args\": path_with_added_args,\n                        \"path_with_removed_args\": path_with_removed_args,\n                        \"named_parameter_values\": named_parameter_values,\n                        \"canned_query\": canned_query,\n                        \"success_message\": request.args.get(\"_success\") or \"\",\n                        \"canned_write\": True,\n                    }\n\n                return (\n                    {\n                        \"database\": database,\n                        \"rows\": [],\n                        \"truncated\": False,\n                        \"columns\": [],\n                        \"query\": {\"sql\": sql, \"params\": params},\n                        \"private\": private,\n                    },\n                    extra_template,\n                    templates,\n                )\n        else:  # Not a write\n            if canned_query:\n                params_for_query = MagicParameters(params, request, self.ds)\n            else:\n                params_for_query = params\n            try:\n                results = await self.ds.execute(\n                    database, sql, params_for_query, truncate=True, **extra_args\n                )\n                columns = [r[0] for r in results.description]\n            except sqlite3.DatabaseError as e:\n                query_error = e\n                results = None\n                columns = []\n\n        allow_execute_sql = await self.ds.permission_allowed(\n            request.actor, \"execute-sql\", database, default=True\n        )\n\n        async def extra_template():\n            display_rows = []\n            truncate_cells = self.ds.setting(\"truncate_cells_html\")\n            for row in results.rows if results else []:\n                display_row = []\n                for column, value in zip(results.columns, row):\n                    display_value = value\n                    # Let the plugins have a go\n                    # pylint: disable=no-member\n                    plugin_display_value = None\n                    for candidate in pm.hook.render_cell(\n                        row=row,\n                        value=value,\n                        column=column,\n                        table=None,\n                        database=database,\n                        datasette=self.ds,\n                    ):\n                        candidate = await await_me_maybe(candidate)\n                        if candidate is not None:\n                            plugin_display_value = candidate\n                            break\n                    if plugin_display_value is not None:\n                        display_value = plugin_display_value\n                    else:\n                        if value in (\"\", None):\n                            display_value = Markup(\"&nbsp;\")\n                        elif is_url(str(display_value).strip()):\n                            display_value = markupsafe.Markup(\n                                '<a href=\"{url}\">{truncated_url}</a>'.format(\n                                    url=markupsafe.escape(value.strip()),\n                                    truncated_url=markupsafe.escape(\n                                        truncate_url(value.strip(), truncate_cells)\n                                    ),\n                                )\n                            )\n                        elif isinstance(display_value, bytes):\n                            blob_url = path_with_format(\n                                request=request,\n                                format=\"blob\",\n                                extra_qs={\n                                    \"_blob_column\": column,\n                                    \"_blob_hash\": hashlib.sha256(\n                                        display_value\n                                    ).hexdigest(),\n                                },\n                            )\n                            formatted = format_bytes(len(value))\n                            display_value = markupsafe.Markup(\n                                '<a class=\"blob-download\" href=\"{}\"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(\n                                    blob_url,\n                                    ' title=\"{}\"'.format(formatted)\n                                    if \"bytes\" not in formatted\n                                    else \"\",\n                                    len(value),\n                                    \"\" if len(value) == 1 else \"s\",\n                                )\n                            )\n                        else:\n                            display_value = str(value)\n                            if truncate_cells and len(display_value) > truncate_cells:\n                                display_value = (\n                                    display_value[:truncate_cells] + \"\\u2026\"\n                                )\n                    display_row.append(display_value)\n                display_rows.append(display_row)\n\n            # Show 'Edit SQL' button only if:\n            # - User is allowed to execute SQL\n            # - SQL is an approved SELECT statement\n            # - No magic parameters, so no :_ in the SQL string\n            edit_sql_url = None\n            is_validated_sql = False\n            try:\n                validate_sql_select(sql)\n                is_validated_sql = True\n            except InvalidSql:\n                pass\n            if allow_execute_sql and is_validated_sql and \":_\" not in sql:\n                edit_sql_url = (\n                    self.ds.urls.database(database)\n                    + \"?\"\n                    + urlencode(\n                        {\n                            **{\n                                \"sql\": sql,\n                            },\n                            **named_parameter_values,\n                        }\n                    )\n                )\n\n            show_hide_hidden = \"\"\n            if metadata.get(\"hide_sql\"):\n                if bool(params.get(\"_show_sql\")):\n                    show_hide_link = path_with_removed_args(request, {\"_show_sql\"})\n                    show_hide_text = \"hide\"\n                    show_hide_hidden = (\n                        '<input type=\"hidden\" name=\"_show_sql\" value=\"1\">'\n                    )\n                else:\n                    show_hide_link = path_with_added_args(request, {\"_show_sql\": 1})\n                    show_hide_text = \"show\"\n            else:\n                if bool(params.get(\"_hide_sql\")):\n                    show_hide_link = path_with_removed_args(request, {\"_hide_sql\"})\n                    show_hide_text = \"show\"\n                    show_hide_hidden = (\n                        '<input type=\"hidden\" name=\"_hide_sql\" value=\"1\">'\n                    )\n                else:\n                    show_hide_link = path_with_added_args(request, {\"_hide_sql\": 1})\n                    show_hide_text = \"hide\"\n            hide_sql = show_hide_text == \"show\"\n            return {\n                \"display_rows\": display_rows,\n                \"custom_sql\": True,\n                \"named_parameter_values\": named_parameter_values,\n                \"editable\": editable,\n                \"canned_query\": canned_query,\n                \"edit_sql_url\": edit_sql_url,\n                \"metadata\": metadata,\n                \"settings\": self.ds.settings_dict(),\n                \"request\": request,\n                \"show_hide_link\": self.ds.urls.path(show_hide_link),\n                \"show_hide_text\": show_hide_text,\n                \"show_hide_hidden\": markupsafe.Markup(show_hide_hidden),\n                \"hide_sql\": hide_sql,\n            }\n\n        return (\n            {\n                \"ok\": not query_error,\n                \"database\": database,\n                \"query_name\": canned_query,\n                \"rows\": results.rows if results else [],\n                \"truncated\": results.truncated if results else False,\n                \"columns\": columns,\n                \"query\": {\"sql\": sql, \"params\": params},\n                \"error\": str(query_error) if query_error else None,\n                \"private\": private,\n                \"allow_execute_sql\": allow_execute_sql,\n            },\n            extra_template,\n            templates,\n            400 if query_error else 200,\n        )"
+      },
+      {
+        "file": "datasette/utils/sqlite.py",
+        "name": "_sqlite_version",
+        "kind": "function",
+        "symbol": "datasette.utils.sqlite._sqlite_version",
+        "start": 22,
+        "end": 31,
+        "code": "def _sqlite_version():\n    return tuple(\n        map(\n            int,\n            sqlite3.connect(\":memory:\")\n            .execute(\"select sqlite_version()\")\n            .fetchone()[0]\n            .split(\".\"),\n        )\n    )"
+      },
+      {
+        "file": "datasette/utils/sqlite.py",
+        "name": "supports_table_xinfo",
+        "kind": "function",
+        "symbol": "datasette.utils.sqlite.supports_table_xinfo",
+        "start": 34,
+        "end": 35,
+        "code": "def supports_table_xinfo():\n    return sqlite_version() >= (3, 26, 0)"
+      }
+    ],
+    "unresolved": [
+      "datasette/utils/__init__.py:line: 12",
+      "datasette/utils/__init__.py:line: 13"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 14066
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 41719,
+    "completion_tokens": 636,
+    "total_tokens": 42355,
+    "seconds": 80.93609666824341,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 94.31826210021973,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

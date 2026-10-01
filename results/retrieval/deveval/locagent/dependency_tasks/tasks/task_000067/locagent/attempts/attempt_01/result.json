@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 67,
+  "namespace": "hbmqtt.plugins.manager.PluginManager.get_plugin",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4650,
+      "input_estimate_after": 4650,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the reusable dependencies and existing patterns in the PluginManager class that should be used to implement the `get_plugin` method. Here are the key locations containing reusable dependencies:\n\n```\nhbmqtt/plugins/manager.py\nline: 51\nclass: PluginManager\nvariable: _plugins\n\nhbmqtt/plugins/manager.py\nline: 104\nclass: PluginManager\nfunction: PluginManager.plugins\n\nhbmqtt/plugins/manager.py\nline: 170-172\nclass: PluginManager\nfunction: PluginManager.map\n\nhbmqtt/plugins/manager.py\nline: 130-131\nclass: PluginManager\nfunction: PluginManager.fire_event\n\nhbmqtt/plugins/manager.py\nline: 75\nclass: PluginManager\nfunction: PluginManager._load_plugin\n```",
+  "final_locations": {
+    "files": [
+      "hbmqtt/plugins/manager.py"
+    ],
+    "entities": [
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager.__init__",
+        "kind": "function",
+        "symbol": "hbmqtt.plugins.manager.PluginManager.__init__",
+        "start": 38,
+        "end": 54,
+        "code": "    def __init__(self, namespace, context, loop=None):\n        global plugins_manager\n        if loop is not None:\n            self._loop = loop\n        else:\n            self._loop = asyncio.get_event_loop()\n\n        self.logger = logging.getLogger(namespace)\n        if context is None:\n            self.context = BaseContext()\n        else:\n            self.context = context\n        self.context.loop = self._loop\n        self._plugins = []\n        self._load_plugins(namespace)\n        self._fired_events = []\n        plugins_manager[namespace] = self"
+      },
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager",
+        "kind": "class",
+        "symbol": "hbmqtt.plugins.manager.PluginManager",
+        "start": 32,
+        "end": 207,
+        "code": "class PluginManager:\n    \"\"\"\n    Wraps setuptools Entry point mechanism to provide a basic plugin system.\n    Plugins are loaded for a given namespace (group).\n    This plugin manager uses coroutines to run plugin call asynchronously in an event queue\n    \"\"\"\n    def __init__(self, namespace, context, loop=None):\n        global plugins_manager\n        if loop is not None:\n            self._loop = loop\n        else:\n            self._loop = asyncio.get_event_loop()\n\n        self.logger = logging.getLogger(namespace)\n        if context is None:\n            self.context = BaseContext()\n        else:\n            self.context = context\n        self.context.loop = self._loop\n        self._plugins = []\n        self._load_plugins(namespace)\n        self._fired_events = []\n        plugins_manager[namespace] = self\n\n    @property\n    def app_context(self):\n        return self.context\n\n    def _load_plugins(self, namespace):\n        self.logger.debug(\"Loading plugins for namespace %s\" % namespace)\n        for ep in pkg_resources.iter_entry_points(group=namespace):\n            plugin = self._load_plugin(ep)\n            self._plugins.append(plugin)\n            self.logger.debug(\" Plugin %s ready\" % plugin.ep.name)\n\n    def _load_plugin(self, ep: pkg_resources.EntryPoint):\n        try:\n            self.logger.debug(\" Loading plugin %s\" % ep)\n            plugin = ep.load(require=True)\n            self.logger.debug(\" Initializing plugin %s\" % ep)\n            plugin_context = copy.copy(self.app_context)\n            plugin_context.logger = self.logger.getChild(ep.name)\n            obj = plugin(plugin_context)\n            return Plugin(ep.name, ep, obj)\n        except ImportError as ie:\n            self.logger.warning(\"Plugin %r import failed: %s\" % (ep, ie))\n        except pkg_resources.UnknownExtra as ue:\n            self.logger.warning(\"Plugin %r dependencies resolution failed: %s\" % (ep, ue))\n\n    def get_plugin(self, name):\n        pass\n\n\n\n\n\n\n\n\n\n    @asyncio.coroutine\n    def close(self):\n        \"\"\"\n        Free PluginManager resources and cancel pending event methods\n        This method call a close() coroutine for each plugin, allowing plugins to close and free resources\n        :return:\n        \"\"\"\n        yield from self.map_plugin_coro(\"close\")\n        for task in self._fired_events:\n            task.cancel()\n\n    @property\n    def plugins(self):\n        \"\"\"\n        Get the loaded plugins list\n        :return:\n        \"\"\"\n        return self._plugins\n\n    def _schedule_coro(self, coro):\n        return asyncio.ensure_future(coro, loop=self._loop)\n\n    @asyncio.coroutine\n    def fire_event(self, event_name, wait=False, *args, **kwargs):\n        \"\"\"\n        Fire an event to plugins.\n        PluginManager schedule @asyncio.coroutinecalls for each plugin on method called \"on_\" + event_name\n        For example, on_connect will be called on event 'connect'\n        Method calls are schedule in the asyn loop. wait parameter must be set to true to wait until all\n        mehtods are completed.\n        :param event_name:\n        :param args:\n        :param kwargs:\n        :param wait: indicates if fire_event should wait for plugin calls completion (True), or not\n        :return:\n        \"\"\"\n        tasks = []\n        event_method_name = \"on_\" + event_name\n        for plugin in self._plugins:\n            event_method = getattr(plugin.object, event_method_name, None)\n            if event_method:\n                try:\n                    task = self._schedule_coro(event_method(*args, **kwargs))\n                    tasks.append(task)\n\n                    def clean_fired_events(future):\n                        try:\n                            self._fired_events.remove(task)\n                        except (KeyError, ValueError):\n                            pass\n\n                    task.add_done_callback(clean_fired_events)\n                except AssertionError:\n                    self.logger.error(\"Method '%s' on plugin '%s' is not a coroutine\" %\n                                      (event_method_name, plugin.name))\n\n        self._fired_events.extend(tasks)\n        if wait:\n            if tasks:\n                yield from asyncio.wait(tasks, loop=self._loop)\n\n    @asyncio.coroutine\n    def map(self, coro, *args, **kwargs):\n        \"\"\"\n        Schedule a given coroutine call for each plugin.\n        The coro called get the Plugin instance as first argument of its method call\n        :param coro: coro to call on each plugin\n        :param filter_plugins: list of plugin names to filter (only plugin whose name is in filter are called).\n        None will call all plugins. [] will call None.\n        :param args: arguments to pass to coro\n        :param kwargs: arguments to pass to coro\n        :return: dict containing return from coro call for each plugin\n        \"\"\"\n        p_list = kwargs.pop('filter_plugins', None)\n        if p_list is None:\n            p_list = [p.name for p in self.plugins]\n        tasks = []\n        plugins_list = []\n        for plugin in self._plugins:\n            if plugin.name in p_list:\n                coro_instance = coro(plugin, *args, **kwargs)\n                if coro_instance:\n                    try:\n                        tasks.append(self._schedule_coro(coro_instance))\n                        plugins_list.append(plugin)\n                    except AssertionError:\n                        self.logger.error(\"Method '%r' on plugin '%s' is not a coroutine\" %\n                                          (coro, plugin.name))\n        if tasks:\n            ret_list = yield from asyncio.gather(*tasks, loop=self._loop)\n            # Create result map plugin=>ret\n            ret_dict = {k: v for k, v in zip(plugins_list, ret_list)}\n        else:\n            ret_dict = {}\n        return ret_dict\n\n    @staticmethod\n    @asyncio.coroutine\n    def _call_coro(plugin, coro_name, *args, **kwargs):\n        try:\n            coro = getattr(plugin.object, coro_name, None)(*args, **kwargs)\n            return (yield from coro)\n        except TypeError:\n            # Plugin doesn't implement coro_name\n            return None\n\n    @asyncio.coroutine\n    def map_plugin_coro(self, coro_name, *args, **kwargs):\n        \"\"\"\n        Call a plugin declared by plugin by its name\n        :param coro_name:\n        :param args:\n        :param kwargs:\n        :return:\n        \"\"\"\n        return (yield from self.map(self._call_coro, coro_name, *args, **kwargs))"
+      },
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager.plugins",
+        "kind": "function",
+        "symbol": "hbmqtt.plugins.manager.PluginManager.plugins",
+        "start": 104,
+        "end": 109,
+        "code": "    def plugins(self):\n        \"\"\"\n        Get the loaded plugins list\n        :return:\n        \"\"\"\n        return self._plugins"
+      },
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager.map",
+        "kind": "function",
+        "symbol": "hbmqtt.plugins.manager.PluginManager.map",
+        "start": 154,
+        "end": 186,
+        "code": "    def map(self, coro, *args, **kwargs):\n        \"\"\"\n        Schedule a given coroutine call for each plugin.\n        The coro called get the Plugin instance as first argument of its method call\n        :param coro: coro to call on each plugin\n        :param filter_plugins: list of plugin names to filter (only plugin whose name is in filter are called).\n        None will call all plugins. [] will call None.\n        :param args: arguments to pass to coro\n        :param kwargs: arguments to pass to coro\n        :return: dict containing return from coro call for each plugin\n        \"\"\"\n        p_list = kwargs.pop('filter_plugins', None)\n        if p_list is None:\n            p_list = [p.name for p in self.plugins]\n        tasks = []\n        plugins_list = []\n        for plugin in self._plugins:\n            if plugin.name in p_list:\n                coro_instance = coro(plugin, *args, **kwargs)\n                if coro_instance:\n                    try:\n                        tasks.append(self._schedule_coro(coro_instance))\n                        plugins_list.append(plugin)\n                    except AssertionError:\n                        self.logger.error(\"Method '%r' on plugin '%s' is not a coroutine\" %\n                                          (coro, plugin.name))\n        if tasks:\n            ret_list = yield from asyncio.gather(*tasks, loop=self._loop)\n            # Create result map plugin=>ret\n            ret_dict = {k: v for k, v in zip(plugins_list, ret_list)}\n        else:\n            ret_dict = {}\n        return ret_dict"
+      },
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager.fire_event",
+        "kind": "function",
+        "symbol": "hbmqtt.plugins.manager.PluginManager.fire_event",
+        "start": 115,
+        "end": 151,
+        "code": "    def fire_event(self, event_name, wait=False, *args, **kwargs):\n        \"\"\"\n        Fire an event to plugins.\n        PluginManager schedule @asyncio.coroutinecalls for each plugin on method called \"on_\" + event_name\n        For example, on_connect will be called on event 'connect'\n        Method calls are schedule in the asyn loop. wait parameter must be set to true to wait until all\n        mehtods are completed.\n        :param event_name:\n        :param args:\n        :param kwargs:\n        :param wait: indicates if fire_event should wait for plugin calls completion (True), or not\n        :return:\n        \"\"\"\n        tasks = []\n        event_method_name = \"on_\" + event_name\n        for plugin in self._plugins:\n            event_method = getattr(plugin.object, event_method_name, None)\n            if event_method:\n                try:\n                    task = self._schedule_coro(event_method(*args, **kwargs))\n                    tasks.append(task)\n\n                    def clean_fired_events(future):\n                        try:\n                            self._fired_events.remove(task)\n                        except (KeyError, ValueError):\n                            pass\n\n                    task.add_done_callback(clean_fired_events)\n                except AssertionError:\n                    self.logger.error(\"Method '%s' on plugin '%s' is not a coroutine\" %\n                                      (event_method_name, plugin.name))\n\n        self._fired_events.extend(tasks)\n        if wait:\n            if tasks:\n                yield from asyncio.wait(tasks, loop=self._loop)"
+      },
+      {
+        "file": "hbmqtt/plugins/manager.py",
+        "name": "PluginManager._load_plugin",
+        "kind": "function",
+        "symbol": "hbmqtt.plugins.manager.PluginManager._load_plugin",
+        "start": 67,
+        "end": 79,
+        "code": "    def _load_plugin(self, ep: pkg_resources.EntryPoint):\n        try:\n            self.logger.debug(\" Loading plugin %s\" % ep)\n            plugin = ep.load(require=True)\n            self.logger.debug(\" Initializing plugin %s\" % ep)\n            plugin_context = copy.copy(self.app_context)\n            plugin_context.logger = self.logger.getChild(ep.name)\n            obj = plugin(plugin_context)\n            return Plugin(ep.name, ep, obj)\n        except ImportError as ie:\n            self.logger.warning(\"Plugin %r import failed: %s\" % (ep, ie))\n        except pkg_resources.UnknownExtra as ue:\n            self.logger.warning(\"Plugin %r dependencies resolution failed: %s\" % (ep, ue))"
+      }
+    ],
+    "unresolved": [
+      "hbmqtt/plugins/manager.py:variable: _plugins"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "hbmqtt.plugins.manager.PluginManager._plugins"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 10975
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17102,
+    "completion_tokens": 481,
+    "total_tokens": 17583,
+    "seconds": 71.78893709182739,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 74.34629011154175,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

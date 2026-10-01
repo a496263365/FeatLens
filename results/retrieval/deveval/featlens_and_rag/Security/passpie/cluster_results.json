@@ -1,0 +1,1387 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "split_fullname",
+                    "func_desc": "Splits a full name into login and name components .",
+                    "func_file": "credential",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def split_fullname(fullname):\n    regex = re.compile(r'(?:(?P<login>.+?(?:\\@.+?)?)@(?P<name>.+?$))')\n    regex_name_only = re.compile(r'(?P<at>@)?(?P<name>.+?$)')\n\n    if regex.match(fullname):\n        mobj = regex.match(fullname)\n    elif regex_name_only.match(fullname):\n        mobj = regex_name_only.match(fullname)\n    else:\n        raise ValueError(\"Not a valid name\")\n\n    if mobj.groupdict().get('at'):\n        login = \"\"\n    else:\n        login = mobj.groupdict().get('login')\n    name = mobj.groupdict().get(\"name\")\n\n    return login, name",
+                    "func_fullName": "passpie.credential.split_fullname(fullname)"
+                },
+                {
+                    "func_id": 1,
+                    "func_name": "make_fullname",
+                    "func_desc": "Make a full name for a user .",
+                    "func_file": "credential",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_fullname(login, name):\n    fullname = u\"{}@{}\".format(\"\" if login is None else login, name)\n    return fullname",
+                    "func_fullName": "passpie.credential.make_fullname(login, name)"
+                },
+                {
+                    "func_id": 68,
+                    "func_name": "add",
+                    "func_desc": "Add a new credential to the database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def add(db, fullname, password, random, pattern, interactive, comment, force, copy):\n    if random or pattern:\n        pattern = pattern if pattern else db.config['genpass_pattern']\n        password = genpass(pattern=pattern)\n    elif not password:\n        password = click.prompt('Password [empty]',\n                                hide_input=True,\n                                confirmation_prompt=True,\n                                show_default=False,\n                                default=\"\")\n\n    found = db.credential(fullname=fullname)\n    if found and not force:\n        message = u\"Credential {} already exists. --force to overwrite\".format(\n            fullname)\n        raise click.ClickException(click.style(message, fg='yellow'))\n\n    encrypted = encrypt(password, recipient=db.config['recipient'], homedir=db.config['homedir'])\n    db.add(fullname=fullname, password=encrypted, comment=comment)\n\n    if interactive:\n        click.edit(filename=db.filename(fullname))\n\n    if copy:\n        clipboard.copy(password)\n        click.secho('Password copied to clipboard', fg='yellow')\n\n    message = u'Added {}{}'.format(fullname, ' [--force]' if force else '')\n    db.repo.commit(message=message)",
+                    "func_fullName": "passpie.cli.add(db, fullname, password, random, pattern, interactive, comment, force, copy)"
+                },
+                {
+                    "func_id": 70,
+                    "func_name": "update",
+                    "func_desc": "Update a single credential .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def update(db, fullname, name, login, password, random, interactive, pattern, comment):\n    credential = db.credential(fullname)\n    if not credential:\n        message = u\"Credential '{}' not found\".format(fullname)\n        raise click.ClickException(click.style(message, fg='red'))\n\n    if random or pattern:\n        pattern = pattern if pattern else db.config['genpass_pattern']\n        password = genpass(pattern=pattern)\n\n    values = credential.copy()\n    if any([name, login, password, random, comment]):\n        values[\"name\"] = name if name else credential[\"name\"]\n        values[\"login\"] = login if login else credential[\"login\"]\n        values[\"password\"] = password if password else credential[\"password\"]\n        values[\"comment\"] = comment if comment else credential[\"comment\"]\n    else:\n        values[\"name\"] = click.prompt(\"Name\", default=credential[\"name\"])\n        values[\"login\"] = click.prompt(\"Login\", default=credential[\"login\"])\n        values[\"password\"] = click.prompt(\"Password\",\n                                          hide_input=True,\n                                          default=credential[\"password\"],\n                                          confirmation_prompt=True,\n                                          show_default=False,\n                                          prompt_suffix=\" [*****]: \")\n        values[\"comment\"] = click.prompt(\"Comment\",\n                                         default=credential[\"comment\"])\n\n    if values != credential:\n        if values[\"password\"] != credential[\"password\"]:\n            encrypted = encrypt(values[\"password\"],\n                                recipient=db.config['recipient'],\n                                homedir=db.config['homedir'])\n            values['password'] = encrypted\n        db.update(fullname=fullname, values=values)\n        if interactive:\n            click.edit(filename=db.filename(fullname))\n        db.repo.commit(u'Updated {}'.format(credential['fullname']))",
+                    "func_fullName": "passpie.cli.update(db, fullname, name, login, password, random, interactive, pattern, comment)"
+                },
+                {
+                    "func_id": 95,
+                    "func_name": "filename",
+                    "func_desc": "Returns the credpath for the given user .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def filename(self, fullname):\n        login, name = split_fullname(fullname)\n        return self._storage.make_credpath(name=name, login=login)",
+                    "func_fullName": "passpie.database.Database.filename(self, fullname)"
+                },
+                {
+                    "func_id": 96,
+                    "func_name": "credential",
+                    "func_desc": "Query for Credential with login and name .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def credential(self, fullname):\n        login, name = split_fullname(fullname)\n        Credential = Query()\n        if login is None:\n            creds = self.get(Credential.name == name)\n        else:\n            creds = self.get((Credential.login == login) & (Credential.name == name))\n        return creds",
+                    "func_fullName": "passpie.database.Database.credential(self, fullname)"
+                },
+                {
+                    "func_id": 97,
+                    "func_name": "add",
+                    "func_desc": "Add a new credential to the list .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add(self, fullname, password, comment):\n        login, name = split_fullname(fullname)\n        if login is None:\n            logging.error('Cannot add credential with empty login. use \"@<name>\" syntax')\n            return None\n        credential = dict(fullname=fullname,\n                          name=name,\n                          login=login,\n                          password=password,\n                          comment=comment,\n                          modified=datetime.now())\n        self.insert(credential)\n        return credential",
+                    "func_fullName": "passpie.database.Database.add(self, fullname, password, comment)"
+                },
+                {
+                    "func_id": 98,
+                    "func_name": "update",
+                    "func_desc": "Update a credential in the database .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def update(self, fullname, values):\n        login, name = split_fullname(fullname)\n        values['fullname'] = make_fullname(values[\"login\"], values[\"name\"])\n        values['modified'] = datetime.now()\n        Credential = Query()\n        if login is None:\n            query = (Credential.name == name)\n        else:\n            query = ((Credential.login == login) & (Credential.name == name))\n        self.table().update(values, query)",
+                    "func_fullName": "passpie.database.Database.update(self, fullname, values)"
+                },
+                {
+                    "func_id": 106,
+                    "func_name": "genpass",
+                    "func_desc": "generates a password with random chararcters\n   ",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def genpass(pattern=r'[\\w]{32}'):\n    \"\"\"generates a password with random chararcters\n    \"\"\"\n    try:\n        return rstr.xeger(pattern)\n    except re.error as e:\n        raise ValueError(str(e))",
+                    "func_fullName": "passpie.utils.genpass(pattern)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "repeated",
+                    "func_desc": "This function takes a list of credentials and returns a list of repeated credentials .",
+                    "func_file": "checkers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def repeated(credentials, limit):\n    result_credentials = deepcopy(credentials)\n    for i, cred in enumerate(credentials):\n        rep = [c['fullname'] for c in credentials\n               if cred['password'] == c['password'] and\n               cred['fullname'] != c['fullname']][:limit]\n        if not rep:\n            rep = None\n        result_credentials[i]['repeated'] = rep\n    return result_credentials",
+                    "func_fullName": "passpie.checkers.repeated(credentials, limit)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "import_database",
+                    "func_desc": "Import credentials from a file into a database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def import_database(db, filepath, importer, cols):\n    if cols:\n        importer = importers.get(name='csv')\n        kwargs = {'cols': cols}\n    else:\n        importer = importers.find_importer(filepath)\n        kwargs = {}\n\n    if importer:\n        credentials = importer.handle(filepath, **kwargs)\n        for cred in credentials:\n            encrypted = encrypt(cred['password'],\n                                recipient=db.config['recipient'],\n                                homedir=db.config['homedir'])\n            cred['password'] = encrypted\n        db.insert_multiple(credentials)\n        db.repo.commit(message=u'Imported credentials from {}'.format(filepath))",
+                    "func_fullName": "passpie.cli.import_database(db, filepath, importer, cols)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 3,
+                    "func_name": "modified",
+                    "func_desc": "Get a copy of the credentials with the modified time in days ago .",
+                    "func_file": "checkers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def modified(credentials, days):\n    result_credentials = deepcopy(credentials)\n    for i, cred in enumerate(credentials):\n        modified_delta = (datetime.now() - cred[\"modified\"])\n        if modified_delta > timedelta(days=days):\n            modified_time = \"{} days ago\".format(modified_delta.days)\n        else:\n            modified_time = None\n        result_credentials[i]['modified'] = modified_time\n    return result_credentials",
+                    "func_fullName": "passpie.checkers.modified(credentials, days)"
+                },
+                {
+                    "func_id": 37,
+                    "func_name": "handle",
+                    "func_desc": "Return all credentials decrypted from filepath\n       ",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle(self, filepath):\n        \"\"\"Return all credentials decrypted from filepath\n        \"\"\"\n        raise NotImplementedError('Handle should be implemented by base class')",
+                    "func_fullName": "passpie.importers.__init__.BaseImporter.handle(self, filepath)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 4,
+                    "func_name": "which",
+                    "func_desc": "Return the path to the binary in the neccessary language tree .",
+                    "func_file": "_compat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def which(binary):\n    path = _which(binary)\n    if path:\n        realpath = os.path.realpath(path)\n        return realpath\n    return None",
+                    "func_fullName": "passpie._compat.which(binary)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "ensure_keys",
+                    "func_desc": "Ensure keys file exists .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_keys(path):\n    keys_path = os.path.join(os.path.expanduser(path), '.keys')\n    if os.path.isfile(keys_path):\n        return keys_path",
+                    "func_fullName": "passpie.crypt.ensure_keys(path)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "make_key_input",
+                    "func_desc": "Make a key input string from the passphrase and key length .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_key_input(passphrase, key_length):\n    passphrase = unicode(passphrase)\n    key_length = unicode(key_length)\n    key_input = KEY_INPUT.format(key_length, passphrase)\n    return key_input",
+                    "func_fullName": "passpie.crypt.make_key_input(passphrase, key_length)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "export_keys",
+                    "func_desc": "Export all keys in the system .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def export_keys(homedir):\n    command = [\n        which('gpg2') or which('gpg'),\n        '--no-version',\n        '--no-tty',\n        '--homedir', homedir,\n        '--export',\n        '--armor',\n        '-o', '-'\n    ]\n    output, error = process.call(command)\n    return output",
+                    "func_fullName": "passpie.crypt.export_keys(homedir)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "export_secret_keys",
+                    "func_desc": "Export secret keys from the given homedir to the given passphrase .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def export_secret_keys(homedir, passphrase):\n    command = [\n        which('gpg2') or which('gpg'),\n        '--no-version',\n        '--no-tty',\n        '--pinentry-mode', 'loopback',\n        '--passphrase-fd', '0',\n        '--homedir', homedir,\n        '--export-secret-keys',\n        '--armor',\n        '-o', '-'\n    ]\n    output, error = process.call(command, input=passphrase)\n    if error:\n        # Fallback command in case that GPG version < 2.1\n        # with versions lower than 2.1 it was possible to\n        # export secret keys without passphrase\n        fallback_command = [\n            which('gpg2') or which('gpg'),\n            '--no-version',\n            '--no-tty',\n            '--homedir', homedir,\n            '--export-secret-keys',\n            '--armor',\n            '-o', '-'\n        ]\n        output, error = process.call(fallback_command)\n    return output",
+                    "func_fullName": "passpie.crypt.export_secret_keys(homedir, passphrase)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "create_keys",
+                    "func_desc": "Create a new key file with the given passphrase .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def create_keys(passphrase, path=None, key_length=4096):\n    homedir = tempdir()\n    command = [\n        which('gpg2') or which('gpg'),\n        '--batch',\n        '--no-tty',\n        '--homedir', homedir,\n        '--gen-key',\n    ]\n    key_input = make_key_input(passphrase, key_length)\n    output, error = process.call(command, input=key_input)\n    if path:\n        with open(path, 'w') as keysfile:\n            keysfile.write(export_keys(homedir))\n            keysfile.write(export_secret_keys(homedir, passphrase))\n    else:\n        return output",
+                    "func_fullName": "passpie.crypt.create_keys(passphrase, path, key_length)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "import_keys",
+                    "func_desc": "Imports a set of keys from a file into a given homedir .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def import_keys(keys_path, homedir):\n    command = [\n        which('gpg2') or which('gpg'),\n        '--no-tty',\n        '--batch',\n        '--no-secmem-warning',\n        '--no-permission-warning',\n        '--no-mdc-warning',\n        '--homedir', homedir,\n        '--import', keys_path\n    ]\n    output, err = process.call(command)\n    return homedir",
+                    "func_fullName": "passpie.crypt.import_keys(keys_path, homedir)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "setup_crypt",
+                    "func_desc": "Setup the crypt configuration .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def setup_crypt(configuration):\n    keys_filepath = ensure_keys(configuration['path'])\n    if keys_filepath:\n        configuration['homedir'] = tempdir()\n        import_keys(keys_filepath, configuration['homedir'])\n    if not configuration['recipient']:\n        configuration['recipient'] = get_default_recipient(configuration['homedir'])\n    return configuration",
+                    "func_fullName": "passpie.config.setup_crypt(configuration)"
+                },
+                {
+                    "func_id": 109,
+                    "func_name": "tempdir",
+                    "func_desc": "Returns a temporary directory .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def tempdir():\n    return tempfile.mkdtemp()",
+                    "func_fullName": "passpie.utils.tempdir()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 5,
+                    "func_name": "is_python2",
+                    "func_desc": "Return True if this is a Python 2 environment .",
+                    "func_file": "_compat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def is_python2():\n    return sys.version_info < (3,)",
+                    "func_fullName": "passpie._compat.is_python2()"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "unicode_csv_reader",
+                    "func_desc": "Generator that yields unicode data from CSV file .",
+                    "func_file": "csv_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def unicode_csv_reader(utf8_data, dialect=csv.excel, **kwargs):\n    csv_reader = csv.reader(utf8_data, dialect=dialect, **kwargs)\n    for row in csv_reader:\n        if is_python2():\n            yield [unicode(cell, 'utf-8') for cell in row]\n        else:\n            yield [str(cell) for cell in row]",
+                    "func_fullName": "passpie.importers.csv_importer.unicode_csv_reader(utf8_data, dialect, kwargs)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "handle",
+                    "func_desc": "Handle a single nag - sequence of credential objects .",
+                    "func_file": "csv_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle(self, filepath, cols):\n        credentials = []\n        with open(filepath) as csv_file:\n            reader = unicode_csv_reader(csv_file)\n            try:\n                next(reader)\n            except StopIteration:\n                raise ValueError('empty csv file: %s' % filepath)\n            for row in reader:\n                credential = {\n                    'name': row[cols['name']],\n                    'login': row[cols.get('login', '')],\n                    'password': row[cols['password']],\n                    'comment': row[cols.get('comment', '')],\n                }\n                credentials.append(credential)\n        return credentials",
+                    "func_fullName": "passpie.importers.csv_importer.CSVImporter.handle(self, filepath, cols)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "match",
+                    "func_desc": "Check if a file matches the headers of the nagios .",
+                    "func_file": "keepass_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, filepath):\n        expected_headers = ['Group', 'Title', 'Username', 'Password', 'URL', 'Notes']\n        with open(filepath) as csv_file:\n            reader = unicode_csv_reader(csv_file)\n            try:\n                headers = next(reader)\n            except StopIteration:\n                raise ValueError('empty csv file: %s' % filepath)\n            return headers == expected_headers\n        return False",
+                    "func_fullName": "passpie.importers.keepass_importer.KeepassImporter.match(self, filepath)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "handle",
+                    "func_desc": "This function returns a list of dict with name login password comment .",
+                    "func_file": "keepass_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle(self, filepath, **kwargs):\n        credentials = []\n        with open(filepath) as csv_file:\n            reader = unicode_csv_reader(csv_file)\n            try:\n                next(reader)\n            except StopIteration:\n                raise ValueError('empty csv file: %s' % filepath)\n            for row in reader:\n                credential = {\n                    'name': row[4],\n                    'login': row[2],\n                    'password': row[3],\n                    'comment': row[5],\n                }\n                credentials.append(credential)\n        return credentials",
+                    "func_fullName": "passpie.importers.keepass_importer.KeepassImporter.handle(self, filepath, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 6,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new NotFound exception .",
+                    "func_file": "_compat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, message=\"No such file or directory\"):\n        super(FileNotFoundError, self).__init__(2, message)",
+                    "func_fullName": "passpie._compat.FileNotFoundError.__init__(self, message)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a FileExistsError with a message .",
+                    "func_file": "_compat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, message=\"File exists\"):\n        super(FileExistsError, self).__init__(17, message)",
+                    "func_fullName": "passpie._compat.FileExistsError.__init__(self, message)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "__exit__",
+                    "func_desc": "Exit the process if it has a exit method .",
+                    "func_file": "process",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __exit__(self, *args, **kwargs):\n        if hasattr(super(Proc, self), '__exit__'):\n            super(Proc, self).__exit__(*args, **kwargs)",
+                    "func_fullName": "passpie.process.Proc.__exit__(self, args, kwargs)"
+                },
+                {
+                    "func_id": 94,
+                    "func_name": "has_keys",
+                    "func_desc": "Checks if the log file contains keys .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def has_keys(self):\n        return os.path.exists(os.path.join(self.path, '.keys'))",
+                    "func_fullName": "passpie.database.Database.has_keys(self)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "log",
+                    "func_desc": "Log a message to the console .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def log(self, message):\n        logging.debug(message)",
+                    "func_fullName": "passpie.importers.__init__.BaseImporter.log(self, message)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 14,
+                    "func_name": "get_default_recipient",
+                    "func_desc": "Get default recipient from system .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_default_recipient(homedir, secret=False):\n    command = [\n        which('gpg2') or which('gpg'),\n        '--no-tty',\n        '--batch',\n        '--no-secmem-warning',\n        '--no-permission-warning',\n        '--no-mdc-warning',\n        '--list-{}-keys'.format('secret' if secret else 'public'),\n        '--fingerprint',\n        '--homedir', homedir,\n    ]\n    output, _ = process.call(command)\n    for line in output.splitlines():\n        try:\n            mobj = re.search(r'(([0-9A-F]{4}\\s*?){10})', line)\n            fingerprint = mobj.group().replace(' ', '')\n            return fingerprint\n        except (AttributeError, IndexError):\n            continue\n    return ''",
+                    "func_fullName": "passpie.crypt.get_default_recipient(homedir, secret)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "encrypt",
+                    "func_desc": "Encrypt data with a single recipient .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def encrypt(data, recipient, homedir):\n    recipient = recipient if recipient else get_default_recipient(homedir)\n    command = [\n        which('gpg2') or which('gpg'),\n        '--batch',\n        '--no-tty',\n        '--always-trust',\n        '--armor',\n        '--recipient', recipient,\n        '--homedir', homedir,\n        '--encrypt'\n    ]\n    output, _ = process.call(command, input=data)\n    return output",
+                    "func_fullName": "passpie.crypt.encrypt(data, recipient, homedir)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "decrypt",
+                    "func_desc": "Decrypt a file with a specific recipient .",
+                    "func_file": "crypt",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def decrypt(data, recipient, passphrase, homedir):\n    recipient = recipient if recipient else get_default_recipient(homedir)\n    with NamedTemporaryFile(\"w\", delete=False) as armored_file:\n        armored_file.write(data)\n        command = [\n            which('gpg2') or which('gpg'),\n            '--no-version',\n            '--no-tty',\n            '--pinentry-mode', 'loopback',\n            '--passphrase-fd', '0',\n            '--always-trust',\n            '--homedir', homedir,\n            '--armor',\n            '--decrypt', armored_file.name,\n        ]\n\n    output, error = process.call(command, input=passphrase)\n    if error:\n        # Fallback command in case that GPG version < 2.1\n        # with versions lower than 2.1 it was possible to\n        # decrypt armored data with passphrase as an option\n        # now passphrases have to piped loopback\n        command = [\n            which('gpg2') or which('gpg'),\n            '--batch',\n            '--no-tty',\n            '--always-trust',\n            '--passphrase', passphrase,\n            '--recipient', recipient,\n            '--homedir', homedir,\n            '-o', '-',\n            '--decrypt', \"-\",\n        ]\n        output, error = process.call(command, input=data)\n    return output",
+                    "func_fullName": "passpie.crypt.decrypt(data, recipient, passphrase, homedir)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "ensure_passphrase",
+                    "func_desc": "Ensures that a passphrase is correct for a given recipient in a given homedir .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_passphrase(passphrase, config):\n    encrypted = encrypt('OK', recipient=config['recipient'], homedir=config['homedir'])\n    decrypted = decrypt(encrypted,\n                        recipient=config['recipient'],\n                        passphrase=passphrase,\n                        homedir=config['homedir'])\n    if not decrypted == 'OK':\n        message = \"Wrong passphrase\"\n        message_full = u\"Wrong passphrase for recipient: {} in homedir: {}\".format(\n            config['recipient'],\n            config['homedir'],\n        )\n        logging.debug(message_full)\n        raise click.ClickException(click.style(message, fg='red'))",
+                    "func_fullName": "passpie.cli.ensure_passphrase(passphrase, config)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "copy",
+                    "func_desc": "Copy a user s credential to a clipboard or to stdout .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def copy(db, fullname, passphrase, to, clear):\n    ensure_passphrase(passphrase, db.config)\n    clear = clear if clear else db.config['copy_timeout']\n    credential = db.credential(fullname)\n    if not credential:\n        message = u\"Credential '{}' not found\".format(fullname)\n        raise click.ClickException(click.style(message, fg='red'))\n\n    encrypted = credential[\"password\"]\n    decrypted = decrypt(encrypted,\n                        recipient=db.config['recipient'],\n                        passphrase=passphrase,\n                        homedir=db.config['homedir'])\n    if to == 'clipboard':\n        clipboard.copy(decrypted, clear)\n        if not clear:\n            click.secho('Password copied to clipboard', fg='yellow')\n    elif to == 'stdout':\n        click.echo(decrypted)",
+                    "func_fullName": "passpie.cli.copy(db, fullname, passphrase, to, clear)"
+                },
+                {
+                    "func_id": 73,
+                    "func_name": "status",
+                    "func_desc": "Display a list of all user credentials .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def status(db, full, days, passphrase):\n    ensure_passphrase(passphrase, db.config)\n    credentials = db.credentials()\n\n    for cred in credentials:\n        decrypted = decrypt(cred['password'],\n                            recipient=db.config['recipient'],\n                            passphrase=passphrase,\n                            homedir=db.config['homedir'])\n        cred[\"password\"] = decrypted\n\n    if credentials:\n        limit = db.config['status_repeated_passwords_limit']\n        credentials = checkers.repeated(credentials, limit)\n        credentials = checkers.modified(credentials, days)\n\n        for c in credentials:\n            if c['repeated']:\n                c['repeated'] = click.style(str(c['repeated']), 'red')\n            if c['modified']:\n                c['modified'] = click.style(str(c['modified']), 'red')\n\n        table = Table(['fullname', 'repeated', 'modified'],\n                      table_format=db.config['table_format'],\n                      missing=click.style('OK', 'green'))\n        click.echo(table.render(credentials))",
+                    "func_fullName": "passpie.cli.status(db, full, days, passphrase)"
+                },
+                {
+                    "func_id": 75,
+                    "func_name": "export_database",
+                    "func_desc": "Export database to filepath .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def export_database(db, filepath, as_json, passphrase):\n    ensure_passphrase(passphrase, db.config)\n    credentials = db.all()\n\n    for cred in credentials:\n        decrypted = decrypt(cred['password'],\n                            recipient=db.config['recipient'],\n                            passphrase=passphrase,\n                            homedir=db.config['homedir'])\n        cred[\"password\"] = decrypted\n\n    if as_json:\n        for cred in credentials:\n            cred[\"modified\"] = str(cred[\"modified\"])\n        dict_content = {\n            'handler': 'passpie',\n            'version': 1.0,\n            'credentials': [dict(x) for x in credentials],\n        }\n        content = json.dumps(dict_content, indent=2)\n    else:\n        dict_content = {\n            'handler': 'passpie',\n            'version': 1.0,\n            'credentials': [dict(x) for x in credentials],\n        }\n        content = yaml.dump(dict_content, default_flow_style=False)\n\n    filepath.write(content)",
+                    "func_fullName": "passpie.cli.export_database(db, filepath, as_json, passphrase)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "reset",
+                    "func_desc": "Reset database with a new passphrase .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def reset(db, passphrase):\n    ensure_passphrase(passphrase, db.config)\n    credentials = db.credentials()\n    if credentials:\n        # decrypt all credentials\n        for cred in credentials:\n            decrypted = decrypt(cred['password'],\n                                recipient=db.config['recipient'],\n                                passphrase=passphrase,\n                                homedir=db.config['homedir'])\n            cred[\"password\"] = decrypted\n\n        # recreate keys if exists\n        if db.has_keys():\n            new_passphrase = click.prompt('New passphrase',\n                                          hide_input=True,\n                                          confirmation_prompt=True)\n            create_keys(new_passphrase)\n\n        # encrypt passwords\n        for cred in credentials:\n            cred['password'] = encrypt(cred['password'],\n                                       recipient=db.config['recipient'],\n                                       homedir=db.config['homedir'])\n\n        # remove old and insert re-encrypted credentials\n        db.purge()\n        db.insert_multiple(credentials)\n\n        # commit\n        db.repo.commit(message='Reset database')",
+                    "func_fullName": "passpie.cli.reset(db, passphrase)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 17,
+                    "func_name": "is_repo_url",
+                    "func_desc": "Check if path is a git repository URL .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def is_repo_url(path):\n    if path:\n        return re.match(\n            r'((git|ssh|http(s)?)|(git@[\\w\\.]+))(:(//)?)([\\w\\.@\\:/\\-~]+)(\\.git)(/)?',\n            path\n        ) is not None",
+                    "func_fullName": "passpie.config.is_repo_url(path)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "ensure_git",
+                    "func_desc": "A decorator to ensure that a function is run with a git repository .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_git(return_value=None):\n    def decorator(func):\n        @wraps(func)\n        def wrapper(*args, **kwargs):\n            if which('git'):\n                return func(*args, **kwargs)\n            else:\n                logging.error('git is not installed')\n            return return_value\n        return wrapper\n    return decorator",
+                    "func_fullName": "passpie.history.ensure_git(return_value)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "decorator",
+                    "func_desc": "A function decorator to check if git is installed .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def decorator(func):\n        @wraps(func)\n        def wrapper(*args, **kwargs):\n            if which('git'):\n                return func(*args, **kwargs)\n            else:\n                logging.error('git is not installed')\n            return return_value\n        return wrapper",
+                    "func_fullName": "passpie.history.ensure_git.decorator(func)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "wrapper",
+                    "func_desc": "Wrapper for git command .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def wrapper(*args, **kwargs):\n            if which('git'):\n                return func(*args, **kwargs)\n            else:\n                logging.error('git is not installed')\n            return return_value",
+                    "func_fullName": "passpie.history.ensure_git.decorator.wrapper(args, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 18,
+                    "func_name": "read",
+                    "func_desc": "Read a configuration file from a given path .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def read(path, filename='.config'):\n    try:\n        if os.path.isdir(path):\n            path = os.path.join(path, '.config')\n        with open(path) as config_file:\n            content = config_file.read()\n        configuration = yaml.load(content)\n    except IOError:\n        logging.debug(u'config file \"{}\" not found'.format(path))\n        return {}\n    except yaml.scanner.ScannerError as e:\n        logging.error(u'Malformed user configuration file: {}'.format(e))\n        return {}\n    return configuration or {}",
+                    "func_fullName": "passpie.config.read(path, filename)"
+                },
+                {
+                    "func_id": 66,
+                    "func_name": "check_config",
+                    "func_desc": "Show current configuration for shell",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def check_config(db, level):\n    \"\"\"Show current configuration for shell\"\"\"\n    if level == 'global':\n        configuration = config.read(config.HOMEDIR, '.passpierc')\n    elif level == 'local':\n        configuration = config.read(os.path.join(db.path))\n    elif level == 'current':\n        configuration = db.config\n\n    if configuration:\n        click.echo(yaml.safe_dump(configuration, default_flow_style=False))",
+                    "func_fullName": "passpie.cli.check_config(db, level)"
+                },
+                {
+                    "func_id": 91,
+                    "func_name": "read",
+                    "func_desc": "Reads the sequence of sequence sequence from the file .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def read(self):\n        elements = []\n        for rootdir, dirs, files in os.walk(self.path):\n            filenames = [f for f in files if f.endswith(self.extension)]\n            for filename in filenames:\n                docpath = os.path.join(rootdir, filename)\n                with open(docpath) as f:\n                    elements.append(yaml.load(f.read()))\n\n        return {\"_default\":\n                {idx: elem for idx, elem in enumerate(elements, start=1)}}",
+                    "func_fullName": "passpie.database.PasspieStorage.read(self)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "match",
+                    "func_desc": "Check if a file matches the given policy .",
+                    "func_file": "default_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, filepath):\n        try:\n            with open(filepath) as fp:\n                file_content = fp.read()\n        except OSError:\n            return False\n\n        try:\n            dict_content = yaml.load(file_content)\n        except (ReaderError, ScannerError):\n            return False\n\n        try:\n            assert dict_content.get('handler') == 'passpie'\n            assert isinstance(dict_content.get('version'), float)\n        except AssertionError:\n            return False\n\n        return True",
+                    "func_fullName": "passpie.importers.default_importer.DefaultImporter.match(self, filepath)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "handle",
+                    "func_desc": "Handle a single NAV user credential file .",
+                    "func_file": "default_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle(self, filepath):\n        with open(filepath) as fp:\n            file_content = fp.read()\n        dict_content = yaml.load(file_content)\n        credentials = dict_content.get('credentials')\n        return credentials",
+                    "func_fullName": "passpie.importers.default_importer.DefaultImporter.handle(self, filepath)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 19,
+                    "func_name": "create",
+                    "func_desc": "Create a configuration file with the given defaults .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def create(path, defaults={}, filename='.config'):\n    config_path = os.path.join(os.path.expanduser(path), filename)\n    with open(config_path, 'w') as config_file:\n        config_file.write(yaml.dump(defaults, default_flow_style=False))",
+                    "func_fullName": "passpie.config.create(path, defaults, filename)"
+                },
+                {
+                    "func_id": 89,
+                    "func_name": "make_credpath",
+                    "func_desc": "Make a path to a credential file .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def make_credpath(self, name, login):\n        dirname, filename = name, login + self.extension\n        credpath = os.path.join(self.path, dirname, filename)\n        return credpath",
+                    "func_fullName": "passpie.database.PasspieStorage.make_credpath(self, name, login)"
+                },
+                {
+                    "func_id": 90,
+                    "func_name": "delete",
+                    "func_desc": "Delete a list of credentials .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def delete(self, credentials):\n        for cred in credentials:\n            credpath = self.make_credpath(cred[\"name\"], cred[\"login\"])\n            os.remove(credpath)\n            if not os.listdir(os.path.dirname(credpath)):\n                shutil.rmtree(os.path.dirname(credpath))",
+                    "func_fullName": "passpie.database.PasspieStorage.delete(self, credentials)"
+                },
+                {
+                    "func_id": 92,
+                    "func_name": "write",
+                    "func_desc": "Write a dict of default credentials to a file .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def write(self, data):\n        from .utils import mkdir_open\n        deleted = [c for c in self.read()[\"_default\"].values()\n                   if c not in data[\"_default\"].values()]\n        self.delete(deleted)\n\n        for eid, cred in data[\"_default\"].items():\n            credpath = self.make_credpath(cred[\"name\"], cred[\"login\"])\n            with mkdir_open(credpath, \"w\") as f:\n                f.write(yaml.safe_dump(dict(cred), default_flow_style=False))",
+                    "func_fullName": "passpie.database.PasspieStorage.write(self, data)"
+                },
+                {
+                    "func_id": 107,
+                    "func_name": "mkdir_open",
+                    "func_desc": "Open file and create directory if it doesn t exist .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def mkdir_open(path, mode=\"r\"):\n    try:\n        dir_path = os.path.dirname(path)\n        os.makedirs(dir_path)\n    except OSError as exc:\n        if exc.errno == errno.EEXIST and os.path.isdir(dir_path):\n            pass\n        else:\n            raise\n    with open(path, mode) as fd:\n        yield fd",
+                    "func_fullName": "passpie.utils.mkdir_open(path, mode)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "communicate",
+                    "func_desc": "This method is a wrapper around the communicate method .",
+                    "func_file": "process",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def communicate(self, **kwargs):\n        if kwargs.get('input') and isinstance(kwargs['input'], basestring):\n            kwargs['input'] = kwargs['input'].encode('utf-8')\n        return super(Proc, self).communicate(**kwargs)",
+                    "func_fullName": "passpie.process.Proc.communicate(self, kwargs)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "__enter__",
+                    "func_desc": "This method is called by the process module when the process is entering a new process .",
+                    "func_file": "process",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __enter__(self, *args, **kwargs):\n        if hasattr(super(Proc, self), '__enter__'):\n            return super(Proc, self).__enter__(*args, **kwargs)\n        return self",
+                    "func_fullName": "passpie.process.Proc.__enter__(self, args, kwargs)"
+                },
+                {
+                    "func_id": 24,
+                    "func_name": "call",
+                    "func_desc": "A wrapper for subprocess . Popen that wraps the communicate with a sequence of arguments .",
+                    "func_file": "process",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def call(*args, **kwargs):\n    if logging.getLogger().getEffectiveLevel() == logging.DEBUG:\n        stderr = PIPE\n    else:\n        stderr = DEVNULL\n\n    kwargs.setdefault('stderr', stderr)\n    kwargs.setdefault('stdout', PIPE)\n    kwargs.setdefault('stdin', PIPE)\n    kwargs.setdefault('shell', False)\n    kwargs_input = kwargs.pop('input', None)\n\n    with Proc(*args, **kwargs) as proc:\n        logging.debug(\" \".join(args[0]))\n        output, error = proc.communicate(input=kwargs_input)\n        try:\n            output = output.decode('utf-8')\n            error = error.decode('utf-8')\n        except AttributeError:\n            pass\n        return output, error",
+                    "func_fullName": "passpie.process.call(args, kwargs)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "logging_exception",
+                    "func_desc": "A decorator to log exceptions .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def logging_exception(exceptions=[Exception]):\n    def decorator(func):\n        @wraps(func)\n        def wrapper(*args, **kwargs):\n            try:\n                return func(*args, **kwargs)\n            except (click.ClickException, click.Abort):\n                raise\n            except tuple(exceptions) as e:\n                logging_level = logging.getLogger().getEffectiveLevel()\n                if logging_level == logging.DEBUG:\n                    raise\n                elif logging_level == logging.CRITICAL:\n                    pass\n                else:\n                    logging.error(str(e))\n                sys.exit(1)\n        return wrapper\n    return decorator",
+                    "func_fullName": "passpie.cli.logging_exception(exceptions)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "decorator",
+                    "func_desc": "A decorator to wrap a function to raise an exception if the function fails .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def decorator(func):\n        @wraps(func)\n        def wrapper(*args, **kwargs):\n            try:\n                return func(*args, **kwargs)\n            except (click.ClickException, click.Abort):\n                raise\n            except tuple(exceptions) as e:\n                logging_level = logging.getLogger().getEffectiveLevel()\n                if logging_level == logging.DEBUG:\n                    raise\n                elif logging_level == logging.CRITICAL:\n                    pass\n                else:\n                    logging.error(str(e))\n                sys.exit(1)\n        return wrapper",
+                    "func_fullName": "passpie.cli.logging_exception.decorator(func)"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "wrapper",
+                    "func_desc": "A wrapper for the command line tool .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def wrapper(*args, **kwargs):\n            try:\n                return func(*args, **kwargs)\n            except (click.ClickException, click.Abort):\n                raise\n            except tuple(exceptions) as e:\n                logging_level = logging.getLogger().getEffectiveLevel()\n                if logging_level == logging.DEBUG:\n                    raise\n                elif logging_level == logging.CRITICAL:\n                    pass\n                else:\n                    logging.error(str(e))\n                sys.exit(1)",
+                    "func_fullName": "passpie.cli.logging_exception.decorator.wrapper(args, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 48,
+                    "func_name": "clone",
+                    "func_desc": "Clone a git repository into a temporary directory .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def clone(url, dest=None, depth=None):\n    if dest and os.path.exists(dest):\n        raise FileExistsError('Destination already exists: %s' % dest)\n    dest = dest if dest else tempdir()\n    cmd = ['git', 'clone', url, dest]\n    if depth:\n        cmd += ['--depth', depth]\n    process.call(cmd)\n    return dest",
+                    "func_fullName": "passpie.history.clone(url, dest, depth)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "init",
+                    "func_desc": "Initialize the language files .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def init(self):\n        cmd = ['git', 'init', self.path]\n        process.call(cmd)",
+                    "func_fullName": "passpie.history.Repository.init(self)"
+                },
+                {
+                    "func_id": 67,
+                    "func_name": "init",
+                    "func_desc": "Initialize a database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def init(db, force, clone_repo, recipient, no_git, passphrase):\n    if force:\n        if os.path.isdir(db.path):\n            shutil.rmtree(db.path)\n            logging.info('removed directory %s' % db.path)\n        elif os.path.isfile(db.path):\n            os.remove(db.path)\n            logging.info('removed file %s' % db.path)\n\n    try:\n        if clone_repo and not config.is_repo_url(db.path):\n            if config.is_repo_url(clone_repo):\n                clone(clone_repo, db.path)\n            else:\n                message = u\"url is not a remote repo: {}\".format(clone_repo)\n                raise click.ClickException(click.style(message, fg='red'))\n        else:\n            os.makedirs(db.path)\n    except (SystemError, OSError):\n        message = u\"Path exists '{}'. `--force` to overwrite\".format(db.path)\n        raise click.ClickException(click.style(message, fg='red'))\n\n    if recipient:\n        logging.info('create .passpierc file at %s' % db.path)\n        config.create(db.path, defaults=dict(recipient=recipient))\n    else:\n        logging.info('create .passpierc file at %s' % db.path)\n        config.create(db.path, defaults={})\n        if not passphrase:\n            passphrase = click.prompt('Passphrase',\n                                      hide_input=True,\n                                      confirmation_prompt=True)\n        keys_filepath = os.path.join(db.config['path'], '.keys')\n        create_keys(passphrase, keys_filepath, key_length=db.config['key_length'])\n\n    if not no_git:\n        logging.info('init git repository in %s' % db.path)\n        db.repo.init()\n        db.repo.commit(message='Initialized git repository', add=True)\n\n    click.echo(\"Initialized database in {}\".format(db.path))",
+                    "func_fullName": "passpie.cli.init(db, force, clone_repo, recipient, no_git, passphrase)"
+                },
+                {
+                    "func_id": 113,
+                    "func_name": "validate_config",
+                    "func_desc": "Validate the configuration file .",
+                    "func_file": "validators",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_config(ctx, param, value):\n    overrides = {k: v for k, v in ctx.params.items() if v}\n    configuration = {}\n    configuration.update(config.DEFAULT)                             # Default configuration\n    configuration.update(config.read(config.HOMEDIR, '.passpierc'))  # Global configuration\n    if value:\n        configuration.update(config.read(value))                     # Options configuration\n    configuration.update(overrides)                                  # Command line options\n\n    if config.is_repo_url(configuration['path']) is True:\n        temporary_path = clone(configuration['path'], depth=\"1\")\n        configuration['path'] = temporary_path\n\n    configuration.update(config.read(configuration['path']))\n    configuration = config.setup_crypt(configuration)\n    return configuration",
+                    "func_fullName": "passpie.validators.validate_config(ctx, param, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 49,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object with the given path and autopull and autopush attributes .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, path, autopull=None, autopush=None):\n        self.path = path\n        self.autopush = autopush\n        self.autopull = autopull\n        self.author = \"Passpie <passpie@localhost>\"\n        if autopull:\n            self.pull_rebase(*autopull)",
+                    "func_fullName": "passpie.history.Repository.__init__(self, path, autopull, autopush)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "pull_rebase",
+                    "func_desc": "Pull a rebase branch from the master branch .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def pull_rebase(self, remote='origin', branch='master'):\n        cmd = ['git', 'pull', '--rebase', remote, branch]\n        process.call(cmd, cwd=self.path)",
+                    "func_fullName": "passpie.history.Repository.pull_rebase(self, remote, branch)"
+                },
+                {
+                    "func_id": 110,
+                    "func_name": "touch",
+                    "func_desc": "Create a new empty sequence tag file at the given path .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def touch(path):\n    with open(path, \"w\"):\n        pass",
+                    "func_fullName": "passpie.utils.touch(path)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 52,
+                    "func_name": "push",
+                    "func_desc": "Push the current branch to the given remote .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def push(self, remote='origin', branch='master'):\n        cmd = ['git', 'push', remote, branch]\n        process.call(cmd, cwd=self.path)",
+                    "func_fullName": "passpie.history.Repository.push(self, remote, branch)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "add",
+                    "func_desc": "Add a sequence of tokens to the current tree .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add(self, all=False):\n        if all is True:\n            cmd = ['git', 'add', '--all', '.']\n        else:\n            cmd = ['git', 'add', '.']\n        process.call(cmd, cwd=self.path)",
+                    "func_fullName": "passpie.history.Repository.add(self, all)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "commit",
+                    "func_desc": "Commit the current commit .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def commit(self, message, add=True):\n        author_option = \"--author={}\".format(self.author)\n        if add:\n            self.add(all=True)\n        cmd = ['git', 'commit', author_option, '-m', message]\n        process.call(cmd, cwd=self.path)\n        if self.autopush:\n            self.push()",
+                    "func_fullName": "passpie.history.Repository.commit(self, message, add)"
+                },
+                {
+                    "func_id": 71,
+                    "func_name": "remove",
+                    "func_desc": "Remove all the neccesary logins from the database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def remove(db, fullname, yes):\n    credentials = db.credentials(fullname=fullname)\n\n    if credentials:\n        if not yes:\n            creds = ', '.join([c['fullname'] for c in credentials])\n            click.confirm(\n                u'Remove credentials: ({})'.format(\n                    click.style(creds, 'yellow')),\n                abort=True\n            )\n        for credential in credentials:\n            db.remove(credential['fullname'])\n\n        fullnames = ', '.join(c['fullname'] for c in credentials)\n        db.repo.commit(u'Removed {}'.format(fullnames))",
+                    "func_fullName": "passpie.cli.remove(db, fullname, yes)"
+                },
+                {
+                    "func_id": 77,
+                    "func_name": "purge",
+                    "func_desc": "Purge database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def purge(db, yes):\n    if db.credentials():\n        if not yes:\n            alert = u\"Purge '{}' credentials\".format(len(db.credentials()))\n            yes = click.confirm(click.style(alert, 'yellow'), abort=True)\n        if yes:\n            db.purge()\n            db.repo.commit(message='Purged database')",
+                    "func_fullName": "passpie.cli.purge(db, yes)"
+                },
+                {
+                    "func_id": 100,
+                    "func_name": "remove",
+                    "func_desc": "Remove all records with the given fullname .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def remove(self, fullname):\n        self.table().remove(where('fullname') == fullname)",
+                    "func_fullName": "passpie.database.Database.remove(self, fullname)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 55,
+                    "func_name": "commit_list",
+                    "func_desc": "List of all commit IDs in the current repository .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def commit_list(self):\n        cmd = ['git', 'log', '--reverse', '--pretty=format:%s']\n        output, _ = process.call(cmd, cwd=self.path)\n        return output.splitlines()",
+                    "func_fullName": "passpie.history.Repository.commit_list(self)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "sha_list",
+                    "func_desc": "List all the sha1s of the current node .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sha_list(self):\n        cmd = ['git', 'log', '--reverse', '--pretty=format:%h']\n        output, _ = process.call(cmd, cwd=self.path)\n        return output.splitlines()",
+                    "func_fullName": "passpie.history.Repository.sha_list(self)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "reset",
+                    "func_desc": "Reset the commit on a given index to the latest commit .",
+                    "func_file": "history",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def reset(self, to_index):\n        try:\n            sha = self.sha_list()[to_index]\n            cmd = ['git', 'reset', '--hard', sha]\n            process.call(cmd, cwd=self.path)\n        except IndexError:\n            logging.info('commit on index \"{}\" not found'.format(to_index))",
+                    "func_fullName": "passpie.history.Repository.reset(self, to_index)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "log",
+                    "func_desc": "Log database commit information .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def log(db, reset_to, init):\n    if reset_to >= 0:\n        logging.info('reset database to index %s', reset_to)\n        db.repo.reset(reset_to)\n    elif init:\n        db.repo.init()\n        db.repo.commit(message='Initialized git repository', add=True)\n    else:\n        commits = []\n        for number, message in enumerate(db.repo.commit_list()):\n            number = click.style(str(number), fg='magenta')\n            message = message.strip()\n            commits.append(u\"[{}] {}\".format(number, message))\n\n        for commit in reversed(commits):\n            print(commit)",
+                    "func_fullName": "passpie.cli.log(db, reset_to, init)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 62,
+                    "func_name": "get_command",
+                    "func_desc": "Get command from context .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_command(self, ctx, name):\n        cmd = super(AliasGroup, self).get_command(ctx, name)\n        aliases = ctx.params.get('configuration', {}).get('aliases', {})\n        if cmd:\n            return cmd\n        elif name in aliases:\n            aliased_name = aliases[name]\n            cmd = super(AliasGroup, self).get_command(ctx, aliased_name)\n            return cmd",
+                    "func_fullName": "passpie.cli.AliasGroup.get_command(self, ctx, name)"
+                },
+                {
+                    "func_id": 102,
+                    "func_name": "script",
+                    "func_desc": "Generate a script from the given shell name and command list .",
+                    "func_file": "completion",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def script(shell_name, config_path, commands):\n    text = ''\n    if shell_name == 'zsh':\n        text = ZSH.replace('{commands}', '\\n'.join(commands))\n        text = text.replace('{config_path}', config_path)\n    elif shell_name == 'fish':\n        text = FISH.replace('{commands}', ' '.join(commands))\n        text = text.replace('{config_path}', config_path)\n    elif shell_name == 'bash':\n        text = BASH.replace('{commands}', ' '.join(commands))\n        text = text.replace('{config_path}', config_path)\n\n    return text",
+                    "func_fullName": "passpie.completion.script(shell_name, config_path, commands)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 17,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 63,
+                    "func_name": "cli",
+                    "func_desc": "Manage the database .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def cli(ctx, path, autopull, autopush, configuration, verbose):\n    try:\n        ensure_dependencies()\n    except RuntimeError as e:\n        raise click.ClickException(click.style(str(e), fg='red'))\n\n    # Setup database\n    db = Database(configuration)\n    ctx.obj = db\n\n    # Verbose\n    if verbose == 1:\n        logging.getLogger().setLevel(logging.INFO)\n    elif verbose > 1:\n        click.secho(\"Verbose level set to debug, sensitive data might be logged\", fg=\"yellow\")\n        logging.getLogger().setLevel(logging.DEBUG)\n    else:\n        logging.getLogger().setLevel(logging.CRITICAL)\n\n    if ctx.invoked_subcommand is None:\n        ctx.invoke(cli.commands['list'])",
+                    "func_fullName": "passpie.cli.cli(ctx, path, autopull, autopush, configuration, verbose)"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "complete",
+                    "func_desc": "Complete the sequence of missing keys .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def complete(ctx, db, shell_name):\n    commands = cli.commands.keys()\n    script = completion.script(shell_name, db.path, commands)\n    click.echo(script)",
+                    "func_fullName": "passpie.cli.complete(ctx, db, shell_name)"
+                },
+                {
+                    "func_id": 108,
+                    "func_name": "ensure_dependencies",
+                    "func_desc": "Ensure that GnuPG and GnuPG2 are installed .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_dependencies():\n    try:\n        assert which('gpg') or which('gpg2')\n    except AssertionError:\n        raise RuntimeError('GnuPG not installed. https://www.gnupg.org/')",
+                    "func_fullName": "passpie.utils.ensure_dependencies()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 18,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 65,
+                    "func_name": "list_database",
+                    "func_desc": "Print database credential as a table .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def list_database(db):\n    \"\"\"Print credential as a table\"\"\"\n    credentials = db.credentials()\n    if credentials:\n        table = Table(\n            db.config['headers'],\n            table_format=db.config['table_format'],\n            colors=db.config['colors'],\n            hidden=db.config['hidden'],\n            hidden_string=db.config['hidden_string'],\n        )\n        click.echo(table.render(credentials))",
+                    "func_fullName": "passpie.cli.list_database(db)"
+                },
+                {
+                    "func_id": 104,
+                    "func_name": "colorize",
+                    "func_desc": "Colorize a message .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def colorize(self, key, text):\n        return click.style(text, fg=self.colors.get(key))",
+                    "func_fullName": "passpie.table.Table.colorize(self, key, text)"
+                },
+                {
+                    "func_id": 105,
+                    "func_name": "render",
+                    "func_desc": "Render table of missing key sequence sequence sequence logs .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def render(self, data):\n        data = sorted(data, key=lambda c: c[self.headers[0]])\n        rows = []\n        for entry in data:\n            row = []\n            for header in self.headers:\n                if header in self.hidden:\n                    entry[header] = self.hidden_string\n                elif header in self.colors:\n                    text = entry[header]\n                    entry[header] = self.colorize(header, text)\n                row.append(entry[header])\n            rows.append(row)\n\n        headers = [click.style(h.title(), bold=True) for h in self.headers]\n        if rows:\n            return tabulate(rows,\n                            headers,\n                            tablefmt=self.table_format,\n                            missingval=self.missing,\n                            numalign='left')",
+                    "func_fullName": "passpie.table.Table.render(self, data)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 19,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 72,
+                    "func_name": "search",
+                    "func_desc": "Search for a list of tokens matching a regex .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def search(db, regex):\n    credentials = db.matches(regex)\n    if credentials:\n        table = Table(\n            db.config['headers'],\n            table_format=db.config['table_format'],\n            colors=db.config['colors'],\n            hidden=['password']\n        )\n        click.echo(table.render(credentials))",
+                    "func_fullName": "passpie.cli.search(db, regex)"
+                },
+                {
+                    "func_id": 101,
+                    "func_name": "matches",
+                    "func_desc": "Returns a list of all credentials that match a given regular expression .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def matches(self, regex):\n        Credential = Query()\n        credentials = self.search(\n            Credential.name.matches(regex) |\n            Credential.login.matches(regex) |\n            Credential.comment.matches(regex)\n        )\n        return sorted(credentials, key=lambda x: x[\"name\"] + x[\"login\"])",
+                    "func_fullName": "passpie.database.Database.matches(self, regex)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 20,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 81,
+                    "func_name": "ensure_commands",
+                    "func_desc": "Ensure that the given commands are installed .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_commands(commands):\n    for command_name, command in commands.items():\n        if which(command_name) and command:\n            return command\n    else:\n        logging.error('missing commands: ', ' or '.join(commands))",
+                    "func_fullName": "passpie.clipboard.ensure_commands(commands)"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "clean",
+                    "func_desc": "Clean the password to clipboard .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def clean(command, delay):\n    print('Password copied to clipboard. Waiting for {}s to clear clipboard'.format(delay))\n    for dot in ['.' for _ in range(delay)]:\n        sys.stdout.write(dot)\n        sys.stdout.flush()\n        time.sleep(1)\n    else:\n        process.call(command, input='\\b')\n        print('')",
+                    "func_fullName": "passpie.clipboard.clean(command, delay)"
+                },
+                {
+                    "func_id": 83,
+                    "func_name": "_copy_windows",
+                    "func_desc": "Copy text from windows to the current user s clipboard .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _copy_windows(text, clear=0):\n    GMEM_DDESHARE = 0x2000\n    CF_UNICODETEXT = 13\n    d = ctypes.windll  # cdll expects 4 more bytes in user32.OpenClipboard(0)\n    if not isinstance(text, unicode):\n        text = text.decode('mbcs')\n\n    d.user32.OpenClipboard(0 if is_python2() else None)\n\n    d.user32.EmptyClipboard()\n    hCd = d.kernel32.GlobalAlloc(GMEM_DDESHARE, len(text.encode('utf-16-le')) + 2)\n    pchData = d.kernel32.GlobalLock(hCd)\n    ctypes.cdll.msvcrt.wcscpy(ctypes.c_wchar_p(pchData), text)\n    d.kernel32.GlobalUnlock(hCd)\n    d.user32.SetClipboardData(CF_UNICODETEXT, hCd)\n    d.user32.CloseClipboard()",
+                    "func_fullName": "passpie.clipboard._copy_windows(text, clear)"
+                },
+                {
+                    "func_id": 84,
+                    "func_name": "_copy_cygwin",
+                    "func_desc": "Copy a string from C - like clipboard to Windows clipboard .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _copy_cygwin(text, clear=0):\n    GMEM_DDESHARE = 0x2000\n    CF_UNICODETEXT = 13\n    d = ctypes.cdll\n    if not isinstance(text, unicode):\n        text = text.decode('mbcs')\n    d.user32.OpenClipboard(0)\n    d.user32.EmptyClipboard()\n    hCd = d.kernel32.GlobalAlloc(GMEM_DDESHARE,\n                                 len(text.encode('utf-16-le')) + 2)\n    pchData = d.kernel32.GlobalLock(hCd)\n    ctypes.cdll.msvcrt.wcscpy(ctypes.c_wchar_p(pchData), text)\n    d.kernel32.GlobalUnlock(hCd)\n    d.user32.SetClipboardData(CF_UNICODETEXT, hCd)\n    d.user32.CloseClipboard()",
+                    "func_fullName": "passpie.clipboard._copy_cygwin(text, clear)"
+                },
+                {
+                    "func_id": 85,
+                    "func_name": "_copy_osx",
+                    "func_desc": "Copy the given text to the OSX .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _copy_osx(text, clear=0):\n    command = ensure_commands(OSX_COMMANDS)\n    process.call(command, input=text)\n    if clear:\n        clean(command, delay=clear)",
+                    "func_fullName": "passpie.clipboard._copy_osx(text, clear)"
+                },
+                {
+                    "func_id": 86,
+                    "func_name": "_copy_linux",
+                    "func_desc": "Copy a text file from the Linux language to the current language .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _copy_linux(text, clear=0):\n    command = ensure_commands(LINUX_COMMANDS)\n    process.call(command, input=text)\n    if clear:\n        clean(command, delay=clear)",
+                    "func_fullName": "passpie.clipboard._copy_linux(text, clear)"
+                },
+                {
+                    "func_id": 87,
+                    "func_name": "copy",
+                    "func_desc": "Copy the given text to the clipboard .",
+                    "func_file": "clipboard",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def copy(text, clear=0):\n    platform_name = platform.system().lower()\n    if platform_name == 'darwin':\n        _copy_osx(text, clear)\n    elif platform_name == 'linux':\n        _copy_linux(text, clear)\n    elif platform_name == 'windows':\n        _copy_windows(text, clear)\n    elif 'cygwin' in platform_name.lower():\n        _copy_cygwin(text, clear)\n    else:\n        msg = \"platform '{}' copy to clipboard not supported\".format(\n            platform_name)\n        logging.error(msg)\n        return\n    logging.debug('text copied to clipboard')",
+                    "func_fullName": "passpie.clipboard.copy(text, clear)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 21,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 88,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new instance of the PasspieStorage class .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, path):\n        super(PasspieStorage, self).__init__()\n        self.path = path",
+                    "func_fullName": "passpie.database.PasspieStorage.__init__(self, path)"
+                },
+                {
+                    "func_id": 93,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the database with the given configuration .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, config, storage=PasspieStorage):\n        self.config = config\n        self.path = config['path']\n        self.repo = Repository(self.path,\n                               autopull=config.get('autopull'),\n                               autopush=config.get('autopush'))\n        PasspieStorage.extension = config['extension']\n        super(Database, self).__init__(self.path, storage=storage)",
+                    "func_fullName": "passpie.database.Database.__init__(self, config, storage)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 22,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 99,
+                    "func_name": "credentials",
+                    "func_desc": "Ordering of credentials .",
+                    "func_file": "database",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def credentials(self, fullname=None):\n        if fullname:\n            login, name = split_fullname(fullname)\n            Credential = Query()\n            if login is None:\n                creds = self.search(Credential.name == name)\n            else:\n                creds = self.search((Credential.login == login) & (Credential.name == name))\n        else:\n            creds = self.all()\n        return sorted(creds, key=lambda x: x[\"name\"] + x[\"login\"])",
+                    "func_fullName": "passpie.database.Database.credentials(self, fullname)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "handle",
+                    "func_desc": "Handle PySSwords - CREDENTIAL - CREDENTIAL - CREDENTIAL - CREDENTIAL - CREDENTIAL - CREDENTIAL - CREDENT",
+                    "func_file": "pysswords_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle(self, filepath):\n        db = Database(path=filepath)\n        passphrase = click.prompt('Pysswords passphrase', hide_input=True)\n        if not db.check(passphrase):\n            return []\n\n        credentials = []\n        for cred in db.credentials:\n            credential_dict = {\n                'fullname': make_fullname(cred.login, cred.name),\n                'name': cred.name,\n                'login': cred.login,\n                'password': db.decrypt(cred.password, passphrase),\n                'comment': cred.comment,\n                'modified': datetime.now(),\n            }\n            credentials.append(credential_dict)\n\n        return credentials",
+                    "func_fullName": "passpie.importers.pysswords_importer.PysswordsImporter.handle(self, filepath)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "name",
+                    "func_desc": "Returns the name of the object .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def name(self):\n        return self.__class__.__name__.lower().replace('importer', '')",
+                    "func_fullName": "passpie.importers.__init__.BaseImporter.name(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 23,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 103,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the grammar with the given header and header colors .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, headers,\n                 table_format='rst',\n                 colors=None,\n                 hidden=None,\n                 missing=None,\n                 hidden_string=\"*****\"):\n        self.headers = headers\n        self.colors = colors if colors else {}\n        self.hidden = hidden if hidden else []\n        self.hidden_string = hidden_string\n        self.table_format = table_format\n        self.missing = missing",
+                    "func_fullName": "passpie.table.Table.__init__(self, headers, table_format, colors, hidden, missing, hidden_string)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "found_pysswords",
+                    "func_desc": "True if the current language is a pysswords language .",
+                    "func_file": "pysswords_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def found_pysswords():\n        return False",
+                    "func_fullName": "passpie.importers.pysswords_importer.found_pysswords()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 24,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 111,
+                    "func_name": "validate_remote",
+                    "func_desc": "Validate remote .",
+                    "func_file": "validators",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_remote(ctx, param, value):\n    if value:\n        try:\n            remote, branch = value.split('/')\n            return (remote, branch)\n        except ValueError:\n            raise click.BadParameter('remote need to be in format <remote>/<branch>')",
+                    "func_fullName": "passpie.validators.validate_remote(ctx, param, value)"
+                },
+                {
+                    "func_id": 112,
+                    "func_name": "validate_cols",
+                    "func_desc": "Validate columns .",
+                    "func_file": "validators",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_cols(ctx, param, value):\n    if value:\n        try:\n            validated = {c: index for index, c in enumerate(value.split(',')) if c}\n            for col in ('name', 'login', 'password'):\n                assert col in validated\n            return validated\n        except (AttributeError, ValueError):\n            raise click.BadParameter('cols need to be in format col1,col2,col3')\n        except AssertionError as e:\n            raise click.BadParameter('missing mandatory column: {}'.format(e))",
+                    "func_fullName": "passpie.validators.validate_cols(ctx, param, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 25,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 28,
+                    "func_name": "match",
+                    "func_desc": "Dont match this importer",
+                    "func_file": "csv_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, filepath):\n        \"\"\"Dont match this importer\"\"\"\n        return False",
+                    "func_fullName": "passpie.importers.csv_importer.CSVImporter.match(self, filepath)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "_import_all_importer_files",
+                    "func_desc": "Import all the importer files .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _import_all_importer_files():\n    __import__(__name__, globals(), locals(), __all__, 0)",
+                    "func_fullName": "passpie.importers.__init__._import_all_importer_files()"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "_get_importers_from_entry_points",
+                    "func_desc": "Get all importers from entry points .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _get_importers_from_entry_points():\n    for ep in pkg_resources.iter_entry_points('passpie_importers'):\n        try:\n            module = __import__(ep.module_name, globals(), locals(), ep.attrs, 0)\n            klass = getattr(module, ep.attrs[0])\n            if klass is not BaseImporter and issubclass(klass, BaseImporter):\n                yield klass\n        except (ImportError, AttributeError):\n            pass",
+                    "func_fullName": "passpie.importers.__init__._get_importers_from_entry_points()"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "get_all",
+                    "func_desc": "Get all subclasses of BaseImporter from module and return generator\n   ",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_all():\n    \"\"\"Get all subclasses of BaseImporter from module and return and generator\n    \"\"\"\n\n    _import_all_importer_files()\n\n    for module in (value for key, value in globals().items()\n                   if key in __all__):\n        for klass_name, klass in inspect.getmembers(module, inspect.isclass):\n            if klass is not BaseImporter and issubclass(klass, BaseImporter):\n                yield klass\n\n    for klass in _get_importers_from_entry_points():\n        yield klass",
+                    "func_fullName": "passpie.importers.__init__.get_all()"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "get_instances",
+                    "func_desc": "Get all instances of all detected importer classes",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_instances():\n    \"\"\"Get instances of all found detected importer classes\"\"\"\n    return (wclass() for wclass in get_all())",
+                    "func_fullName": "passpie.importers.__init__.get_instances()"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "get",
+                    "func_desc": "Get a specific tag .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get(name):\n    try:\n        return next(i for i in get_instances() if i.name == name)\n    except StopIteration:\n        return None",
+                    "func_fullName": "passpie.importers.__init__.get(name)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "find_importer",
+                    "func_desc": "Finds an importer by filepath .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def find_importer(filepath):\n    for importer in get_instances():\n        if importer.match(filepath):\n            return importer",
+                    "func_fullName": "passpie.importers.__init__.find_importer(filepath)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 26,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 30,
+                    "func_name": "found_pysswords",
+                    "func_desc": "True if the current language is a pysswords language .",
+                    "func_file": "pysswords_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def found_pysswords():\n        return True",
+                    "func_fullName": "passpie.importers.pysswords_importer.found_pysswords()"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "match",
+                    "func_desc": "Check if filepath is a . keys directory and if so return True .",
+                    "func_file": "pysswords_importer",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, filepath):\n        if not found_pysswords():\n            self.log('Pysswords is not installed')\n            return False\n\n        try:\n            assert os.path.isdir(filepath)\n            assert '.keys' in os.listdir(filepath)\n        except AssertionError:\n            self.log('.keys not found in path')\n            return False\n\n        return True",
+                    "func_fullName": "passpie.importers.pysswords_importer.PysswordsImporter.match(self, filepath)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 27,
+            "feature_desc": "gamma=0.1500; k=27; a=0.25; combined=0.530; stability(ARI)=0.812; sep=0.350",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 36,
+                    "func_name": "match",
+                    "func_desc": "Return True if filepath parseable by base class",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, filepath):\n        \"\"\"Return True if file for filepath parseable by importer\n        \"\"\"\n        raise NotImplementedError('Handle should be implemented by base class')",
+                    "func_fullName": "passpie.importers.__init__.BaseImporter.match(self, filepath)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "get_names",
+                    "func_desc": "Returns a list of all the names of all the instances in the system .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_names():\n    return [i.name for i in get_instances()]",
+                    "func_fullName": "passpie.importers.__init__.get_names()"
+                }
+            ]
+        }
+    ]
+}

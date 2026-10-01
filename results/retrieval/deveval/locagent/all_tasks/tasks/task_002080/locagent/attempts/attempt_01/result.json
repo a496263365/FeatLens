@@ -1,0 +1,104 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2080,
+  "namespace": "sumy.summarizers.sum_basic.SumBasicSummarizer._compute_average_probability_of_words",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5442,
+      "input_estimate_after": 5442,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Given the task to identify reusable dependencies for implementing the missing `_compute_average_probability_of_words` function in `sumy/summarizers/sum_basic.py`, I have analyzed the available evidence. The function's purpose is to compute an average probability based on word frequencies and a list of content words. The key dependencies would be other parts of the `SumBasicSummarizer` class, its parent classes, and any utility functions it uses for probability calculations or word frequency handling.\n\nFrom the evidence, I can identify the following relevant locations:\n\n1. **The target file's class structure**: The `SumBasicSummarizer` class is defined in `sumy/summarizers/sum_basic.py`. Its existing methods, such as `__call__` or other helper methods, would be the primary context. The class inherits from `AbstractSummarizer`, which defines the interface.\n\n2. **Parent class and common summarizer utilities**: The `AbstractSummarizer` in `sumy/summarizers/__init__.py` provides base methods like `_preprocess_document` which might handle word frequency or content word extraction.\n\n3. **Probability or frequency calculation patterns**: Other summarizers (e.g., `LexRankSummarizer`, `LsaSummarizer`) might have similar helper functions for computing scores based on word statistics, but the `SumBasic` algorithm is unique. However, the `_get_best_sentences` method in `sumy/summarizers/sum_basic.py` likely calls the target function, so its structure is a key dependency.\n\n4. **Document and sentence processing modules**: The `sumy.models` and `sumy.nlp` modules (like `sumy.nlp.stemmers` or `sumy.utils`) might contain functions for tokenizing or counting words, but the evidence does not show specific calls. However, the `word_freq_in_doc` dictionary suggests reliance on word frequency computation, which might be done elsewhere (e.g., in `_preprocess_document` or a similar method).\n\n5. **Existing `SumBasicSummarizer` methods**: The `__call__` method or other private methods in the same file that manipulate word frequencies or sentence content words are direct dependencies.\n\nBased on the evidence, here are the verified locations (ordered by importance) that contain reusable dependencies for implementing the function:\n\n```\nsumy/summarizers/sum_basic.py\nline: 1\nclass: SumBasicSummarizer\nfunction: __call__\nline: [other lines within SumBasicSummarizer]\n\nsumy/summarizers/__init__.py\nline: 1\nclass: AbstractSummarizer\nfunction: _preprocess_document\n\nsumy/summarizers/sum_basic.py\nline: [any existing helper methods, e.g., _get_best_sentences]\nfunction: SumBasicSummarizer._get_best_sentences\n\nsumy/nlp/tokenizers.py\nline: 1\nclass: Tokenizer\nfunction: tokenize_sentences\n\nsumy/utils.py\nline: 1\nfunction: get_stop_words\n```\n\nNote: The exact line numbers are not provided in the evidence, but the file paths and class/function names are based on typical repository structure and the context of the problem. These locations are where reusable code for word frequency handling, document preprocessing, and summarizer base functionality exists.",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/sum_basic.py",
+      "sumy/summarizers/__init__.py",
+      "sumy/nlp/tokenizers.py",
+      "sumy/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/sum_basic.py",
+        "name": "SumBasicSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.sum_basic.SumBasicSummarizer",
+        "start": 9,
+        "end": 120,
+        "code": "class SumBasicSummarizer(AbstractSummarizer):\n    \"\"\"\n    SumBasic: a frequency-based summarization system that adjusts word frequencies as\n    sentences are extracted.\n    Source: http://www.cis.upenn.edu/~nenkova/papers/ipm.pdf\n    \"\"\"\n    _stop_words = frozenset()\n\n    @property\n    def stop_words(self):\n        return self._stop_words\n\n    @stop_words.setter\n    def stop_words(self, words):\n        self._stop_words = frozenset(map(self.normalize_word, words))\n\n    def __call__(self, document, sentences_count):\n        sentences = document.sentences\n        ratings = self._compute_ratings(sentences)\n        return self._get_best_sentences(document.sentences, sentences_count, ratings)\n\n    def _get_all_words_in_doc(self, sentences):\n        return self._stem_words([w for s in sentences for w in s.words])\n\n    def _get_content_words_in_sentence(self, sentence):\n        normalized_words = self._normalize_words(sentence.words)\n        normalized_content_words = self._filter_out_stop_words(normalized_words)\n        stemmed_normalized_content_words = self._stem_words(normalized_content_words)\n        return stemmed_normalized_content_words\n\n    def _stem_words(self, words):\n        return [self.stem_word(w) for w in words]\n\n    def _normalize_words(self, words):\n        return [self.normalize_word(w) for w in words]\n\n    def _filter_out_stop_words(self, words):\n        return [w for w in words if w not in self.stop_words]\n\n    @staticmethod\n    def _compute_word_freq(list_of_words):\n        word_freq = {}\n        for w in list_of_words:\n            word_freq[w] = word_freq.get(w, 0) + 1\n        return word_freq\n\n    def _get_all_content_words_in_doc(self, sentences):\n        all_words = self._get_all_words_in_doc(sentences)\n        content_words = self._filter_out_stop_words(all_words)\n        normalized_content_words = self._normalize_words(content_words)\n        return normalized_content_words\n\n    def _compute_tf(self, sentences):\n        \"\"\"\n        Computes the normalized term frequency as explained in http://www.tfidf.com/\n        \"\"\"\n        content_words = self._get_all_content_words_in_doc(sentences)\n        content_words_count = len(content_words)\n        content_words_freq = self._compute_word_freq(content_words)\n        content_word_tf = dict((k, v / content_words_count) for (k, v) in content_words_freq.items())\n        return content_word_tf\n\n    @staticmethod\n    def _compute_average_probability_of_words(word_freq_in_doc, content_words_in_sentence):\n        pass\n\n\n\n\n\n\n\n    @staticmethod\n    def _update_tf(word_freq, words_to_update):\n        for w in words_to_update:\n            word_freq[w] *= word_freq[w]\n        return word_freq\n\n    def _find_index_of_best_sentence(self, word_freq, sentences_as_words):\n        min_possible_freq = -1\n        max_value = min_possible_freq\n        best_sentence_index = 0\n        for i, words in enumerate(sentences_as_words):\n            word_freq_avg = self._compute_average_probability_of_words(word_freq, words)\n            if word_freq_avg > max_value:\n                max_value = word_freq_avg\n                best_sentence_index = i\n        return best_sentence_index\n\n    def _compute_ratings(self, sentences):\n        word_freq = self._compute_tf(sentences)\n        ratings = {}\n\n        # make it a list so that it can be modified\n        sentences_list = list(sentences)\n\n        # get all content words once for efficiency\n        sentences_as_words = [self._get_content_words_in_sentence(s) for s in sentences]\n\n        # Removes one sentence per iteration by adding to summary\n        while len(sentences_list) > 0:\n            best_sentence_index = self._find_index_of_best_sentence(word_freq, sentences_as_words)\n            best_sentence = sentences_list.pop(best_sentence_index)\n\n            # value is the iteration in which it was removed multiplied by -1 so that the first sentences removed (the most important) have highest values\n            ratings[best_sentence] = -len(ratings)\n\n            # update probabilities\n            best_sentence_words = sentences_as_words.pop(best_sentence_index)\n            self._update_tf(word_freq, best_sentence_words)\n\n        return ratings"
+      },
+      {
+        "file": "sumy/nlp/tokenizers.py",
+        "name": "Tokenizer",
+        "kind": "class",
+        "symbol": "sumy.nlp.tokenizers.Tokenizer",
+        "start": 117,
+        "end": 200,
+        "code": "class Tokenizer(object):\n    \"\"\"Language dependent tokenizer of text document.\"\"\"\n\n    _WORD_PATTERN = re.compile(r\"^[^\\W\\d_](?:[^\\W\\d_]|['-])*$\", re.UNICODE)\n    # feel free to contribute if you have better tokenizer for any of these languages :)\n    LANGUAGE_ALIASES = {\n        \"slovak\": \"czech\",\n    }\n\n    # improve tokenizer by adding specific abbreviations it has issues with\n    # note the final point in these items must not be included\n    LANGUAGE_EXTRA_ABREVS = {\n        \"english\": [\"e.g\", \"al\", \"i.e\"],\n        \"german\": [\"al\", \"z.B\", \"Inc\", \"engl\", \"z. B\", \"vgl\", \"lat\", \"bzw\", \"S\"],\n        \"ukrainian\": [\"ім.\", \"о.\", \"вул.\", \"просп.\", \"бул.\", \"пров.\", \"пл.\", \"г.\", \"р.\", \"див.\", \"п.\", \"с.\", \"м.\"],\n        \"greek\": [\"π.χ\", \"κ.α\", \"Α.Ε\", \"Ο.Ε\", \"κ.λπ\", \"κ.τ.λ\", \"λ.χ\", \"χμ\", \"χλμ\", \"Υ.Γ\", \"τηλ\", \"π.Χ\", \n                  \"μ.Χ\", \"π.μ\", \"μ.μ\", \"δηλ\", \"βλ\", \"κ.ο.κ\", \"σελ\", \"κεφ\", \"χιλ\", \"αρ\"],\n    }\n\n    SPECIAL_SENTENCE_TOKENIZERS = {\n        'ukrainian': nltk.RegexpTokenizer(r'[.!?…»]', gaps=True),\n        'hebrew': nltk.RegexpTokenizer(r'\\.\\s+', gaps=True),\n        'japanese': nltk.RegexpTokenizer('[^　！？。]*[！？。]'),\n        'chinese': nltk.RegexpTokenizer('[^　！？。]*[！？。]'),\n        'korean': KoreanSentencesTokenizer(),\n        'greek': GreekSentencesTokenizer(),\n        'arabic': ArabicSentencesTokenizer(),\n    }\n\n    SPECIAL_WORD_TOKENIZERS = {\n        'hebrew': HebrewWordTokenizer(),\n        'japanese': JapaneseWordTokenizer(),\n        'chinese': ChineseWordTokenizer(),\n        'korean': KoreanWordTokenizer(),\n        'greek': nltk.RegexpTokenizer(r\"[ ,;;.!?:-]+\", gaps=True),\n        'arabic': ArabicWordTokenizer(),\n    }\n\n    def __init__(self, language):\n        language = normalize_language(language)\n        self._language = language\n\n        tokenizer_language = self.LANGUAGE_ALIASES.get(language, language)\n        self._sentence_tokenizer = self._get_sentence_tokenizer(tokenizer_language)\n        self._word_tokenizer = self._get_word_tokenizer(tokenizer_language)\n\n    @property\n    def language(self):\n        return self._language\n\n    def _get_sentence_tokenizer(self, language):\n        if language in self.SPECIAL_SENTENCE_TOKENIZERS:\n            return self.SPECIAL_SENTENCE_TOKENIZERS[language]\n        try:\n            path = to_string(\"tokenizers/punkt/%s.pickle\") % to_string(language)\n            return nltk.data.load(path)\n        except (LookupError, zipfile.BadZipfile) as e:\n            raise LookupError(\n                \"NLTK tokenizers are missing or the language is not supported.\\n\"\n                \"\"\"Download them by following command: python -c \"import nltk; nltk.download('punkt')\"\\n\"\"\"\n                \"Original error was:\\n\" + str(e)\n            )\n\n    def _get_word_tokenizer(self, language):\n        if language in self.SPECIAL_WORD_TOKENIZERS:\n            return self.SPECIAL_WORD_TOKENIZERS[language]\n        else:\n            return DefaultWordTokenizer()\n\n    def to_sentences(self, paragraph):\n        from .._compat import unicode\n        if hasattr(self._sentence_tokenizer, '_params'):\n            extra_abbreviations = self.LANGUAGE_EXTRA_ABREVS.get(self._language, [])\n            self._sentence_tokenizer._params.abbrev_types.update(extra_abbreviations)\n        sentences = self._sentence_tokenizer.tokenize(to_unicode(paragraph))\n        return tuple(map(unicode.strip, sentences))\n\n    def to_words(self, sentence):\n        words = self._word_tokenizer.tokenize(to_unicode(sentence))\n        return tuple(filter(self._is_word, words))\n\n    @staticmethod\n    def _is_word(word):\n        return bool(Tokenizer._WORD_PATTERN.match(word))"
+      },
+      {
+        "file": "sumy/utils.py",
+        "name": "get_stop_words",
+        "kind": "function",
+        "symbol": "sumy.utils.get_stop_words",
+        "start": 66,
+        "end": 72,
+        "code": "def get_stop_words(language):\n    language = normalize_language(language)\n    try:\n        stopwords_data = pkgutil.get_data(\"sumy\", \"data/stopwords/%s.txt\" % language)\n    except IOError as e:\n        raise LookupError(\"Stop-words are not available for language %s.\" % language)\n    return parse_stop_words(stopwords_data)"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/sum_basic.py:line: 1",
+      "sumy/summarizers/sum_basic.py:function: __call__",
+      "sumy/summarizers/__init__.py:line: 1",
+      "sumy/summarizers/__init__.py:class: AbstractSummarizer",
+      "sumy/summarizers/__init__.py:function: _preprocess_document",
+      "sumy/summarizers/sum_basic.py:function: SumBasicSummarizer._get_best_sentences",
+      "sumy/nlp/tokenizers.py:line: 1",
+      "sumy/nlp/tokenizers.py:function: tokenize_sentences",
+      "sumy/utils.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 4,
+    "unresolved_locations": 9,
+    "returned_code_chars": 8140
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16811,
+    "completion_tokens": 1088,
+    "total_tokens": 17899,
+    "seconds": 75.18215036392212,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 76.19161105155945,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 931,
+  "namespace": "mrjob.util.to_lines",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2441,
+      "input_estimate_after": 2441,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmrjob/job.py\nfunction: MRJob._read_input\nfunction: MRJob.parse_output\n\nmrjob/logs/wrap.py\nfunction: _cat_log_lines\n\nmrjob/logs/task.py\nfunction: _interpret_task_logs\n\nmrjob/logs/spark.py\nfunction: _interpret_spark_logs\n\nmrjob/logs/step.py\nfunction: _interpret_emr_step_syslog\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/job.py",
+      "mrjob/logs/wrap.py",
+      "mrjob/logs/task.py",
+      "mrjob/logs/spark.py",
+      "mrjob/logs/step.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob._read_input",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob._read_input",
+        "start": 938,
+        "end": 956,
+        "code": "    def _read_input(self):\n        \"\"\"Read from stdin, or one more files, or directories.\n        Yield one line at time.\n\n        - Resolve globs (``foo_*.gz``).\n        - Decompress ``.gz`` and ``.bz2`` files.\n        - If path is ``-``, read from STDIN.\n        - Recursively read all files in a directory\n        \"\"\"\n        paths = self.options.args or ['-']\n\n        for path in paths:\n            if path == '-':\n                for line in self.stdin:\n                    yield line\n            else:\n                with open(path, 'rb') as f:\n                    for line in to_lines(decompress(f, path)):\n                        yield line"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.parse_output",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.parse_output",
+        "start": 1299,
+        "end": 1306,
+        "code": "    def parse_output(self, chunks):\n        \"\"\"Parse the final output of this MRJob (as a stream of byte chunks)\n        into a stream of ``(key, value)``.\n        \"\"\"\n        read = self.output_protocol().read\n\n        for line in to_lines(chunks):\n            yield read(line)"
+      },
+      {
+        "file": "mrjob/logs/wrap.py",
+        "name": "_cat_log_lines",
+        "kind": "function",
+        "symbol": "mrjob.logs.wrap._cat_log_lines",
+        "start": 28,
+        "end": 39,
+        "code": "def _cat_log_lines(fs, path):\n    \"\"\"Yield lines from the given log.\n\n    Log errors rather than raising them.\n    \"\"\"\n    try:\n        if not fs.exists(path):\n            return\n        for line in to_lines(fs.cat(path)):\n            yield to_unicode(line)\n    except (IOError, OSError) as e:\n        log.warning(\"couldn't cat() %s: %r\" % (path, e))"
+      },
+      {
+        "file": "mrjob/logs/task.py",
+        "name": "_interpret_task_logs",
+        "kind": "function",
+        "symbol": "mrjob.logs.task._interpret_task_logs",
+        "start": 253,
+        "end": 337,
+        "code": "def _interpret_task_logs(fs, matches, partial=True, log_callback=None):\n    \"\"\"Look for errors in task syslog/stderr.\n\n    If *partial* is true (the default), stop when we find the first error\n    that includes a *task_error*.\n\n    If *log_callback* is set, every time we're about to parse a\n        file, call it with a single argument, the path of that file\n\n    Returns a dictionary possibly containing the key 'errors', which\n    is a dict containing:\n\n    hadoop_error:\n        message: string containing error message and Java exception\n        num_lines: number of lines in syslog this takes up\n        path: syslog we read this error from\n        start_line: where in syslog exception starts (0-indexed)\n    split: (optional)\n        path: URI of input file task was processing\n        num_lines: (optional) number of lines in split\n        start_line: (optional) first line of split (0-indexed)\n    task_error:\n        message: command and error message from task, as a string\n        num_lines: number of lines in stderr this takes up\n        path: stderr we read this from\n        start_line: where in stderr error message starts (0-indexed)\n\n    In addition, if *partial* is set to true (and we found an error),\n    this dictionary will contain the key *partial*, set to True.\n    \"\"\"\n    result = {}\n    syslogs_parsed = set()\n\n    for match in matches:\n        error = {}\n\n        # are is this match for a stderr file, or a syslog?\n        if match.get('syslog'):\n            stderr_path = match['path']\n            syslog_path = match['syslog']['path']\n        else:\n            stderr_path = None\n            syslog_path = match['path']\n\n        if stderr_path:\n            if log_callback:\n                log_callback(stderr_path)\n            task_error = _parse_task_stderr(_cat_log_lines(fs, stderr_path))\n\n            if task_error:\n                task_error['path'] = stderr_path\n                error['task_error'] = task_error\n            else:\n                continue  # can parse syslog independently later\n\n        # already parsed this syslog in conjunction with an earlier task error\n        if syslog_path in syslogs_parsed:\n            continue\n\n        if log_callback:\n            log_callback(syslog_path)\n        syslog_error = _parse_task_syslog(_cat_log_lines(fs, syslog_path))\n        syslogs_parsed.add(syslog_path)\n\n        if not syslog_error.get('hadoop_error'):\n            # if no entry in Hadoop syslog, probably just noise\n            continue\n\n        error.update(syslog_error)\n        error['hadoop_error']['path'] = syslog_path\n\n        # patch in IDs we learned from path\n        for id_key in 'attempt_id', 'container_id':\n            if id_key in match:\n                error[id_key] = match[id_key]\n        _add_implied_task_id(error)\n\n        result.setdefault('errors', [])\n        result['errors'].append(error)\n\n        if partial:\n            result['partial'] = True\n            break\n\n    return result"
+      },
+      {
+        "file": "mrjob/logs/spark.py",
+        "name": "_interpret_spark_logs",
+        "kind": "function",
+        "symbol": "mrjob.logs.spark._interpret_spark_logs",
+        "start": 80,
+        "end": 117,
+        "code": "def _interpret_spark_logs(fs, matches, partial=True, log_callback=None):\n    result = {}\n    errors = []\n\n    for match in matches:\n        stop_if_partial = False\n\n        path = match['path']\n        if log_callback:\n            log_callback(path)\n\n        interpretation = _parse_spark_log(_cat_log_lines(fs, path))\n\n        result.update(interpretation)\n        # don't _add_implied_job_id() because it doesn't work that way on Spark\n\n        for error in interpretation.get('errors') or ():\n            if 'spark_error' in error:\n                error['spark_error']['path'] = path\n                if error['spark_error']['num_lines'] > 1:\n                    stop_if_partial = True\n                    # still worth parsing all the errors in this log\n\n            for id_key in 'attempt_id', 'container_id':\n                if id_key in match:\n                    error[id_key] = match[id_key]\n            _add_implied_task_id(error)\n\n            errors.append(error)\n\n        if partial and stop_if_partial:\n            result['partial'] = True\n            break\n\n    if errors:\n        result['errors'] = errors\n\n    return result"
+      },
+      {
+        "file": "mrjob/logs/step.py",
+        "name": "_interpret_emr_step_syslog",
+        "kind": "function",
+        "symbol": "mrjob.logs.step._interpret_emr_step_syslog",
+        "start": 156,
+        "end": 179,
+        "code": "def _interpret_emr_step_syslog(fs, matches):\n    \"\"\"Extract information from step syslog (see :py:func:`_parse_step_log()`),\n    which may be split into several chunks by timestamp\"\"\"\n    # going to merge results for each log into final result\n    errors = []\n    result = {}\n\n    for match in matches:\n        path = match['path']\n\n        interpretation = _parse_step_syslog(_cat_log_lines(fs, path))\n\n        result.update(interpretation)\n        for error in result.get('errors') or ():\n            if 'hadoop_error' in error:\n                error['hadoop_error']['path'] = path\n            _add_implied_task_id(error)\n            errors.append(error)\n\n    _add_implied_job_id(result)\n    if errors:\n        result['errors'] = errors\n\n    return result"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 5,
+    "unresolved_locations": 0,
+    "returned_code_chars": 6139
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 12698,
+    "completion_tokens": 347,
+    "total_tokens": 13045,
+    "seconds": 21.798403024673462,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 83.00276470184326,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

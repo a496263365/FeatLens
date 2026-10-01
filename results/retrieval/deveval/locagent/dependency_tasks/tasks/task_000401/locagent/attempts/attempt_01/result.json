@@ -1,0 +1,124 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 401,
+  "namespace": "rest_framework.exceptions._get_error_details",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8750,
+      "input_estimate_after": 8750,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify reusable dependencies for implementing the `_get_error_details` function. The function needs to recursively process nested data structures (lists, dicts) and convert strings to `ErrorDetail` objects. Here are the key locations containing reusable patterns and dependencies:\n\n```\nrest_framework/exceptions.py\nline: 46\nfunction: _get_codes\n\nrest_framework/exceptions.py\nline: 54\nfunction: _get_full_details\n\nrest_framework/exceptions.py\nline: 65\nclass: ErrorDetail\nline: 71\nfunction: ErrorDetail.__new__\n\nrest_framework/fields.py\nline: 226\nfunction: get_error_detail\n\nrest_framework/serializers.py\nline: 313\nfunction: as_serializer_error\n```",
+  "final_locations": {
+    "files": [
+      "rest_framework/exceptions.py",
+      "rest_framework/fields.py",
+      "rest_framework/serializers.py"
+    ],
+    "entities": [
+      {
+        "file": "rest_framework/exceptions.py",
+        "name": "_get_codes",
+        "kind": "function",
+        "symbol": "rest_framework.exceptions._get_codes",
+        "start": 46,
+        "end": 51,
+        "code": "def _get_codes(detail):\n    if isinstance(detail, list):\n        return [_get_codes(item) for item in detail]\n    elif isinstance(detail, dict):\n        return {key: _get_codes(value) for key, value in detail.items()}\n    return detail.code"
+      },
+      {
+        "file": "rest_framework/exceptions.py",
+        "name": "_get_full_details",
+        "kind": "function",
+        "symbol": "rest_framework.exceptions._get_full_details",
+        "start": 54,
+        "end": 62,
+        "code": "def _get_full_details(detail):\n    if isinstance(detail, list):\n        return [_get_full_details(item) for item in detail]\n    elif isinstance(detail, dict):\n        return {key: _get_full_details(value) for key, value in detail.items()}\n    return {\n        'message': detail,\n        'code': detail.code\n    }"
+      },
+      {
+        "file": "rest_framework/exceptions.py",
+        "name": "ErrorDetail",
+        "kind": "class",
+        "symbol": "rest_framework.exceptions.ErrorDetail",
+        "start": 65,
+        "end": 98,
+        "code": "class ErrorDetail(str):\n    \"\"\"\n    A string-like object that can additionally have a code.\n    \"\"\"\n    code = None\n\n    def __new__(cls, string, code=None):\n        self = super().__new__(cls, string)\n        self.code = code\n        return self\n\n    def __eq__(self, other):\n        result = super().__eq__(other)\n        if result is NotImplemented:\n            return NotImplemented\n        try:\n            return result and self.code == other.code\n        except AttributeError:\n            return result\n\n    def __ne__(self, other):\n        result = self.__eq__(other)\n        if result is NotImplemented:\n            return NotImplemented\n        return not result\n\n    def __repr__(self):\n        return 'ErrorDetail(string=%r, code=%r)' % (\n            str(self),\n            self.code,\n        )\n\n    def __hash__(self):\n        return hash(str(self))"
+      },
+      {
+        "file": "rest_framework/exceptions.py",
+        "name": "ErrorDetail.__new__",
+        "kind": "function",
+        "symbol": "rest_framework.exceptions.ErrorDetail.__new__",
+        "start": 71,
+        "end": 74,
+        "code": "    def __new__(cls, string, code=None):\n        self = super().__new__(cls, string)\n        self.code = code\n        return self"
+      },
+      {
+        "file": "rest_framework/fields.py",
+        "name": "get_error_detail",
+        "kind": "function",
+        "symbol": "rest_framework.fields.get_error_detail",
+        "start": 226,
+        "end": 246,
+        "code": "def get_error_detail(exc_info):\n    \"\"\"\n    Given a Django ValidationError, return a list of ErrorDetail,\n    with the `code` populated.\n    \"\"\"\n    code = getattr(exc_info, 'code', None) or 'invalid'\n\n    try:\n        error_dict = exc_info.error_dict\n    except AttributeError:\n        return [\n            ErrorDetail((error.message % error.params) if error.params else error.message,\n                        code=error.code if error.code else code)\n            for error in exc_info.error_list]\n    return {\n        k: [\n            ErrorDetail((error.message % error.params) if error.params else error.message,\n                        code=error.code if error.code else code)\n            for error in errors\n        ] for k, errors in error_dict.items()\n    }"
+      },
+      {
+        "file": "rest_framework/serializers.py",
+        "name": "as_serializer_error",
+        "kind": "function",
+        "symbol": "rest_framework.serializers.as_serializer_error",
+        "start": 313,
+        "end": 336,
+        "code": "def as_serializer_error(exc):\n    assert isinstance(exc, (ValidationError, DjangoValidationError))\n\n    if isinstance(exc, DjangoValidationError):\n        detail = get_error_detail(exc)\n    else:\n        detail = exc.detail\n\n    if isinstance(detail, Mapping):\n        # If errors may be a dict we use the standard {key: list of values}.\n        # Here we ensure that all the values are *lists* of errors.\n        return {\n            key: value if isinstance(value, (list, Mapping)) else [value]\n            for key, value in detail.items()\n        }\n    elif isinstance(detail, list):\n        # Errors raised as a list are non-field errors.\n        return {\n            api_settings.NON_FIELD_ERRORS_KEY: detail\n        }\n    # Errors raised as a string are non-field errors.\n    return {\n        api_settings.NON_FIELD_ERRORS_KEY: [detail]\n    }"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "rest_framework.exceptions.ErrorDetail"
+    ],
+    "exact_hit_dependencies": [
+      "rest_framework.exceptions.ErrorDetail"
+    ],
+    "returned_entities": 6,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3155
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 29094,
+    "completion_tokens": 587,
+    "total_tokens": 29681,
+    "seconds": 74.06691241264343,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 106.88863015174866,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,107 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1034,
+  "namespace": "boltons.iterutils.chunked",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6476,
+      "input_estimate_after": 6476,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboltons/iterutils.py\nfunction: chunked_iter\nline: 333\n\nboltons/iterutils.py\nfunction: _validate_positive_int\nline: 326\n\nboltons/iterutils.py\nfunction: windowed_iter\nline: 467\n\nboltons/iterutils.py\nfunction: chunk_ranges\nline: 377\n\nboltons/iterutils.py\nfunction: take\nline: 123\n```",
+  "final_locations": {
+    "files": [
+      "boltons/iterutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/iterutils.py",
+        "name": "chunked_iter",
+        "kind": "function",
+        "symbol": "boltons.iterutils.chunked_iter",
+        "start": 333,
+        "end": 374,
+        "code": "def chunked_iter(src, size, **kw):\n    \"\"\"Generates *size*-sized chunks from *src* iterable. Unless the\n    optional *fill* keyword argument is provided, iterables not evenly\n    divisible by *size* will have a final chunk that is smaller than\n    *size*.\n\n    >>> list(chunked_iter(range(10), 3))\n    [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]\n    >>> list(chunked_iter(range(10), 3, fill=None))\n    [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, None, None]]\n\n    Note that ``fill=None`` in fact uses ``None`` as the fill value.\n    \"\"\"\n    # TODO: add count kwarg?\n    if not is_iterable(src):\n        raise TypeError('expected an iterable')\n    size = _validate_positive_int(size, 'chunk size')\n    do_fill = True\n    try:\n        fill_val = kw.pop('fill')\n    except KeyError:\n        do_fill = False\n        fill_val = None\n    if kw:\n        raise ValueError('got unexpected keyword arguments: %r' % kw.keys())\n    if not src:\n        return\n    postprocess = lambda chk: chk\n    if isinstance(src, basestring):\n        postprocess = lambda chk, _sep=type(src)(): _sep.join(chk)\n        if _IS_PY3 and isinstance(src, bytes):\n            postprocess = lambda chk: bytes(chk)\n    src_iter = iter(src)\n    while True:\n        cur_chunk = list(itertools.islice(src_iter, size))\n        if not cur_chunk:\n            break\n        lc = len(cur_chunk)\n        if lc < size and do_fill:\n            cur_chunk[lc:] = [fill_val] * (size - lc)\n        yield postprocess(cur_chunk)\n    return"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "_validate_positive_int",
+        "kind": "function",
+        "symbol": "boltons.iterutils._validate_positive_int",
+        "start": 326,
+        "end": 330,
+        "code": "def _validate_positive_int(value, name, strictly_positive=True):\n    value = int(value)\n    if value < 0 or (strictly_positive and value == 0):\n        raise ValueError('expected a positive integer ' + name)\n    return value"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "windowed_iter",
+        "kind": "function",
+        "symbol": "boltons.iterutils.windowed_iter",
+        "start": 467,
+        "end": 488,
+        "code": "def windowed_iter(src, size):\n    \"\"\"Returns tuples with length *size* which represent a sliding\n    window over iterable *src*.\n\n    >>> list(windowed_iter(range(7), 3))\n    [(0, 1, 2), (1, 2, 3), (2, 3, 4), (3, 4, 5), (4, 5, 6)]\n\n    If the iterable is too short to make a window of length *size*,\n    then no window tuples are returned.\n\n    >>> list(windowed_iter(range(3), 5))\n    []\n    \"\"\"\n    # TODO: lists? (for consistency)\n    tees = itertools.tee(src, size)\n    try:\n        for i, t in enumerate(tees):\n            for _ in xrange(i):\n                next(t)\n    except StopIteration:\n        return izip([])\n    return izip(*tees)"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "chunk_ranges",
+        "kind": "function",
+        "symbol": "boltons.iterutils.chunk_ranges",
+        "start": 377,
+        "end": 424,
+        "code": "def chunk_ranges(input_size, chunk_size, input_offset=0, overlap_size=0, align=False):\n    \"\"\"Generates *chunk_size*-sized chunk ranges for an input with length *input_size*.\n    Optionally, a start of the input can be set via *input_offset*, and\n    and overlap between the chunks may be specified via *overlap_size*.\n    Also, if *align* is set to *True*, any items with *i % (chunk_size-overlap_size) == 0*\n    are always at the beginning of the chunk.\n\n    Returns an iterator of (start, end) tuples, one tuple per chunk.\n\n    >>> list(chunk_ranges(input_offset=10, input_size=10, chunk_size=5))\n    [(10, 15), (15, 20)]\n    >>> list(chunk_ranges(input_offset=10, input_size=10, chunk_size=5, overlap_size=1))\n    [(10, 15), (14, 19), (18, 20)]\n    >>> list(chunk_ranges(input_offset=10, input_size=10, chunk_size=5, overlap_size=2))\n    [(10, 15), (13, 18), (16, 20)]\n\n    >>> list(chunk_ranges(input_offset=4, input_size=15, chunk_size=5, align=False))\n    [(4, 9), (9, 14), (14, 19)]\n    >>> list(chunk_ranges(input_offset=4, input_size=15, chunk_size=5, align=True))\n    [(4, 5), (5, 10), (10, 15), (15, 19)]\n\n    >>> list(chunk_ranges(input_offset=2, input_size=15, chunk_size=5, overlap_size=1, align=False))\n    [(2, 7), (6, 11), (10, 15), (14, 17)]\n    >>> list(chunk_ranges(input_offset=2, input_size=15, chunk_size=5, overlap_size=1, align=True))\n    [(2, 5), (4, 9), (8, 13), (12, 17)]\n    >>> list(chunk_ranges(input_offset=3, input_size=15, chunk_size=5, overlap_size=1, align=True))\n    [(3, 5), (4, 9), (8, 13), (12, 17), (16, 18)]\n    \"\"\"\n    input_size = _validate_positive_int(input_size, 'input_size', strictly_positive=False)\n    chunk_size = _validate_positive_int(chunk_size, 'chunk_size')\n    input_offset = _validate_positive_int(input_offset, 'input_offset', strictly_positive=False)\n    overlap_size = _validate_positive_int(overlap_size, 'overlap_size', strictly_positive=False)\n\n    input_stop = input_offset + input_size\n\n    if align:\n        initial_chunk_len = chunk_size - input_offset % (chunk_size - overlap_size)\n        if initial_chunk_len != overlap_size:\n            yield (input_offset, min(input_offset + initial_chunk_len, input_stop))\n            if input_offset + initial_chunk_len >= input_stop:\n                return\n            input_offset = input_offset + initial_chunk_len - overlap_size\n\n    for i in range(input_offset, input_stop, chunk_size - overlap_size):\n        yield (i, min(i + chunk_size, input_stop))\n\n        if i + chunk_size >= input_stop:\n            return"
+      }
+    ],
+    "unresolved": [
+      "boltons/iterutils.py:function: take",
+      "boltons/iterutils.py:line: 123"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "boltons.iterutils.chunked_iter"
+    ],
+    "exact_hit_dependencies": [
+      "boltons.iterutils.chunked_iter"
+    ],
+    "returned_entities": 4,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 4873
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21588,
+    "completion_tokens": 2247,
+    "total_tokens": 23835,
+    "seconds": 73.23978209495544,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 87.75245666503906,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

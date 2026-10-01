@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 904,
+  "namespace": "mrjob.logs.history._parse_pre_yarn_history_log",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11117,
+      "input_estimate_after": 11117,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmrjob/logs/history.py\nline: 111\nfunction: _interpret_history_log\n\nmrjob/logs/history.py\nline: 395\nfunction: _parse_pre_yarn_counters\n\nmrjob/logs/history.py\nline: 422\nfunction: _pre_yarn_history_unescape\n\nmrjob/logs/mixin.py\nfunction: LogInterpretationMixin._pick_counters\n\nmrjob/logs/mixin.py\nfunction: LogInterpretationMixin._pick_error\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/logs/history.py",
+      "mrjob/logs/mixin.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/logs/history.py",
+        "name": "_interpret_history_log",
+        "kind": "function",
+        "symbol": "mrjob.logs.history._interpret_history_log",
+        "start": 111,
+        "end": 140,
+        "code": "def _interpret_history_log(fs, matches):\n    \"\"\"Extract counters and errors from history log.\n\n    Matches is a list of dicts with the keys *job_id* and *yarn*\n    (see :py:func:`_ls_history_logs()`)\n\n    We expect *matches* to contain at most one match; further matches\n    will be ignored.\n\n    Returns a dictionary with the keys *counters* and *errors*.\n    \"\"\"\n    # we expect to go through this for loop 0 or 1 times\n    for match in matches:\n        path = match['path']\n\n        if match['yarn']:\n            # not yet implemented\n            result = _parse_yarn_history_log(_cat_log_lines(fs, path))\n        else:\n            result = _parse_pre_yarn_history_log(_cat_log_lines(fs, path))\n\n        # patch path, task_id, etc. into errors\n        for error in result.get('errors') or ():\n            if 'hadoop_error' in error:\n                error['hadoop_error']['path'] = path\n            _add_implied_task_id(error)\n\n        return result\n\n    return {}"
+      },
+      {
+        "file": "mrjob/logs/history.py",
+        "name": "_parse_pre_yarn_counters",
+        "kind": "function",
+        "symbol": "mrjob.logs.history._parse_pre_yarn_counters",
+        "start": 395,
+        "end": 419,
+        "code": "def _parse_pre_yarn_counters(counters_str):\n    \"\"\"Parse a COUNTERS field from a pre-YARN history file.\n\n    Returns a map from group to counter to amount.\n    \"\"\"\n    counters = {}\n\n    for group_match in _PRE_YARN_COUNTER_GROUP_RE.finditer(counters_str):\n        group_name = _pre_yarn_history_unescape(\n            group_match.group('group_name'))\n\n        group_counters = {}\n\n        for counter_match in _PRE_YARN_COUNTER_RE.finditer(\n                group_match.group('counter_list_str')):\n\n            counter_name = _pre_yarn_history_unescape(\n                counter_match.group('counter_name'))\n            amount = int(counter_match.group('amount'))\n\n            group_counters[counter_name] = amount\n\n        counters[group_name] = group_counters\n\n    return counters"
+      },
+      {
+        "file": "mrjob/logs/history.py",
+        "name": "_pre_yarn_history_unescape",
+        "kind": "function",
+        "symbol": "mrjob.logs.history._pre_yarn_history_unescape",
+        "start": 422,
+        "end": 424,
+        "code": "def _pre_yarn_history_unescape(s):\n    \"\"\"Un-escape string from a pre-YARN history file.\"\"\"\n    return _PRE_YARN_HISTORY_ESCAPE_RE.sub(r'\\1', s)"
+      },
+      {
+        "file": "mrjob/logs/mixin.py",
+        "name": "LogInterpretationMixin._pick_counters",
+        "kind": "function",
+        "symbol": "mrjob.logs.mixin.LogInterpretationMixin._pick_counters",
+        "start": 98,
+        "end": 116,
+        "code": "    def _pick_counters(self, log_interpretation, step_type):\n        \"\"\"Pick counters from our log interpretation, interpreting\n        history logs if need be.\"\"\"\n        if self._step_type_uses_spark(step_type):\n            return {}\n\n        counters = _pick_counters(log_interpretation)\n\n        if self._read_logs():\n            if not counters:\n                log.info('Attempting to fetch counters from logs...')\n                self._interpret_step_logs(log_interpretation, step_type)\n                counters = _pick_counters(log_interpretation)\n\n            if not counters:\n                self._interpret_history_log(log_interpretation)\n                counters = _pick_counters(log_interpretation)\n\n        return counters"
+      },
+      {
+        "file": "mrjob/logs/mixin.py",
+        "name": "LogInterpretationMixin._pick_error",
+        "kind": "function",
+        "symbol": "mrjob.logs.mixin.LogInterpretationMixin._pick_error",
+        "start": 118,
+        "end": 140,
+        "code": "    def _pick_error(self, log_interpretation, step_type):\n        \"\"\"Pick probable cause of failure (only call this if job fails).\"\"\"\n        from mrjob.logs.errors import _pick_error_attempt_ids\n        from mrjob.logs.errors import _pick_error\n        logs_needed = self._logs_needed_to_pick_error(step_type)\n\n        if self._read_logs() and not all(\n                log_type in log_interpretation for log_type in logs_needed):\n            log.info('Scanning logs for probable cause of failure...')\n\n            if 'step' in logs_needed:\n                self._interpret_step_logs(log_interpretation, step_type)\n\n            if 'history' in logs_needed:\n                self._interpret_history_log(log_interpretation)\n\n            if 'task' in logs_needed:\n                error_attempt_ids = _pick_error_attempt_ids(log_interpretation)\n\n                self._interpret_task_logs(\n                    log_interpretation, step_type, error_attempt_ids)\n\n        return _pick_error(log_interpretation)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "mrjob.logs.history._parse_pre_yarn_counters"
+    ],
+    "exact_hit_dependencies": [
+      "mrjob.logs.history._parse_pre_yarn_counters"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3626
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 48004,
+    "completion_tokens": 1083,
+    "total_tokens": 49087,
+    "seconds": 46.740233182907104,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 116.6510648727417,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

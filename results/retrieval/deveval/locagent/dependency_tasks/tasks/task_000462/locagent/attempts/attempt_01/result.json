@@ -1,0 +1,109 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 462,
+  "namespace": "falcon.util.structures.ETag.dumps",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2293,
+      "input_estimate_after": 2293,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nfalcon/util/structures.py\nline: 265\nfunction: ETag.dumps\n\nfalcon/util/structures.py\nline: (class-level)\nclass: ETag\nattribute: is_weak\n\nfalcon/request_helpers.py\nfunction: _parse_etags\n\nfalcon/request.py\nfunction: Request.if_match\nfunction: Request.if_none_match\n\nfalcon/response.py\n```",
+  "final_locations": {
+    "files": [
+      "falcon/util/structures.py",
+      "falcon/request_helpers.py",
+      "falcon/request.py",
+      "falcon/response.py"
+    ],
+    "entities": [
+      {
+        "file": "falcon/util/structures.py",
+        "name": "ETag",
+        "kind": "class",
+        "symbol": "falcon.util.structures.ETag",
+        "start": 208,
+        "end": 319,
+        "code": "class ETag(str):\n    \"\"\"Convenience class to represent a parsed HTTP entity-tag.\n\n    This class is simply a subclass of ``str`` with a few helper methods and\n    an extra attribute to indicate whether the entity-tag is weak or strong. The\n    value of the string is equivalent to what RFC 7232 calls an \"opaque-tag\",\n    i.e. an entity-tag sans quotes and the weakness indicator.\n\n    Note:\n\n        Given that a weak entity-tag comparison can be performed by\n        using the ``==`` operator (per the example below), only a\n        :meth:`~.strong_compare` method is provided.\n\n    Here is an example ``on_get()`` method that demonstrates how to use instances\n    of this class::\n\n        def on_get(self, req, resp):\n            content_etag = self._get_content_etag()\n            for etag in (req.if_none_match or []):\n                if etag == '*' or etag == content_etag:\n                    resp.status = falcon.HTTP_304\n                    return\n\n            # -- snip --\n\n            resp.etag = content_etag\n            resp.status = falcon.HTTP_200\n\n    (See also: RFC 7232)\n\n    Attributes:\n        is_weak (bool): ``True`` if the entity-tag is weak, otherwise ``False``.\n\n    \"\"\"\n\n    is_weak = False\n\n    def strong_compare(self, other):\n        \"\"\"Perform a strong entity-tag comparison.\n\n        Two entity-tags are equivalent if both are not weak and their\n        opaque-tags match character-by-character.\n\n        (See also: RFC 7232, Section 2.3.2)\n\n        Arguments:\n            other (ETag): The other :class:`~.ETag` to which you are comparing\n            this one.\n\n        Returns:\n            bool: ``True`` if the two entity-tags match, otherwise ``False``.\n\n        \"\"\"\n\n        return self == other and not (self.is_weak or other.is_weak)\n\n    def dumps(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    @classmethod\n    def loads(cls, etag_str):\n        \"\"\"Deserialize a single entity-tag string from a precondition header.\n\n        Note:\n\n            This method is meant to be used only for parsing a single\n            entity-tag. It can not be used to parse a comma-separated list of\n            values.\n\n        (See also: RFC 7232, Section 2.3)\n\n        Arguments:\n            etag_str (str): An ASCII string representing a single entity-tag,\n                as defined by RFC 7232.\n\n        Returns:\n            ETag: An instance of `~.ETag` representing the parsed entity-tag.\n\n        \"\"\"\n\n        value = etag_str\n\n        is_weak = False\n        if value.startswith(('W/', 'w/')):\n            is_weak = True\n            value = value[2:]\n\n        # NOTE(kgriffs): We allow for an unquoted entity-tag just in case,\n        #   although it has been non-standard to do so since at least 1999\n        #   with the advent of RFC 2616.\n        if value[:1] == value[-1:] == '\"':\n            value = value[1:-1]\n\n        t = cls(value)\n        t.is_weak = is_weak\n\n        return t"
+      },
+      {
+        "file": "falcon/request_helpers.py",
+        "name": "_parse_etags",
+        "kind": "function",
+        "symbol": "falcon.request_helpers._parse_etags",
+        "start": 129,
+        "end": 176,
+        "code": "def _parse_etags(etag_str):\n    \"\"\"Parse a string containing one or more HTTP entity-tags.\n\n    The string is assumed to be formatted as defined for a precondition\n    header, and may contain either a single ETag, or multiple comma-separated\n    ETags. The string may also contain a '*' character, in order to indicate\n    that any ETag should match the precondition.\n\n    (See also: RFC 7232, Section 3)\n\n    Args:\n        etag_str (str): An ASCII header value to parse ETags from. ETag values\n            within may be prefixed by ``W/`` to indicate that the weak comparison\n            function should be used.\n\n    Returns:\n        list: A list of unquoted ETags or ``['*']`` if all ETags should be\n        matched. If the string to be parse is empty, or contains only\n        whitespace, ``None`` will be returned instead.\n\n    \"\"\"\n\n    etag_str = etag_str.strip()\n    if not etag_str:\n        return None\n\n    if etag_str == '*':\n        return [etag_str]\n\n    if ',' not in etag_str:\n        return [ETag.loads(etag_str)]\n\n    etags = []\n\n    # PERF(kgriffs): Parsing out the weak string like this turns out to be more\n    #   performant than grabbing the entire entity-tag and passing it to\n    #   ETag.loads(). This is also faster than parsing etag_str manually via\n    #   str.find() and slicing.\n    for weak, value in _ENTITY_TAG_PATTERN.findall(etag_str):\n        t = ETag(value)\n        t.is_weak = bool(weak)\n        etags.append(t)\n\n    # NOTE(kgriffs): Normalize a string with only whitespace and commas\n    #   to None, since it is like a list of individual ETag headers that\n    #   are all set to nothing, and so therefore basically should be\n    #   treated as not having been set in the first place.\n    return etags or None"
+      },
+      {
+        "file": "falcon/request.py",
+        "name": "Request.if_match",
+        "kind": "function",
+        "symbol": "falcon.request.Request.if_match",
+        "start": 639,
+        "end": 654,
+        "code": "    def if_match(self):\n        # TODO(kgriffs): It may make sense at some point to create a\n        #   header property generator that DRY's up the memoization\n        #   pattern for us.\n        # PERF(kgriffs): It probably isn't worth it to set\n        #   self._cached_if_match to a special type/object to distinguish\n        #   between the variable being unset and the header not being\n        #   present in the request. The reason is that if the app\n        #   gets a None back on the first reference to property, it\n        #   probably isn't going to access the property again (TBD).\n        if self._cached_if_match is None:\n            header_value = self.env.get('HTTP_IF_MATCH')\n            if header_value:\n                self._cached_if_match = helpers._parse_etags(header_value)\n\n        return self._cached_if_match"
+      },
+      {
+        "file": "falcon/request.py",
+        "name": "Request.if_none_match",
+        "kind": "function",
+        "symbol": "falcon.request.Request.if_none_match",
+        "start": 657,
+        "end": 663,
+        "code": "    def if_none_match(self):\n        if self._cached_if_none_match is None:\n            header_value = self.env.get('HTTP_IF_NONE_MATCH')\n            if header_value:\n                self._cached_if_none_match = helpers._parse_etags(header_value)\n\n        return self._cached_if_none_match"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 4,
+    "unresolved_locations": 0,
+    "returned_code_chars": 5779
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 12623,
+    "completion_tokens": 1343,
+    "total_tokens": 13966,
+    "seconds": 58.72632431983948,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [
+    {
+      "step": 1,
+      "name": "explore_tree_structure",
+      "error": "Tool error: AssertionError: Invalid edge types ['uses', 'instantiates'] in edge_type_filter. Expected edge type in ['contains', 'inherits', 'invokes', 'imports']"
+    }
+  ],
+  "elapsed_seconds": 76.9406065940857,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

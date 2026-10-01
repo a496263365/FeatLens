@@ -1,0 +1,105 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 804,
+  "namespace": "exodus_bundler.bundling.Bundle.add_file",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2486,
+      "input_estimate_after": 2486,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/exodus_bundler/bundling.py\nfunction: Bundle.file_factory\nfunction: Bundle.create_bundle\nfunction: Bundle.bundle_root\n\nsrc/exodus_bundler/bundling.py\nfunction: create_unpackaged_bundle\n```",
+  "final_locations": {
+    "files": [
+      "src/exodus_bundler/bundling.py"
+    ],
+    "entities": [
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "Bundle.file_factory",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.Bundle.file_factory",
+        "start": 841,
+        "end": 867,
+        "code": "    def file_factory(self, path, entry_point=None, chroot=None, library=False, file_factory=None):\n        \"\"\"Either creates a new `File`, or updates and returns one from `files`.\n\n        This method can be used in place of `File.__init__()` when it is known that the `File`\n        is going to end up being added to the `Bundle.files` set. The construction of a `File` is\n        quite expensive due to the ELF parsing, so this allows avoiding the construction of `File`\n        objects when an equivalent ones are already present in the set. Additionally, this allows\n        for intelligent merging of properties between `File` objects. For example, a `File` with\n        an entry point should always preserve that entry point, even if the file also gets added\n        using `--add` or some other method without one.\n\n        See the `File.__init__()` method for documentation of the arguments, they're identical.\n        \"\"\"\n        # Attempt to find an existing file with the same normalized path in `self.files`.\n        path = resolve_file_path(path, search_environment_path=entry_point is not None)\n        file = next((file for file in self.files if file.path == path), None)\n        if file is not None:\n            assert entry_point == file.entry_point or not entry_point or not file.entry_point, \\\n                \"The entry point property should always persist, but can't conflict.\"\n            file.entry_point = file.entry_point or entry_point\n            assert chroot == file.chroot, 'The chroot must match.'\n            file.library = file.library or library\n            assert not file.entry_point or not file.library, \\\n                \"A file can't be both an entry point and a library.\"\n            return file\n\n        return File(path, entry_point, chroot, library, file_factory)"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "Bundle.create_bundle",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.Bundle.create_bundle",
+        "start": 765,
+        "end": 834,
+        "code": "    def create_bundle(self, shell_launchers=False):\n        \"\"\"Creates the unpackaged bundle in `working_directory`.\n\n        Args:\n            shell_launchers (bool, optional): Forces the use of shell script launchers instead of\n                attempting to compile first using musl or diet c.\n        \"\"\"\n        file_paths = set()\n        files_needing_launchers = defaultdict(set)\n        for file in self.files:\n            # Store the file path to avoid collisions later.\n            file_path = os.path.join(self.bundle_root, file.source)\n            file_paths.add(file_path)\n\n            # Create a symlink in `./bin/` if an entry point is specified.\n            if file.entry_point:\n                file.create_entry_point(self.working_directory, self.bundle_root)\n\n            if file.no_symlink:\n                # We'll need to copy the actual file into the bundle subdirectory in this\n                # case so that it can locate resources using paths relative to the executable.\n                parent_directory = os.path.dirname(file_path)\n                if not os.path.exists(parent_directory):\n                    os.makedirs(parent_directory)\n                shutil.copy(file.path, file_path)\n                continue\n\n            # Copy over the actual file.\n            file.copy(self.working_directory)\n\n            if file.requires_launcher:\n                # These are kind of complicated, we'll just store the requirements for now.\n                directory_and_linker = (os.path.dirname(file_path), file.elf.linker_file)\n                files_needing_launchers[directory_and_linker].add(file)\n            else:\n                file.symlink(working_directory=self.working_directory, bundle_root=self.bundle_root)\n\n        # Now we need to write out one unique copy of each linker in each directory where it's\n        # required. This is necessary so that `readlink(\"/proc/self/exe\")` will return the correct\n        # directory when programs use that to construct relative paths to resources.\n        for ((directory, linker), executable_files) in files_needing_launchers.items():\n            # First, we'll find a unique name for the linker in this directory and write it out.\n            desired_linker_path = os.path.join(directory, 'linker-%s' % linker.hash)\n            linker_path = desired_linker_path\n            iteration = 2\n            while linker_path in file_paths:\n                linker_path = '%s-%d' % (desired_linker_path, iteration)\n                iteration += 1\n            file_paths.add(linker_path)\n            linker_dirname, linker_basename = os.path.split(linker_path)\n            if not os.path.exists(linker_dirname):\n                os.makedirs(linker_dirname)\n            shutil.copy(linker.path, linker_path)\n\n            # Now we need to construct a launcher for each executable that depends on this linker.\n            for file in executable_files:\n                # We'll again attempt to find a unique available name, this time for the symlink\n                # to the executable.\n                file_basename = file.entry_point or os.path.basename(file.path)\n                desired_symlink_path = os.path.join(directory, '%s-x' % file_basename)\n                symlink_path = desired_symlink_path\n                iteration = 2\n                while symlink_path in file_paths:\n                    symlink_path = '%s-%d' % (desired_symlink_path, iteration)\n                    iteration += 1\n                file_paths.add(symlink_path)\n                symlink_basename = os.path.basename(symlink_path)\n                file.create_launcher(self.working_directory, self.bundle_root,\n                                     linker_basename, symlink_basename,\n                                     shell_launcher=shell_launchers)"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "Bundle.bundle_root",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.Bundle.bundle_root",
+        "start": 870,
+        "end": 873,
+        "code": "    def bundle_root(self):\n        \"\"\"str: The root directory of the bundle where the original file structure is mirrored.\"\"\"\n        path = os.path.join(self.working_directory, 'bundles', self.hash)\n        return os.path.normpath(os.path.abspath(path))"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "create_unpackaged_bundle",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.create_unpackaged_bundle",
+        "start": 103,
+        "end": 153,
+        "code": "def create_unpackaged_bundle(executables, rename=[], chroot=None, add=[], no_symlink=[],\n                             shell_launchers=False, detect=False):\n    \"\"\"Creates a temporary directory containing the unpackaged contents of the bundle.\"\"\"\n    from exodus_bundler.errors import DependencyDetectionError\n    from exodus_bundler.dependency_detection import detect_dependencies\n    bundle = Bundle(chroot=chroot, working_directory=True)\n    try:\n        # Sanitize the inputs.\n        assert len(executables), 'No executables were specified.'\n        assert len(executables) >= len(rename), \\\n            'More renamed options were included than executables.'\n        # Pad the rename's with `True` so that `entry_point` can be specified.\n        entry_points = rename + [True for i in range(len(executables) - len(rename))]\n\n        # Populate the bundle with main executable files and their dependencies.\n        for (executable, entry_point) in zip(executables, entry_points):\n            file = bundle.add_file(executable, entry_point=entry_point)\n\n            # We'll only auto-detect dependencies for these entry points as well.\n            # If we did this later, it would practically bring in the whole system...\n            if detect:\n                dependency_paths = detect_dependencies(file.path)\n                if not dependency_paths:\n                    raise DependencyDetectionError(\n                        ('Automatic dependency detection failed. Either \"%s\" ' % file.path) +\n                        'is not tracked by your package manager, or your operating system '\n                        'is not currently compatible with the `--detect` option. If not, please '\n                        \"create an issue at https://github.com/intoli/exodus and we'll try our \"\n                        ' to add support for it in the future.',\n                    )\n\n                for path in dependency_paths:\n                    bundle.add_file(path)\n\n        # Add \"additional files\" specified with the `--add` option.\n        for filename in add:\n            bundle.add_file(filename)\n\n        # Mark the required files as `no_symlink=True`.\n        for path in no_symlink:\n            path = resolve_file_path(path)\n            file = next(iter(file for file in bundle.files if file.path == path), None)\n            if file:\n                file.no_symlink = True\n\n        bundle.create_bundle(shell_launchers=shell_launchers)\n\n        return bundle.working_directory\n    except:  # noqa: E722\n        bundle.delete_working_directory()\n        raise"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.2857142857142857,
+    "exact_entity_dr": 0.14285714285714285,
+    "dependency_count": 7,
+    "hit_dependencies": [
+      "exodus_bundler.bundling.Bundle.file_factory",
+      "exodus_bundler.bundling.Bundle.files"
+    ],
+    "exact_hit_dependencies": [
+      "exodus_bundler.bundling.Bundle.file_factory"
+    ],
+    "returned_entities": 4,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 8410
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 13656,
+    "completion_tokens": 1071,
+    "total_tokens": 14727,
+    "seconds": 44.55576014518738,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 45.24326944351196,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

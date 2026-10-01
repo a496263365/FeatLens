@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 28,
+  "namespace": "litdata.streaming.resolver._assert_dir_is_empty",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13071,
+      "input_estimate_after": 13071,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `_assert_dir_is_empty` function in `litdata/streaming/resolver.py`. These locations contain existing code patterns, classes, and functions that should be inspected and reused:\n\n```\nlitdata/streaming/resolver.py\nline: 36\nclass: Dir\nfunction: __init__\n\nlitdata/streaming/resolver.py\nline: 235\nfunction: _assert_dir_has_index_file\nline: 242\nline: 247\nline: 251\n\nlitdata/streaming/resolver.py\nline: 44\nfunction: _resolve_dir\nline: 56\nline: 59\n\nlitdata/streaming/client.py\nclass: S3Client\nfunction: __init__\n\nlitdata/processing/data_processor.py\nline: 748\nfunction: DataChunkRecipe._upload_index\nline: 759\nline: 760\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/resolver.py",
+      "litdata/streaming/client.py",
+      "litdata/processing/data_processor.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "Dir",
+        "kind": "class",
+        "symbol": "litdata.streaming.resolver.Dir",
+        "start": 37,
+        "end": 41,
+        "code": "class Dir:\n    \"\"\"Holds a directory path and possibly its associated remote URL.\"\"\"\n\n    path: Optional[str] = None\n    url: Optional[str] = None"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_assert_dir_has_index_file",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._assert_dir_has_index_file",
+        "start": 235,
+        "end": 277,
+        "code": "def _assert_dir_has_index_file(output_dir: Dir) -> None:\n    if not isinstance(output_dir, Dir):\n        raise ValueError(\"The provided output_dir isn't a Dir Object.\")\n\n    if output_dir.url is None:\n        return\n\n    obj = parse.urlparse(output_dir.url)\n\n    if obj.scheme != \"s3\":\n        raise ValueError(f\"The provided folder should start with s3://. Found {output_dir.path}.\")\n\n    s3 = boto3.client(\"s3\")\n\n    prefix = obj.path.lstrip(\"/\").rstrip(\"/\") + \"/\"\n\n    objects = s3.list_objects_v2(\n        Bucket=obj.netloc,\n        Delimiter=\"/\",\n        Prefix=prefix,\n    )\n\n    # No files are found in this folder\n    if objects[\"KeyCount\"] == 0:\n        return\n\n    # Check the index file exists\n    try:\n        s3.head_object(Bucket=obj.netloc, Key=os.path.join(prefix, \"index.json\"))\n        has_index_file = True\n    except botocore.exceptions.ClientError:\n        has_index_file = False\n\n    if has_index_file:\n        raise RuntimeError(\n            f\"The provided output_dir `{output_dir.path}` already contains an optimized immutable datasets.\"\n            \" HINT: Did you consider changing the `output_dir` with your own versioning as a suffix?\"\n        )\n\n    bucket_name = obj.netloc\n    s3 = boto3.resource(\"s3\")\n    for obj in s3.Bucket(bucket_name).objects.filter(Prefix=prefix):\n        s3.Object(bucket_name, obj.key).delete()"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_resolve_dir",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._resolve_dir",
+        "start": 44,
+        "end": 81,
+        "code": "def _resolve_dir(dir_path: Optional[Union[str, Dir]]) -> Dir:\n    if isinstance(dir_path, Dir):\n        return Dir(path=str(dir_path.path) if dir_path.path else None, url=str(dir_path.url) if dir_path.url else None)\n\n    if dir_path is None:\n        return Dir()\n\n    if not isinstance(dir_path, str):\n        raise ValueError(f\"`dir_path` must be a `Dir` or a string, got: {dir_path}\")\n\n    assert isinstance(dir_path, str)\n\n    if dir_path.startswith(\"s3://\"):\n        return Dir(path=None, url=dir_path)\n\n    if dir_path.startswith(\"local:\"):\n        return Dir(path=None, url=dir_path)\n\n    dir_path = _resolve_time_template(dir_path)\n\n    dir_path_absolute = str(Path(dir_path).absolute().resolve())\n\n    if dir_path_absolute.startswith(\"/teamspace/studios/this_studio\"):\n        return Dir(path=dir_path_absolute, url=None)\n\n    if dir_path_absolute.startswith(\"/.project\"):\n        dir_path_absolute = dir_path\n\n    if dir_path_absolute.startswith(\"/teamspace/studios\") and len(dir_path_absolute.split(\"/\")) > 3:\n        return _resolve_studio(dir_path_absolute, dir_path_absolute.split(\"/\")[3], None)\n\n    if dir_path_absolute.startswith(\"/teamspace/s3_connections\") and len(dir_path_absolute.split(\"/\")) > 3:\n        return _resolve_s3_connections(dir_path_absolute)\n\n    if dir_path_absolute.startswith(\"/teamspace/datasets\") and len(dir_path_absolute.split(\"/\")) > 3:\n        return _resolve_datasets(dir_path_absolute)\n\n    return Dir(path=dir_path_absolute, url=None)"
+      },
+      {
+        "file": "litdata/streaming/client.py",
+        "name": "S3Client",
+        "kind": "class",
+        "symbol": "litdata.streaming.client.S3Client",
+        "start": 14,
+        "end": 53,
+        "code": "class S3Client:\n    # TODO: Generalize to support more cloud providers.\n\n    def __init__(self, refetch_interval: int = 3300) -> None:\n        self._refetch_interval = refetch_interval\n        self._last_time: Optional[float] = None\n        self._client: Optional[Any] = None\n\n    def _create_client(self) -> None:\n        has_shared_credentials_file = (\n            os.getenv(\"AWS_SHARED_CREDENTIALS_FILE\") == os.getenv(\"AWS_CONFIG_FILE\") == \"/.credentials/.aws_credentials\"\n        )\n\n        if has_shared_credentials_file or not _IS_IN_STUDIO:\n            self._client = boto3.client(\n                \"s3\", config=botocore.config.Config(retries={\"max_attempts\": 1000, \"mode\": \"adaptive\"})\n            )\n        else:\n            provider = InstanceMetadataProvider(iam_role_fetcher=InstanceMetadataFetcher(timeout=3600, num_attempts=5))\n            credentials = provider.load()\n            self._client = boto3.client(\n                \"s3\",\n                aws_access_key_id=credentials.access_key,\n                aws_secret_access_key=credentials.secret_key,\n                aws_session_token=credentials.token,\n                config=botocore.config.Config(retries={\"max_attempts\": 1000, \"mode\": \"adaptive\"}),\n            )\n\n    @property\n    def client(self) -> Any:\n        if self._client is None:\n            self._create_client()\n            self._last_time = time()\n\n        # Re-generate credentials for EC2\n        if self._last_time is None or (time() - self._last_time) > self._refetch_interval:\n            self._create_client()\n            self._last_time = time()\n\n        return self._client"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "DataChunkRecipe._upload_index",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor.DataChunkRecipe._upload_index",
+        "start": 748,
+        "end": 790,
+        "code": "    def _upload_index(self, output_dir: Dir, cache_dir: str, num_nodes: int, node_rank: Optional[int]) -> None:\n        \"\"\"This method upload the index file to the remote cloud directory.\"\"\"\n        if output_dir.path is None and output_dir.url is None:\n            return\n\n        obj = parse.urlparse(output_dir.url if output_dir.url else output_dir.path)\n        if num_nodes > 1:\n            local_filepath = os.path.join(cache_dir, f\"{node_rank}-{_INDEX_FILENAME}\")\n        else:\n            local_filepath = os.path.join(cache_dir, _INDEX_FILENAME)\n\n        if obj.scheme == \"s3\":\n            s3 = S3Client()\n            s3.client.upload_file(\n                local_filepath, obj.netloc, os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath))\n            )\n        elif output_dir.path and os.path.isdir(output_dir.path):\n            shutil.copyfile(local_filepath, os.path.join(output_dir.path, os.path.basename(local_filepath)))\n\n        if num_nodes == 1 or node_rank is None:\n            return\n\n        # Merge the index files generated by each node.\n        # Note: When using the Data Optimizer, they should be a single process on each node executing this section\n        # So no risk to get race conditon.\n        if num_nodes == node_rank + 1:\n            # Get the index file locally\n            for node_rank in range(num_nodes - 1):\n                output_dir_path = output_dir.url if output_dir.url else output_dir.path\n                assert output_dir_path\n                remote_filepath = os.path.join(output_dir_path, f\"{node_rank}-{_INDEX_FILENAME}\")\n                node_index_filepath = os.path.join(cache_dir, os.path.basename(remote_filepath))\n                if obj.scheme == \"s3\":\n                    obj = parse.urlparse(remote_filepath)\n                    _wait_for_file_to_exist(s3, obj)\n                    with open(node_index_filepath, \"wb\") as f:\n                        s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)\n                elif output_dir.path and os.path.isdir(output_dir.path):\n                    shutil.copyfile(remote_filepath, node_index_filepath)\n\n            merge_cache = Cache(cache_dir, chunk_bytes=1)\n            merge_cache._merge_no_wait()\n            self._upload_index(output_dir, cache_dir, 1, None)"
+      }
+    ],
+    "unresolved": [
+      "litdata/streaming/resolver.py:line: 36",
+      "litdata/streaming/resolver.py:function: __init__",
+      "litdata/streaming/client.py:function: __init__"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "litdata.streaming.resolver.Dir"
+    ],
+    "exact_hit_dependencies": [
+      "litdata.streaming.resolver.Dir"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 6891
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 34726,
+    "completion_tokens": 626,
+    "total_tokens": 35352,
+    "seconds": 58.92405128479004,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 259.2734725475311,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

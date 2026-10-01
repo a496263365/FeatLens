@@ -1,0 +1,126 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 243,
+  "namespace": "litecli.packages.parseutils.queries_start_with",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nlitecli/packages/parseutils.py\nline: 211\nfunction: queries_start_with\n\nlitecli/packages/parseutils.py\nline: 204\nfunction: query_starts_with\n\nlitecli/packages/parseutils.py\nline: 1\nline: 187\nfunction: extract_tables\n\nlitecli/packages/parseutils.py\nline: 1\nline: 144\nfunction: is_subselect\n\nlitecli/packages/parseutils.py\nline: 1\nline: 167\nfunction: extract_from_part\n\nlitecli/packages/prompt_utils.py\nline: 1\nfunction: confirm_destructive_query\n```",
+  "final_locations": {
+    "files": [
+      "litecli/packages/parseutils.py",
+      "litecli/packages/prompt_utils.py"
+    ],
+    "entities": [
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "query_starts_with",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.query_starts_with",
+        "start": 204,
+        "end": 208,
+        "code": "def query_starts_with(query, prefixes):\n    \"\"\"Check if the query starts with any item from *prefixes*.\"\"\"\n    prefixes = [prefix.lower() for prefix in prefixes]\n    formatted_sql = sqlparse.format(query.lower(), strip_comments=True)\n    return bool(formatted_sql) and formatted_sql.split()[0] in prefixes"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "find_prev_keyword",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.find_prev_keyword",
+        "start": 168,
+        "end": 201,
+        "code": "def find_prev_keyword(sql):\n    \"\"\"Find the last sql keyword in an SQL statement\n\n    Returns the value of the last keyword, and the text of the query with\n    everything after the last keyword stripped\n    \"\"\"\n    if not sql.strip():\n        return None, \"\"\n\n    parsed = sqlparse.parse(sql)[0]\n    flattened = list(parsed.flatten())\n\n    logical_operators = (\"AND\", \"OR\", \"NOT\", \"BETWEEN\")\n\n    for t in reversed(flattened):\n        if t.value == \"(\" or (\n            t.is_keyword and (t.value.upper() not in logical_operators)\n        ):\n            # Find the location of token t in the original parsed statement\n            # We can't use parsed.token_index(t) because t may be a child token\n            # inside a TokenList, in which case token_index thows an error\n            # Minimal example:\n            #   p = sqlparse.parse('select * from foo where bar')\n            #   t = list(p.flatten())[-3]  # The \"Where\" token\n            #   p.token_index(t)  # Throws ValueError: not in list\n            idx = flattened.index(t)\n\n            # Combine the string values of all tokens in the original list\n            # up to and including the target keyword token t, to produce a\n            # query string with everything after the keyword token removed\n            text = \"\".join(tok.value for tok in flattened[: idx + 1])\n            return t, text\n\n    return None, \"\""
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "extract_tables",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.extract_tables",
+        "start": 149,
+        "end": 165,
+        "code": "def extract_tables(sql):\n    \"\"\"Extract the table names from an SQL statment.\n\n    Returns a list of (schema, table, alias) tuples\n\n    \"\"\"\n    parsed = sqlparse.parse(sql)\n    if not parsed:\n        return []\n\n    # INSERT statements must stop looking for tables at the sign of first\n    # Punctuation. eg: INSERT INTO abc (col1, col2) VALUES (1, 2)\n    # abc is the table name, but if we don't stop at the first lparen, then\n    # we'll identify abc, col1 and col2 as table names.\n    insert_stmt = parsed[0].token_first().value.lower() == \"insert\"\n    stream = extract_from_part(parsed[0], stop_at_punctuation=insert_stmt)\n    return list(extract_table_identifiers(stream))"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "extract_table_identifiers",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.extract_table_identifiers",
+        "start": 120,
+        "end": 145,
+        "code": "def extract_table_identifiers(token_stream):\n    \"\"\"yields tuples of (schema_name, table_name, table_alias)\"\"\"\n\n    for item in token_stream:\n        if isinstance(item, IdentifierList):\n            for identifier in item.get_identifiers():\n                # Sometimes Keywords (such as FROM ) are classified as\n                # identifiers which don't have the get_real_name() method.\n                try:\n                    schema_name = identifier.get_parent_name()\n                    real_name = identifier.get_real_name()\n                except AttributeError:\n                    continue\n                if real_name:\n                    yield (schema_name, real_name, identifier.get_alias())\n        elif isinstance(item, Identifier):\n            real_name = item.get_real_name()\n            schema_name = item.get_parent_name()\n\n            if real_name:\n                yield (schema_name, real_name, item.get_alias())\n            else:\n                name = item.get_name()\n                yield (None, name, item.get_alias() or name)\n        elif isinstance(item, Function):\n            yield (None, item.get_name(), item.get_name())"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "is_subselect",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.is_subselect",
+        "start": 67,
+        "end": 79,
+        "code": "def is_subselect(parsed):\n    if not parsed.is_group:\n        return False\n    for item in parsed.tokens:\n        if item.ttype is DML and item.value.upper() in (\n            \"SELECT\",\n            \"INSERT\",\n            \"UPDATE\",\n            \"CREATE\",\n            \"DELETE\",\n        ):\n            return True\n    return False"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "extract_from_part",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.extract_from_part",
+        "start": 82,
+        "end": 117,
+        "code": "def extract_from_part(parsed, stop_at_punctuation=True):\n    tbl_prefix_seen = False\n    for item in parsed.tokens:\n        if tbl_prefix_seen:\n            if is_subselect(item):\n                for x in extract_from_part(item, stop_at_punctuation):\n                    yield x\n            elif stop_at_punctuation and item.ttype is Punctuation:\n                return\n            # An incomplete nested select won't be recognized correctly as a\n            # sub-select. eg: 'SELECT * FROM (SELECT id FROM user'. This causes\n            # the second FROM to trigger this elif condition resulting in a\n            # `return`. So we need to ignore the keyword if the keyword\n            # FROM.\n            # Also 'SELECT * FROM abc JOIN def' will trigger this elif\n            # condition. So we need to ignore the keyword JOIN and its variants\n            # INNER JOIN, FULL OUTER JOIN, etc.\n            elif (\n                item.ttype is Keyword\n                and (not item.value.upper() == \"FROM\")\n                and (not item.value.upper().endswith(\"JOIN\"))\n            ):\n                return\n            else:\n                yield item\n        elif (\n            item.ttype is Keyword or item.ttype is Keyword.DML\n        ) and item.value.upper() in (\"COPY\", \"FROM\", \"INTO\", \"UPDATE\", \"TABLE\", \"JOIN\"):\n            tbl_prefix_seen = True\n        # 'SELECT a, FROM abc' will detect FROM as part of the column list.\n        # So this check here is necessary.\n        elif isinstance(item, IdentifierList):\n            for identifier in item.get_identifiers():\n                if identifier.ttype is Keyword and identifier.value.upper() == \"FROM\":\n                    tbl_prefix_seen = True\n                    break"
+      },
+      {
+        "file": "litecli/packages/prompt_utils.py",
+        "name": "confirm_destructive_query",
+        "kind": "function",
+        "symbol": "litecli.packages.prompt_utils.confirm_destructive_query",
+        "start": 10,
+        "end": 23,
+        "code": "def confirm_destructive_query(queries):\n    \"\"\"Check if the query is destructive and prompts the user to confirm.\n\n    Returns:\n    * None if the query is non-destructive or we can't prompt the user.\n    * True if the query is destructive and the user wants to proceed.\n    * False if the query is destructive and the user doesn't want to proceed.\n\n    \"\"\"\n    prompt_text = (\n        \"You're about to run a destructive command.\\n\" \"Do you want to proceed? (y/n)\"\n    )\n    if is_destructive(queries) and sys.stdin.isatty():\n        return prompt(prompt_text, type=bool)"
+      }
+    ],
+    "unresolved": [
+      "litecli/packages/parseutils.py:line: 1",
+      "litecli/packages/parseutils.py:line: 1",
+      "litecli/packages/parseutils.py:line: 1",
+      "litecli/packages/parseutils.py:line: 167",
+      "litecli/packages/prompt_utils.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "litecli.packages.parseutils.query_starts_with"
+    ],
+    "exact_hit_dependencies": [
+      "litecli.packages.parseutils.query_starts_with"
+    ],
+    "returned_entities": 7,
+    "returned_files": 2,
+    "unresolved_locations": 5,
+    "returned_code_chars": 6130
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 11952,
+    "completion_tokens": 1205,
+    "total_tokens": 13157,
+    "seconds": 58.65923619270325,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 60.017982006073,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

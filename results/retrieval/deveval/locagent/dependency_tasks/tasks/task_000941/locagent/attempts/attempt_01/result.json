@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 941,
+  "namespace": "sslyze.plugins.certificate_info._cli_connector._get_name_as_short_text",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 21406,
+      "input_estimate_after": 21406,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the key reusable dependencies for implementing the `_get_name_as_short_text` function. The function needs to convert an `x509.Name` object to a display string, prioritizing the Common Name (CN) if present, otherwise returning the full name as a string.\n\nHere are the relevant locations containing reusable dependencies:\n\n```\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 50\nfunction: get_common_names\n\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 1\nimport: cryptography.x509.Name\nline: 15\nimport: cryptography.x509.NameOID\n\nsslyze/plugins/certificate_info/_cli_connector.py\nline: 308\nfunction: _get_subject_as_short_text\nline: 317\nfunction: _get_issuer_as_short_text\n\nsslyze/plugins/certificate_info/_cert_chain_analyzer.py\nline: 148\nline: 160\nusage: certificate.subject, certificate.issuer\n\nsslyze/plugins/certificate_info/json_output.py\nline: 169\nline: 175\nusage: _X509NameAsJson.from_orm(certificate.subject/issuer)\n```",
+  "final_locations": {
+    "files": [
+      "sslyze/plugins/certificate_info/_certificate_utils.py",
+      "sslyze/plugins/certificate_info/_cli_connector.py",
+      "sslyze/plugins/certificate_info/_cert_chain_analyzer.py",
+      "sslyze/plugins/certificate_info/json_output.py"
+    ],
+    "entities": [
+      {
+        "file": "sslyze/plugins/certificate_info/_certificate_utils.py",
+        "name": "get_common_names",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._certificate_utils.get_common_names",
+        "start": 50,
+        "end": 51,
+        "code": "def get_common_names(name_field: Name) -> List[str]:\n    return [cn.value for cn in name_field.get_attributes_for_oid(NameOID.COMMON_NAME)]  # type: ignore"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_cli_connector.py",
+        "name": "_get_subject_as_short_text",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._cli_connector._get_subject_as_short_text",
+        "start": 308,
+        "end": 314,
+        "code": "def _get_subject_as_short_text(certificate: Certificate) -> str:\n    try:\n        final_subject_field = _get_name_as_short_text(certificate.subject)\n    except ValueError:\n        # Cryptography could not parse the certificate https://github.com/nabla-c0d3/sslyze/issues/495\n        final_subject_field = \"Invalid Cert: Subject could not be parsed\"\n    return final_subject_field"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_cli_connector.py",
+        "name": "_get_issuer_as_short_text",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._cli_connector._get_issuer_as_short_text",
+        "start": 317,
+        "end": 323,
+        "code": "def _get_issuer_as_short_text(certificate: Certificate) -> str:\n    try:\n        final_issuer_field = _get_name_as_short_text(certificate.issuer)\n    except ValueError:\n        # Cryptography could not parse the certificate https://github.com/nabla-c0d3/sslyze/issues/495\n        final_issuer_field = \"Invalid Cert: Issuer could not be parsed\"\n    return final_issuer_field"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_cert_chain_analyzer.py",
+        "name": "CertificateDeploymentAnalyzer.perform",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._cert_chain_analyzer.CertificateDeploymentAnalyzer.perform",
+        "start": 124,
+        "end": 271,
+        "code": "    def perform(self) -> CertificateDeploymentAnalysisResult:\n        received_certificate_chain = [\n            load_pem_x509_certificate(pem_cert.encode(\"ascii\"), backend=default_backend())\n            for pem_cert in self.server_certificate_chain_as_pem\n        ]\n        leaf_cert = received_certificate_chain[0]\n\n        # OCSP Must-Staple\n        has_ocsp_must_staple = False\n        try:\n            tls_feature_ext = leaf_cert.extensions.get_extension_for_oid(ExtensionOID.TLS_FEATURE)\n            tls_feature_value = cast(TLSFeature, tls_feature_ext.value)\n            for feature_type in tls_feature_value:\n                if feature_type == cryptography.x509.TLSFeatureType.status_request:\n                    has_ocsp_must_staple = True\n                    break\n        except ExtensionNotFound:\n            pass\n\n        # Received chain order\n        is_chain_order_valid: Optional[bool] = True\n        previous_issuer = None\n        for index, cert in enumerate(received_certificate_chain):\n            try:\n                current_subject = cert.subject\n            except ValueError:\n                # Cryptography could not parse the certificate https://github.com/nabla-c0d3/sslyze/issues/495\n                is_chain_order_valid = None\n                break\n\n            if index > 0:\n                # Compare the current subject with the previous issuer in the chain\n                if current_subject != previous_issuer:\n                    is_chain_order_valid = False\n                    break\n            try:\n                previous_issuer = cert.issuer\n            except KeyError:\n                # Missing issuer; this is okay if this is the last cert\n                previous_issuer = None\n            except ValueError:\n                # Cryptography could not parse the certificate https://github.com/nabla-c0d3/sslyze/issues/495\n                is_chain_order_valid = None\n                break\n\n        # Check if the leaf certificate is Extended Validation\n        is_leaf_certificate_ev = False\n        for trust_store in self.trust_stores_for_validation:\n            if trust_store.ev_oids is None:\n                # We only have the EV OIDs for Mozilla - skip other stores\n                continue\n\n            is_leaf_certificate_ev = trust_store.is_certificate_extended_validation(leaf_cert)\n\n        # Check for Signed Timestamps\n        number_of_scts: Optional[int] = 0\n        try:\n            # Look for the x509 extension\n            sct_ext = leaf_cert.extensions.get_extension_for_oid(ExtensionOID.PRECERT_SIGNED_CERTIFICATE_TIMESTAMPS)\n            if isinstance(sct_ext.value, cryptography.x509.UnrecognizedExtension):\n                # The version of OpenSSL on the system is too old and can't parse the SCT extension\n                number_of_scts = None\n\n            # Count the number of entries in the extension\n            sct_ext_value = cast(cryptography.x509.PrecertificateSignedCertificateTimestamps, sct_ext.value)\n            number_of_scts = len(sct_ext_value)\n        except ExtensionNotFound:\n            pass\n\n        # Try to generate the verified certificate chain using each trust store\n        all_path_validation_results = []\n        for trust_store in self.trust_stores_for_validation:\n            path_validation_result = trust_store.verify_certificate_chain(self.server_certificate_chain_as_pem)\n            all_path_validation_results.append(path_validation_result)\n\n        # Keep one trust store that was able to build the verified chain to then run additional checks\n        trust_store_that_can_build_verified_chain = None\n        verified_certificate_chain = None\n\n        # But first tort the path validation results so the same trust_store always get picked for a given server\n        def sort_function(path_validation: PathValidationResult) -> str:\n            return path_validation.trust_store.name.lower()\n\n        all_path_validation_results.sort(key=sort_function)\n\n        # Then keep a trust store with a verified chain\n        for path_validation_result in all_path_validation_results:\n            if path_validation_result.was_validation_successful:\n                trust_store_that_can_build_verified_chain = path_validation_result.trust_store\n                verified_certificate_chain = path_validation_result.verified_certificate_chain\n                break\n\n        # Check if the anchor was sent by the server\n        has_anchor_in_certificate_chain = None\n        if verified_certificate_chain:\n            has_anchor_in_certificate_chain = verified_certificate_chain[-1] in received_certificate_chain\n\n        # Check if a SHA1-signed certificate is in the chain\n        # Root certificates can still be signed with SHA1 so we only check leaf and intermediate certificates\n        has_sha1_in_certificate_chain = None\n        if verified_certificate_chain:\n            has_sha1_in_certificate_chain = False\n            for cert in verified_certificate_chain[:-1]:\n                if isinstance(cert.signature_hash_algorithm, hashes.SHA1):\n                    has_sha1_in_certificate_chain = True\n                    break\n\n        # Check if this is a distrusted Symantec-issued chain\n        verified_chain_has_legacy_symantec_anchor = None\n        if verified_certificate_chain:\n            symantec_distrust_timeline = SymantecDistructTester.get_distrust_timeline(verified_certificate_chain)\n            verified_chain_has_legacy_symantec_anchor = True if symantec_distrust_timeline else False\n\n        # Check the OCSP response if there is one\n        is_ocsp_response_trusted = None\n        final_ocsp_response = None\n        if self.server_ocsp_response:\n            # Parse the OCSP response returned by nassl\n            final_ocsp_response = load_der_ocsp_response(self.server_ocsp_response.as_der_bytes())\n\n            # Check if the OCSP response is trusted\n            if (\n                trust_store_that_can_build_verified_chain\n                and final_ocsp_response.response_status == OCSPResponseStatus.SUCCESSFUL\n            ):\n                try:\n                    nassl.ocsp_response.verify_ocsp_response(\n                        self.server_ocsp_response, trust_store_that_can_build_verified_chain.path\n                    )\n                    is_ocsp_response_trusted = True\n                except nassl.ocsp_response.OcspResponseNotTrustedError:\n                    is_ocsp_response_trusted = False\n\n        # All done\n        return CertificateDeploymentAnalysisResult(\n            received_certificate_chain=received_certificate_chain,\n            leaf_certificate_subject_matches_hostname=_certificate_matches_hostname(leaf_cert, self.server_hostname),\n            leaf_certificate_has_must_staple_extension=has_ocsp_must_staple,\n            leaf_certificate_is_ev=is_leaf_certificate_ev,\n            leaf_certificate_signed_certificate_timestamps_count=number_of_scts,\n            received_chain_contains_anchor_certificate=has_anchor_in_certificate_chain,\n            received_chain_has_valid_order=is_chain_order_valid,\n            verified_chain_has_sha1_signature=has_sha1_in_certificate_chain,\n            verified_chain_has_legacy_symantec_anchor=verified_chain_has_legacy_symantec_anchor,\n            path_validation_results=all_path_validation_results,\n            ocsp_response=final_ocsp_response,\n            ocsp_response_is_trusted=is_ocsp_response_trusted,\n        )"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/json_output.py",
+        "name": "_CertificateAsJson.from_orm",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info.json_output._CertificateAsJson.from_orm",
+        "start": 158,
+        "end": 198,
+        "code": "    def from_orm(cls, certificate: Certificate) -> \"_CertificateAsJson\":\n        signature_hash_algorithm: Optional[_HashAlgorithmAsJson]\n        if certificate.signature_hash_algorithm:\n            signature_hash_algorithm = _HashAlgorithmAsJson.from_orm(certificate.signature_hash_algorithm)\n        else:\n            signature_hash_algorithm = None\n\n        # We may get garbage/invalid certificates so we need to handle ValueErrors.\n        # See https://github.com/nabla-c0d3/sslyze/issues/403 for more information\n        subject_field: Optional[_X509NameAsJson]\n        try:\n            subject_field = _X509NameAsJson.from_orm(certificate.subject)\n        except ValueError:\n            subject_field = None\n\n        issuer_field: Optional[_X509NameAsJson]\n        try:\n            issuer_field = _X509NameAsJson.from_orm(certificate.issuer)\n        except ValueError:\n            issuer_field = None\n\n        subj_alt_name_ext = parse_subject_alternative_name_extension(certificate)\n\n        return cls(\n            as_pem=certificate.public_bytes(Encoding.PEM).decode(\"ascii\"),\n            hpkp_pin=b64encode(get_public_key_sha256(certificate)).decode(\"ascii\"),\n            fingerprint_sha1=b64encode(certificate.fingerprint(hashes.SHA1())).decode(\"ascii\"),\n            fingerprint_sha256=b64encode(certificate.fingerprint(hashes.SHA256())).decode(\"ascii\"),\n            serial_number=certificate.serial_number,\n            not_valid_before=certificate.not_valid_before,\n            not_valid_after=certificate.not_valid_after,\n            subject_alternative_name=_SubjAltNameAsJson(\n                dns_names=subj_alt_name_ext.dns_names,\n                ip_addresses=subj_alt_name_ext.ip_addresses,\n            ),\n            signature_hash_algorithm=signature_hash_algorithm,\n            signature_algorithm_oid=_ObjectIdentifierAsJson.from_orm(certificate.signature_algorithm_oid),\n            subject=subject_field,\n            issuer=issuer_field,\n            public_key=_PublicKeyAsJson.from_orm(certificate.public_key()),\n        )"
+      }
+    ],
+    "unresolved": [
+      "sslyze/plugins/certificate_info/_certificate_utils.py:line: 1",
+      "sslyze/plugins/certificate_info/_certificate_utils.py:line: 15"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "sslyze.plugins.certificate_info._certificate_utils.get_common_names"
+    ],
+    "exact_hit_dependencies": [
+      "sslyze.plugins.certificate_info._certificate_utils.get_common_names"
+    ],
+    "returned_entities": 5,
+    "returned_files": 4,
+    "unresolved_locations": 2,
+    "returned_code_chars": 10370
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 43207,
+    "completion_tokens": 780,
+    "total_tokens": 43987,
+    "seconds": 64.29407668113708,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 74.65239930152893,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

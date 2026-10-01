@@ -1,0 +1,96 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1067,
+  "namespace": "boltons.tbutils.ParsedException.to_string",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4701,
+      "input_estimate_after": 4701,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboltons/tbutils.py\nclass: TracebackInfo\nfunction: get_formatted\n\nboltons/tbutils.py\nclass: TracebackInfo\nfunction: from_traceback\n\nboltons/tbutils.py\nclass: ExceptionInfo\nfunction: from_exc_info\n\nboltons/tbutils.py\nclass: ParsedException\nfunction: from_string\n```",
+  "final_locations": {
+    "files": [
+      "boltons/tbutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/tbutils.py",
+        "name": "TracebackInfo",
+        "kind": "class",
+        "symbol": "boltons.tbutils.TracebackInfo",
+        "start": 236,
+        "end": 363,
+        "code": "class TracebackInfo(object):\n    \"\"\"The TracebackInfo class provides a basic representation of a stack\n    trace, be it from an exception being handled or just part of\n    normal execution. It is basically a wrapper around a list of\n    :class:`Callpoint` objects representing frames.\n\n    Args:\n        frames (list): A list of frame objects in the stack.\n\n    .. note ::\n\n      ``TracebackInfo`` can represent both exception tracebacks and\n      non-exception tracebacks (aka stack traces). As a result, there\n      is no ``TracebackInfo.from_current()``, as that would be\n      ambiguous. Instead, call :meth:`TracebackInfo.from_frame`\n      without the *frame* argument for a stack trace, or\n      :meth:`TracebackInfo.from_traceback` without the *tb* argument\n      for an exception traceback.\n    \"\"\"\n    callpoint_type = Callpoint\n\n    def __init__(self, frames):\n        self.frames = frames\n\n    @classmethod\n    def from_frame(cls, frame=None, level=1, limit=None):\n        \"\"\"Create a new TracebackInfo *frame* by recurring up in the stack a\n        max of *limit* times. If *frame* is unset, get the frame from\n        :func:`sys._getframe` using *level*.\n\n        Args:\n            frame (types.FrameType): frame object from\n                :func:`sys._getframe` or elsewhere. Defaults to result\n                of :func:`sys.get_frame`.\n            level (int): If *frame* is unset, the desired frame is\n                this many levels up the stack from the invocation of\n                this method. Default ``1`` (i.e., caller of this method).\n            limit (int): max number of parent frames to extract\n                (defaults to :data:`sys.tracebacklimit`)\n\n        \"\"\"\n        ret = []\n        if frame is None:\n            frame = sys._getframe(level)\n        if limit is None:\n            limit = getattr(sys, 'tracebacklimit', 1000)\n        n = 0\n        while frame is not None and n < limit:\n            item = cls.callpoint_type.from_frame(frame)\n            ret.append(item)\n            frame = frame.f_back\n            n += 1\n        ret.reverse()\n        return cls(ret)\n\n    @classmethod\n    def from_traceback(cls, tb=None, limit=None):\n        \"\"\"Create a new TracebackInfo from the traceback *tb* by recurring\n        up in the stack a max of *limit* times. If *tb* is unset, get\n        the traceback from the currently handled exception. If no\n        exception is being handled, raise a :exc:`ValueError`.\n\n        Args:\n\n            frame (types.TracebackType): traceback object from\n                :func:`sys.exc_info` or elsewhere. If absent or set to\n                ``None``, defaults to ``sys.exc_info()[2]``, and\n                raises a :exc:`ValueError` if no exception is\n                currently being handled.\n            limit (int): max number of parent frames to extract\n                (defaults to :data:`sys.tracebacklimit`)\n\n        \"\"\"\n        ret = []\n        if tb is None:\n            tb = sys.exc_info()[2]\n            if tb is None:\n                raise ValueError('no tb set and no exception being handled')\n        if limit is None:\n            limit = getattr(sys, 'tracebacklimit', 1000)\n        n = 0\n        while tb is not None and n < limit:\n            item = cls.callpoint_type.from_tb(tb)\n            ret.append(item)\n            tb = tb.tb_next\n            n += 1\n        return cls(ret)\n\n    @classmethod\n    def from_dict(cls, d):\n        \"Complements :meth:`TracebackInfo.to_dict`.\"\n        # TODO: check this.\n        return cls(d['frames'])\n\n    def to_dict(self):\n        \"\"\"Returns a dict with a list of :class:`Callpoint` frames converted\n        to dicts.\n        \"\"\"\n        return {'frames': [f.to_dict() for f in self.frames]}\n\n    def __len__(self):\n        return len(self.frames)\n\n    def __iter__(self):\n        return iter(self.frames)\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n\n        if self.frames:\n            frame_part = ' last=%r' % (self.frames[-1],)\n        else:\n            frame_part = ''\n\n        return '<%s frames=%s%s>' % (cn, len(self.frames), frame_part)\n\n    def __str__(self):\n        return self.get_formatted()\n\n    def get_formatted(self):\n        \"\"\"Returns a string as formatted in the traditional Python\n        built-in style observable when an exception is not caught. In\n        other words, mimics :func:`traceback.format_tb` and\n        :func:`traceback.format_stack`.\n        \"\"\"\n        ret = 'Traceback (most recent call last):\\n'\n        ret += ''.join([f.tb_frame_str() for f in self.frames])\n        return ret"
+      },
+      {
+        "file": "boltons/tbutils.py",
+        "name": "ExceptionInfo",
+        "kind": "class",
+        "symbol": "boltons.tbutils.ExceptionInfo",
+        "start": 366,
+        "end": 451,
+        "code": "class ExceptionInfo(object):\n    \"\"\"An ExceptionInfo object ties together three main fields suitable\n    for representing an instance of an exception: The exception type\n    name, a string representation of the exception itself (the\n    exception message), and information about the traceback (stored as\n    a :class:`TracebackInfo` object).\n\n    These fields line up with :func:`sys.exc_info`, but unlike the\n    values returned by that function, ExceptionInfo does not hold any\n    references to the real exception or traceback. This property makes\n    it suitable for serialization or long-term retention, without\n    worrying about formatting pitfalls, circular references, or leaking memory.\n\n    Args:\n\n        exc_type (str): The exception type name.\n        exc_msg (str): String representation of the exception value.\n        tb_info (TracebackInfo): Information about the stack trace of the\n            exception.\n\n    Like the :class:`TracebackInfo`, ExceptionInfo is most commonly\n    instantiated from one of its classmethods: :meth:`from_exc_info`\n    or :meth:`from_current`.\n    \"\"\"\n\n    #: Override this in inherited types to control the TracebackInfo type used\n    tb_info_type = TracebackInfo\n\n    def __init__(self, exc_type, exc_msg, tb_info):\n        # TODO: additional fields for SyntaxErrors\n        self.exc_type = exc_type\n        self.exc_msg = exc_msg\n        self.tb_info = tb_info\n\n    @classmethod\n    def from_exc_info(cls, exc_type, exc_value, traceback):\n        \"\"\"Create an :class:`ExceptionInfo` object from the exception's type,\n        value, and traceback, as returned by :func:`sys.exc_info`. See\n        also :meth:`from_current`.\n        \"\"\"\n        type_str = exc_type.__name__\n        type_mod = exc_type.__module__\n        if type_mod not in (\"__main__\", \"__builtin__\", \"exceptions\", \"builtins\"):\n            type_str = '%s.%s' % (type_mod, type_str)\n        val_str = _some_str(exc_value)\n        tb_info = cls.tb_info_type.from_traceback(traceback)\n        return cls(type_str, val_str, tb_info)\n\n    @classmethod\n    def from_current(cls):\n        \"\"\"Create an :class:`ExceptionInfo` object from the current exception\n        being handled, by way of :func:`sys.exc_info`. Will raise an\n        exception if no exception is currently being handled.\n        \"\"\"\n        return cls.from_exc_info(*sys.exc_info())\n\n    def to_dict(self):\n        \"\"\"Get a :class:`dict` representation of the ExceptionInfo, suitable\n        for JSON serialization.\n        \"\"\"\n        return {'exc_type': self.exc_type,\n                'exc_msg': self.exc_msg,\n                'exc_tb': self.tb_info.to_dict()}\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        try:\n            len_frames = len(self.tb_info.frames)\n            last_frame = ', last=%r' % (self.tb_info.frames[-1],)\n        except Exception:\n            len_frames = 0\n            last_frame = ''\n        args = (cn, self.exc_type, self.exc_msg, len_frames, last_frame)\n        return '<%s [%s: %s] (%s frames%s)>' % args\n\n    def get_formatted(self):\n        \"\"\"Returns a string formatted in the traditional Python\n        built-in style observable when an exception is not caught. In\n        other words, mimics :func:`traceback.format_exception`.\n        \"\"\"\n        # TODO: add SyntaxError formatting\n        tb_str = self.tb_info.get_formatted()\n        return ''.join([tb_str, '%s: %s' % (self.exc_type, self.exc_msg)])\n\n    def get_formatted_exception_only(self):\n        return '%s: %s' % (self.exc_type, self.exc_msg)"
+      },
+      {
+        "file": "boltons/tbutils.py",
+        "name": "ParsedException",
+        "kind": "class",
+        "symbol": "boltons.tbutils.ParsedException",
+        "start": 689,
+        "end": 824,
+        "code": "class ParsedException(object):\n    \"\"\"Stores a parsed traceback and exception as would be typically\n    output by :func:`sys.excepthook` or\n    :func:`traceback.print_exception`.\n\n    .. note:\n\n       Does not currently store SyntaxError details such as column.\n\n    \"\"\"\n    def __init__(self, exc_type_name, exc_msg, frames=None):\n        self.exc_type = exc_type_name\n        self.exc_msg = exc_msg\n        self.frames = list(frames or [])\n\n    @property\n    def source_file(self):\n        \"\"\"\n        The file path of module containing the function that raised the\n        exception, or None if not available.\n        \"\"\"\n        try:\n            return self.frames[-1]['filepath']\n        except IndexError:\n            return None\n\n    def to_dict(self):\n        \"Get a copy as a JSON-serializable :class:`dict`.\"\n        return {'exc_type': self.exc_type,\n                'exc_msg': self.exc_msg,\n                'frames': list(self.frames)}\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        return ('%s(%r, %r, frames=%r)'\n                % (cn, self.exc_type, self.exc_msg, self.frames))\n\n    def to_string(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    @classmethod\n    def from_string(cls, tb_str):\n        \"\"\"Parse a traceback and exception from the text *tb_str*. This text\n        is expected to have been decoded, otherwise it will be\n        interpreted as UTF-8.\n\n        This method does not search a larger body of text for\n        tracebacks. If the first line of the text passed does not\n        match one of the known patterns, a :exc:`ValueError` will be\n        raised. This method will ignore trailing text after the end of\n        the first traceback.\n\n        Args:\n            tb_str (str): The traceback text (:class:`unicode` or UTF-8 bytes)\n        \"\"\"\n        if not isinstance(tb_str, text):\n            tb_str = tb_str.decode('utf-8')\n        tb_lines = tb_str.lstrip().splitlines()\n\n        # First off, handle some ignored exceptions. These can be the\n        # result of exceptions raised by __del__ during garbage\n        # collection\n        while tb_lines:\n            cl = tb_lines[-1]\n            if cl.startswith('Exception ') and cl.endswith('ignored'):\n                tb_lines.pop()\n            else:\n                break\n        if tb_lines and tb_lines[0].strip() == 'Traceback (most recent call last):':\n            start_line = 1\n            frame_re = _frame_re\n        elif len(tb_lines) > 1 and tb_lines[-2].lstrip().startswith('^'):\n            # This is to handle the slight formatting difference\n            # associated with SyntaxErrors, which also don't really\n            # have tracebacks\n            start_line = 0\n            frame_re = _se_frame_re\n        else:\n            raise ValueError('unrecognized traceback string format')\n\n        frames = []\n        line_no = start_line\n        while True:\n            frame_line = tb_lines[line_no].strip()\n            frame_match = frame_re.match(frame_line)\n            if frame_match:\n                frame_dict = frame_match.groupdict()\n                try:\n                    next_line = tb_lines[line_no + 1]\n                except IndexError:\n                    # We read what we could\n                    next_line = ''\n                next_line_stripped = next_line.strip()\n                if (\n                        frame_re.match(next_line_stripped) or\n                        # The exception message will not be indented\n                        # This check is to avoid overrunning on eval-like\n                        # tracebacks where the last frame doesn't have source\n                        # code in the traceback\n                        not next_line.startswith(' ')\n                ):\n                    frame_dict['source_line'] = ''\n                else:\n                    frame_dict['source_line'] = next_line_stripped\n                    line_no += 1\n            else:\n                break\n            line_no += 1\n            frames.append(frame_dict)\n\n        try:\n            exc_line = '\\n'.join(tb_lines[line_no:])\n            exc_type, _, exc_msg = exc_line.partition(': ')\n        except Exception:\n            exc_type, exc_msg = '', ''\n\n        return cls(exc_type, exc_msg, frames)"
+      }
+    ],
+    "unresolved": [
+      "boltons/tbutils.py:function: get_formatted",
+      "boltons/tbutils.py:function: from_traceback",
+      "boltons/tbutils.py:function: from_exc_info",
+      "boltons/tbutils.py:function: from_string"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 1,
+    "unresolved_locations": 4,
+    "returned_code_chars": 12358
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21063,
+    "completion_tokens": 3708,
+    "total_tokens": 24771,
+    "seconds": 100.97108626365662,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 114.3589289188385,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

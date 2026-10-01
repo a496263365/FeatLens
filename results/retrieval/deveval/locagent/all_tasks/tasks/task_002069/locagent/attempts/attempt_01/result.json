@@ -1,0 +1,142 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2069,
+  "namespace": "falcon.inspect.inspect_compiled_router",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 18185,
+      "input_estimate_after": 18185,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `inspect_compiled_router` function. The function needs to walk through a `CompiledRouter` and extract route information. From the code analysis, I can see:\n\n1. The `CompiledRouter` stores routes in `_roots` (line 101 in compiled.py)\n2. Each route is represented by a `CompiledRouterNode` structure\n3. The router has methods like `add_route` that build the routing tree\n4. The `inspect_compiled_router` function is already registered as a decorator but only contains `pass`\n\nKey reusable dependencies for inspecting the compiled router:\n\n```\nfalcon/routing/compiled.py:CompiledRouter\nline: 101\nattribute: _roots\n\nfalcon/routing/compiled.py:CompiledRouterNode\nline: 238\nattribute: method_map\nattribute: resource\nattribute: uri_template\n\nfalcon/inspect.py\nline: 203\ndecorator: register_router\nfunction: _get_source_info_and_name\n\nfalcon/inspect.py\nline: 756\nfunction: _get_source_info\n\nfalcon/inspect.py\nline: 306\nclass: RouteInfo\nline: 318\nconstructor: __init__\n\nfalcon/inspect.py\nline: 274\nclass: RouteMethodInfo\nline: 291\nconstructor: __init__\n```",
+  "final_locations": {
+    "files": [
+      "falcon/routing/compiled.py",
+      "falcon/inspect.py"
+    ],
+    "entities": [
+      {
+        "file": "falcon/routing/compiled.py",
+        "name": "CompiledRouter.__init__",
+        "kind": "function",
+        "symbol": "falcon.routing.compiled.CompiledRouter.__init__",
+        "start": 88,
+        "end": 106,
+        "code": "    def __init__(self):\n        self._ast = None\n        self._converters = None\n        self._finder_src = None\n\n        self._options = CompiledRouterOptions()\n\n        # PERF(kgriffs): This is usually an anti-pattern, but we do it\n        # here to reduce lookup time.\n        self._converter_map = self._options.converters.data\n\n        self._patterns = None\n        self._return_values = None\n        self._roots = []\n\n        # NOTE(caselit): set _find to the delayed compile method to ensure that\n        # compile is called when the router is first used\n        self._find = self._compile_and_find\n        self._compile_lock = Lock()"
+      },
+      {
+        "file": "falcon/routing/compiled.py",
+        "name": "CompiledRouter.add_route.insert",
+        "kind": "function",
+        "symbol": "falcon.routing.compiled.CompiledRouter.add_route.insert",
+        "start": 210,
+        "end": 245,
+        "code": "        def insert(nodes, path_index=0):\n            for node in nodes:\n                segment = path[path_index]\n                if node.matches(segment):\n                    path_index += 1\n                    if path_index == len(path):\n                        # NOTE(kgriffs): Override previous node\n                        node.method_map = method_map\n                        node.resource = resource\n                        node.uri_template = uri_template\n                    else:\n                        insert(node.children, path_index)\n\n                    return\n\n                if node.conflicts_with(segment):\n                    raise ValueError(\n                        'The URI template for this route is inconsistent or conflicts '\n                        \"with another route's template. This is usually caused by \"\n                        'configuring a field converter differently for the same field '\n                        'in two different routes, or by using different field names '\n                        \"at the same level in the path (e.g.,'/parents/{id}' and \"\n                        \"'/parents/{parent_id}/children')\"\n                    )\n\n            # NOTE(richardolsson): If we got this far, the node doesn't already\n            # exist and needs to be created. This builds a new branch of the\n            # routing tree recursively until it reaches the new node leaf.\n            new_node = CompiledRouterNode(path[path_index])\n            nodes.append(new_node)\n            if path_index == len(path) - 1:\n                new_node.method_map = method_map\n                new_node.resource = resource\n                new_node.uri_template = uri_template\n            else:\n                insert(new_node.children, path_index + 1)"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "_get_source_info_and_name",
+        "kind": "function",
+        "symbol": "falcon.inspect._get_source_info_and_name",
+        "start": 775,
+        "end": 784,
+        "code": "def _get_source_info_and_name(obj):\n    \"\"\"Attempt to get the definition file and line of obj and its name.\"\"\"\n    source_info = _get_source_info(obj, None)\n    if source_info is None:\n        # NOTE(caselit): a class instances return None. Try the type\n        source_info = _get_source_info(type(obj))\n    name = getattr(obj, '__name__', None)\n    if name is None:\n        name = getattr(type(obj), '__name__', '[unknown]')\n    return source_info, name"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "_get_source_info",
+        "kind": "function",
+        "symbol": "falcon.inspect._get_source_info",
+        "start": 757,
+        "end": 772,
+        "code": "def _get_source_info(obj, default='[unknown file]'):\n    \"\"\"Try to get the definition file and line of obj.\n\n    Return default on error.\n    \"\"\"\n    try:\n        source_file = inspect.getsourcefile(obj)\n        source_lines = inspect.findsource(obj)\n        source_info = '{}:{}'.format(source_file, source_lines[1])\n    except Exception:\n        # NOTE(vytas): If Falcon is cythonized, all default\n        # responders coming from cythonized modules will\n        # appear as built-in functions, and raise a\n        # TypeError when trying to locate the source file.\n        source_info = default\n    return source_info"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "RouteInfo",
+        "kind": "class",
+        "symbol": "falcon.inspect.RouteInfo",
+        "start": 306,
+        "end": 328,
+        "code": "class RouteInfo(_Traversable):\n    \"\"\"Describes a route.\n\n    Args:\n        path (str): The path of this route.\n        class_name (str): The class name of the responder of this route.\n        source_info (str): The source path where this responder was defined.\n        methods (List[RouteMethodInfo]): List of methods defined in the route.\n    \"\"\"\n\n    __visit_name__ = 'route'\n\n    def __init__(\n        self,\n        path: str,\n        class_name: str,\n        source_info: str,\n        methods: List[RouteMethodInfo],\n    ):\n        self.path = path\n        self.class_name = class_name\n        self.source_info = source_info\n        self.methods = methods"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "RouteInfo.__init__",
+        "kind": "function",
+        "symbol": "falcon.inspect.RouteInfo.__init__",
+        "start": 318,
+        "end": 328,
+        "code": "    def __init__(\n        self,\n        path: str,\n        class_name: str,\n        source_info: str,\n        methods: List[RouteMethodInfo],\n    ):\n        self.path = path\n        self.class_name = class_name\n        self.source_info = source_info\n        self.methods = methods"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "RouteMethodInfo",
+        "kind": "class",
+        "symbol": "falcon.inspect.RouteMethodInfo",
+        "start": 274,
+        "end": 303,
+        "code": "class RouteMethodInfo(_Traversable):\n    \"\"\"Describes a responder method.\n\n    Args:\n        method (str): The HTTP method of this responder.\n        source_info (str): The source path of this function.\n        function_name (str): Name of the function.\n        internal (bool): Whether or not this was a default responder added\n            by the framework.\n\n    Attributes:\n        suffix (str): The suffix of this route function. This is set to an empty\n            string when the function has no suffix.\n    \"\"\"\n\n    __visit_name__ = 'route_method'\n\n    def __init__(\n        self, method: str, source_info: str, function_name: str, internal: bool\n    ):\n        self.method = method\n        self.source_info = source_info\n        self.function_name = function_name\n        self.internal = internal\n        # NOTE(CaselIT): internal falcon names do not start with 'on'\n        # and do not have suffix\n        if function_name.startswith('on'):\n            self.suffix = '_'.join(function_name.split('_')[2:])\n        else:\n            self.suffix = ''"
+      },
+      {
+        "file": "falcon/inspect.py",
+        "name": "RouteMethodInfo.__init__",
+        "kind": "function",
+        "symbol": "falcon.inspect.RouteMethodInfo.__init__",
+        "start": 291,
+        "end": 303,
+        "code": "    def __init__(\n        self, method: str, source_info: str, function_name: str, internal: bool\n    ):\n        self.method = method\n        self.source_info = source_info\n        self.function_name = function_name\n        self.internal = internal\n        # NOTE(CaselIT): internal falcon names do not start with 'on'\n        # and do not have suffix\n        if function_name.startswith('on'):\n            self.suffix = '_'.join(function_name.split('_')[2:])\n        else:\n            self.suffix = ''"
+      }
+    ],
+    "unresolved": [
+      "falcon/routing/compiled.py:function: CompiledRouter",
+      "falcon/routing/compiled.py:function: CompiledRouterNode",
+      "falcon/inspect.py:line: 203",
+      "falcon/inspect.py:line: 756"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 5982
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 46266,
+    "completion_tokens": 668,
+    "total_tokens": 46934,
+    "seconds": 123.87080574035645,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 149.04888319969177,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

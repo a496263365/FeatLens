@@ -1,0 +1,118 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 704,
+  "namespace": "principalmapper.querying.local_policy_simulation._statement_matches_resource",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 26598,
+      "input_estimate_after": 26598,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `_statement_matches_resource` function. The function needs to check if a resource matches policy statement resources, handling both `Resource` and `NotResource` fields with wildcard expansion and condition key substitution.\n\nFrom the code analysis, I can identify these key dependencies:\n\n1. **`_matches_after_expansion` function** - This is the core function for matching strings with wildcards and variable substitution, which is exactly what's needed for resource matching.\n2. **`_listify_string` function** - Used to handle both single strings and lists of strings in policy statements.\n3. **`_listify_dictionary` function** - Used for handling statement lists (though not directly needed for this function).\n4. **`policy_has_matching_statement` function** - Shows the exact pattern for checking Resource/NotResource fields that should be replicated.\n5. **`CaseInsensitiveDict` class** - The type used for condition keys.\n\nHere are the verified locations containing reusable dependencies:\n\n```\nprincipalmapper/querying/local_policy_simulation.py\nline: 908\nfunction: _matches_after_expansion\n\nprincipalmapper/querying/local_policy_simulation.py\nline: 938\nfunction: _listify_string\n\nprincipalmapper/querying/local_policy_simulation.py\nline: 57\nline: 89\nline: 95\nfunction: policy_has_matching_statement\n\nprincipalmapper/util/case_insensitive_dict.py\nclass: CaseInsensitiveDict\n\nprincipalmapper/querying/local_policy_simulation.py\nline: 892\nfunction: _compose_pattern\n```",
+  "final_locations": {
+    "files": [
+      "principalmapper/querying/local_policy_simulation.py",
+      "principalmapper/util/case_insensitive_dict.py"
+    ],
+    "entities": [
+      {
+        "file": "principalmapper/querying/local_policy_simulation.py",
+        "name": "_matches_after_expansion",
+        "kind": "function",
+        "symbol": "principalmapper.querying.local_policy_simulation._matches_after_expansion",
+        "start": 908,
+        "end": 927,
+        "code": "def _matches_after_expansion(string_to_check: str, string_to_check_against: str,\n                             condition_keys: Optional[CaseInsensitiveDict] = None) -> bool:\n    \"\"\"Helper function that checks the string_to_check against string_to_check_against.\n\n    Handles matching with respect to wildcards, variables.\n    \"\"\"\n\n    # regexify string_to_check_against\n    # handles use of ${} var substitution, wildcards (*), and periods (.)\n    copy_string = string_to_check_against\n\n    if condition_keys is not None:\n        for k, v in condition_keys.items():\n            if isinstance(v, list):\n                v = str(v)  # TODO: how would a multi-valued context value be handled in resource fields?\n            full_key = '${' + k + '}'\n            copy_string = copy_string.replace(full_key, v)\n\n    pattern = _compose_pattern(copy_string)\n    return pattern.match(string_to_check) is not None"
+      },
+      {
+        "file": "principalmapper/querying/local_policy_simulation.py",
+        "name": "_listify_string",
+        "kind": "function",
+        "symbol": "principalmapper.querying.local_policy_simulation._listify_string",
+        "start": 938,
+        "end": 943,
+        "code": "def _listify_string(target_object: Union[List[str], str]) -> List[str]:\n    \"\"\"Helper function that takes a string and returns it wrapped in a list\"\"\"\n    if isinstance(target_object, list):\n        return target_object\n    else:\n        return [target_object]"
+      },
+      {
+        "file": "principalmapper/querying/local_policy_simulation.py",
+        "name": "policy_has_matching_statement",
+        "kind": "function",
+        "symbol": "principalmapper.querying.local_policy_simulation.policy_has_matching_statement",
+        "start": 57,
+        "end": 115,
+        "code": "def policy_has_matching_statement(policy: Union[Policy, dict], effect_value: str, action_to_check: str,\n                                  resource_to_check: str,\n                                  condition_keys_to_check: CaseInsensitiveDict) -> bool:\n    \"\"\"Searches a specific Policy/dict object for a statement with a matching Effect/Action/Resource/Condition\"\"\"\n\n    if isinstance(policy, Policy):\n        base_obj = policy.policy_doc\n    else:\n        base_obj = policy\n\n    # go through each policy_doc\n    for statement in _listify_dictionary(base_obj['Statement']):\n        if statement['Effect'] != effect_value:\n            continue  # skip if effect doesn't match\n\n        matches_action, matches_resource, matches_condition = False, False, False\n\n        # start by checking the action\n        if 'Action' in statement:\n            for action in _listify_string(statement['Action']):\n                if _matches_after_expansion(action_to_check, action):\n                    matches_action = True\n                    break\n        else:  # 'NotAction' in statement\n            matches_action = True\n            for notaction in _listify_string(statement['NotAction']):\n                if _matches_after_expansion(action_to_check, notaction):\n                    matches_action = False\n                    break  # finish looping\n        if not matches_action:\n            continue  # cut early\n\n        # if action is good, check resource\n        if 'Resource' in statement:\n            for resource in _listify_string(statement['Resource']):\n                if _matches_after_expansion(resource_to_check, resource, condition_keys_to_check):\n                    matches_resource = True\n                    break\n        elif 'NotResource' in statement:  # 'NotResource' in statement\n            matches_resource = True\n            for notresource in _listify_string(statement['NotResource']):\n                if _matches_after_expansion(resource_to_check, notresource, condition_keys_to_check):\n                    matches_resource = False\n                    break\n        else:\n            matches_resource = True  # TODO: examine validity of not using a Resource/NotResource field (trust docs)\n        if not matches_resource:\n            continue  # cut early\n\n        # if resource is good, check condition\n        if 'Condition' in statement:\n            matches_condition = _get_condition_match(statement['Condition'], condition_keys_to_check)\n        else:\n            matches_condition = True\n\n        if matches_action and matches_resource and matches_condition:\n            return True\n\n    return False"
+      },
+      {
+        "file": "principalmapper/util/case_insensitive_dict.py",
+        "name": "CaseInsensitiveDict",
+        "kind": "class",
+        "symbol": "principalmapper.util.case_insensitive_dict.CaseInsensitiveDict",
+        "start": 37,
+        "end": 105,
+        "code": "class CaseInsensitiveDict(MutableMapping):\n    \"\"\"A case-insensitive ``dict``-like object.\n    Implements all methods and operations of\n    ``MutableMapping`` as well as dict's ``copy``. Also\n    provides ``lower_items``.\n\n    All keys are expected to be strings. The structure remembers the\n    case of the last key to be set, and ``iter(instance)``,\n    ``keys()``, ``items()``, ``iterkeys()``, and ``iteritems()``\n    will contain case-sensitive keys. However, querying and contains\n    testing is case insensitive::\n        cid = CaseInsensitiveDict()\n        cid['aws:SourceIp'] = '128.223.0.1'\n        cid['aws:sourceip'] == '128.223.0.1'  # True\n\n    For example, ``context['ec2:InstanceType']`` will return the\n    value of ec2:InstanceType condition context, regardless\n    of how the name was originally stored.\n\n    If the constructor, ``.update``, or equality comparison\n    operations are given keys that have equal ``.lower()``s, the\n    behavior is undefined.\n    \"\"\"\n\n    def __init__(self, data=None, **kwargs):\n        self._store = OrderedDict()\n        if data is None:\n            data = {}\n        self.update(data, **kwargs)\n\n    def __setitem__(self, key, value):\n        # Use the lowercased key for lookups, but store the actual\n        # key alongside the value.\n        self._store[key.lower()] = (key, value)\n\n    def __getitem__(self, key):\n        return self._store[key.lower()][1]\n\n    def __delitem__(self, key):\n        del self._store[key.lower()]\n\n    def __iter__(self):\n        return (casedkey for casedkey, mappedvalue in self._store.values())\n\n    def __len__(self):\n        return len(self._store)\n\n    def lower_items(self):\n        \"\"\"Like iteritems(), but with all lowercase keys.\"\"\"\n        return (\n            (lowerkey, keyval[1])\n            for (lowerkey, keyval)\n            in self._store.items()\n        )\n\n    def __eq__(self, other):\n        if isinstance(other, Mapping):\n            other = CaseInsensitiveDict(other)\n        else:\n            return NotImplemented\n        # Compare insensitively\n        return dict(self.lower_items()) == dict(other.lower_items())\n\n    # Copy is required\n    def copy(self):\n        return CaseInsensitiveDict(self._store.values())\n\n    def __repr__(self):\n        return str(dict(self.items()))"
+      },
+      {
+        "file": "principalmapper/querying/local_policy_simulation.py",
+        "name": "_compose_pattern",
+        "kind": "function",
+        "symbol": "principalmapper.querying.local_policy_simulation._compose_pattern",
+        "start": 892,
+        "end": 905,
+        "code": "def _compose_pattern(string_to_transform) -> Pattern:\n    \"\"\"Helper function that transforms a string with potential wildcards (* or ?) into a regular expression.\n    Uses the functools.lru_cache decorator to reduce re-compiling the same value multiple times.\"\"\"\n    return re.compile(\n        \"^{}$\".format(\n            string_to_transform \\\n                .replace(\".\", \"\\\\.\") \\\n                .replace(\"*\", \".*\") \\\n                .replace(\"?\", \".\") \\\n                .replace(\"$\", \"\\\\$\") \\\n                .replace(\"^\", \"\\\\^\")\n        ),\n        re.IGNORECASE\n    )"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "principalmapper.querying.local_policy_simulation._listify_string",
+      "principalmapper.querying.local_policy_simulation._matches_after_expansion",
+      "principalmapper.util.case_insensitive_dict.CaseInsensitiveDict"
+    ],
+    "exact_hit_dependencies": [
+      "principalmapper.querying.local_policy_simulation._listify_string",
+      "principalmapper.querying.local_policy_simulation._matches_after_expansion",
+      "principalmapper.util.case_insensitive_dict.CaseInsensitiveDict"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 6647
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 43903,
+    "completion_tokens": 464,
+    "total_tokens": 44367,
+    "seconds": 28.63699698448181,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 36.46799659729004,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,155 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 32,
+  "namespace": "litdata.streaming.reader.PrepareChunksThread.delete",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 14088,
+      "input_estimate_after": 14088,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the reusable dependencies for implementing the `delete` method in `PrepareChunksThread`. The method needs to add chunk indices to a deletion queue for management in a threaded environment. Here are the key locations containing reusable dependencies:\n\n```\nlitdata/streaming/reader.py\nline: 68\nline: 69\nclass: PrepareChunksThread\nvariable: _to_delete_queue\nvariable: _chunks_index_to_be_deleted\n\nlitdata/streaming/reader.py\nline: 86\nline: 90\nclass: PrepareChunksThread\nfunction: _delete\n\nlitdata/streaming/reader.py\nline: 95\nline: 114\nclass: PrepareChunksThread\nfunction: _maybe_delete_chunks\n\nlitdata/streaming/reader.py\nline: 99\nline: 101\nfunction: _get_from_queue\n\nlitdata/streaming/item_loader.py\nline: 60\nclass: BaseItemLoader\nfunction: delete\n\nlitdata/streaming/item_loader.py\nline: 129\nclass: PyTreeLoader\nfunction: delete\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/reader.py",
+      "litdata/streaming/item_loader.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/reader.py",
+        "name": "PrepareChunksThread.__init__",
+        "kind": "function",
+        "symbol": "litdata.streaming.reader.PrepareChunksThread.__init__",
+        "start": 50,
+        "end": 74,
+        "code": "    def __init__(\n        self,\n        config: ChunksConfig,\n        item_loader: BaseItemLoader,\n        distributed_env: _DistributedEnv,\n        max_cache_size: Optional[int] = None,\n        max_pre_download: int = 2,\n    ) -> None:\n        super().__init__(daemon=True)\n        self._config = config\n        self._item_loader = item_loader\n        self._max_pre_download = max_pre_download\n        self._pre_download_counter = 0\n        self._distributed_env = distributed_env\n\n        self._chunks_index_to_be_deleted: List[int] = []\n        self._max_cache_size = max_cache_size\n        self._parent_cache_dir = os.path.dirname(self._config._cache_dir)\n        self._to_download_queue: multiprocessing.Queue = multiprocessing.Queue()\n        self._to_delete_queue: multiprocessing.Queue = multiprocessing.Queue()\n\n        # Check whether a dataset slice fits on the node\n        num_bytes_per_nodes = self._config.num_bytes // self._distributed_env.num_nodes\n        self._delete_chunks_when_processed = num_bytes_per_nodes > max_cache_size if max_cache_size else False\n        self._has_exited = False"
+      },
+      {
+        "file": "litdata/streaming/reader.py",
+        "name": "PrepareChunksThread",
+        "kind": "class",
+        "symbol": "litdata.streaming.reader.PrepareChunksThread",
+        "start": 47,
+        "end": 145,
+        "code": "class PrepareChunksThread(Thread):\n    \"\"\"This thread is responsible to download the chunks associated to a given worker.\"\"\"\n\n    def __init__(\n        self,\n        config: ChunksConfig,\n        item_loader: BaseItemLoader,\n        distributed_env: _DistributedEnv,\n        max_cache_size: Optional[int] = None,\n        max_pre_download: int = 2,\n    ) -> None:\n        super().__init__(daemon=True)\n        self._config = config\n        self._item_loader = item_loader\n        self._max_pre_download = max_pre_download\n        self._pre_download_counter = 0\n        self._distributed_env = distributed_env\n\n        self._chunks_index_to_be_deleted: List[int] = []\n        self._max_cache_size = max_cache_size\n        self._parent_cache_dir = os.path.dirname(self._config._cache_dir)\n        self._to_download_queue: multiprocessing.Queue = multiprocessing.Queue()\n        self._to_delete_queue: multiprocessing.Queue = multiprocessing.Queue()\n\n        # Check whether a dataset slice fits on the node\n        num_bytes_per_nodes = self._config.num_bytes // self._distributed_env.num_nodes\n        self._delete_chunks_when_processed = num_bytes_per_nodes > max_cache_size if max_cache_size else False\n        self._has_exited = False\n\n    def download(self, chunk_indexes: List[int]) -> None:\n        \"\"\"Receive the list of the chunk indices to download for the current epoch.\"\"\"\n        for chunk_index in chunk_indexes:\n            self._to_download_queue.put(chunk_index)\n\n    def delete(self, chunk_indexes: List[int]) -> None:\n        pass\n\n\n\n    def _delete(self, chunk_index: int) -> None:\n        \"\"\"Inform the item loader of the chunk to delete.\"\"\"\n        chunk_filepath, _, _ = self._config[ChunkedIndex(index=-1, chunk_index=chunk_index)]\n        self._item_loader.delete(chunk_index, chunk_filepath)\n\n    def stop(self) -> None:\n        \"\"\"Receive the list of the chunk indices to download for the current epoch.\"\"\"\n        self._to_download_queue.put(_END_TOKEN)\n\n    def _maybe_delete_chunks(self) -> None:\n        reached_pre_download = self._pre_download_counter == self._max_pre_download\n\n        # we have already pre-downloaded some chunks, we just need to wait for them to be processed.\n        chunk_index = _get_from_queue(\n            self._to_delete_queue, timeout=_LONG_DEFAULT_TIMEOUT if reached_pre_download else _DEFAULT_TIMEOUT\n        )\n\n        if chunk_index is not None:\n            self._pre_download_counter -= 1\n\n            # Store the current chunk index\n            self._chunks_index_to_be_deleted.append(chunk_index)\n\n        # Get the current cache size and decide whether we need to start cleanup. Otherwise, keep track of it\n        while self._max_cache_size and self._chunks_index_to_be_deleted and self._can_delete_chunk():\n            # Delete the oldest chunk\n            self._delete(self._chunks_index_to_be_deleted.pop(0))\n\n        return\n\n    def _can_delete_chunk(self) -> bool:\n        if self._delete_chunks_when_processed:\n            return self._pre_download_counter >= self._max_pre_download - 1\n        return self._max_cache_size is not None and _get_folder_size(self._parent_cache_dir) >= self._max_cache_size\n\n    def _pre_load_chunk(self, chunk_index: int) -> None:\n        chunk_filepath, _, _ = self._config[ChunkedIndex(index=-1, chunk_index=chunk_index)]\n        self._item_loader.pre_load_chunk(chunk_index, chunk_filepath)\n\n    def run(self) -> None:\n        while True:\n            if self._pre_download_counter < self._max_pre_download:\n                chunk_index = _get_from_queue(self._to_download_queue)\n                if chunk_index == _END_TOKEN:\n                    self._has_exited = True\n                    return\n\n                if chunk_index is not None:\n                    self._config.download_chunk_from_index(chunk_index)\n\n                    # Preload item if possible to gain some time but only\n                    # if this is one of the pre-downloaded chunk\n                    if self._pre_download_counter > 0:\n                        self._pre_load_chunk(chunk_index)\n\n                    # Avoid downloading too many chunks in advance at the risk of over using the disk space\n                    self._pre_download_counter += 1\n\n            if self._max_cache_size:\n                self._maybe_delete_chunks()"
+      },
+      {
+        "file": "litdata/streaming/reader.py",
+        "name": "PrepareChunksThread._delete",
+        "kind": "function",
+        "symbol": "litdata.streaming.reader.PrepareChunksThread._delete",
+        "start": 86,
+        "end": 89,
+        "code": "    def _delete(self, chunk_index: int) -> None:\n        \"\"\"Inform the item loader of the chunk to delete.\"\"\"\n        chunk_filepath, _, _ = self._config[ChunkedIndex(index=-1, chunk_index=chunk_index)]\n        self._item_loader.delete(chunk_index, chunk_filepath)"
+      },
+      {
+        "file": "litdata/streaming/reader.py",
+        "name": "PrepareChunksThread._maybe_delete_chunks",
+        "kind": "function",
+        "symbol": "litdata.streaming.reader.PrepareChunksThread._maybe_delete_chunks",
+        "start": 95,
+        "end": 114,
+        "code": "    def _maybe_delete_chunks(self) -> None:\n        reached_pre_download = self._pre_download_counter == self._max_pre_download\n\n        # we have already pre-downloaded some chunks, we just need to wait for them to be processed.\n        chunk_index = _get_from_queue(\n            self._to_delete_queue, timeout=_LONG_DEFAULT_TIMEOUT if reached_pre_download else _DEFAULT_TIMEOUT\n        )\n\n        if chunk_index is not None:\n            self._pre_download_counter -= 1\n\n            # Store the current chunk index\n            self._chunks_index_to_be_deleted.append(chunk_index)\n\n        # Get the current cache size and decide whether we need to start cleanup. Otherwise, keep track of it\n        while self._max_cache_size and self._chunks_index_to_be_deleted and self._can_delete_chunk():\n            # Delete the oldest chunk\n            self._delete(self._chunks_index_to_be_deleted.pop(0))\n\n        return"
+      },
+      {
+        "file": "litdata/streaming/reader.py",
+        "name": "_get_from_queue",
+        "kind": "function",
+        "symbol": "litdata.streaming.reader._get_from_queue",
+        "start": 307,
+        "end": 320,
+        "code": "def _get_from_queue(queue: multiprocessing.Queue, timeout: float = _DEFAULT_TIMEOUT) -> Optional[Any]:\n    try:\n        return queue.get(timeout=timeout)\n    except Empty:\n        pass\n    except OSError as err:\n        # handle closed queue before the thread terminates\n        if \"handle is closed\" in str(err) or \"Bad file descriptor\" in str(err):\n            logger.debug(err)\n        else:\n            raise err\n    except EOFError as err:\n        logger.debug(err)\n    return None"
+      },
+      {
+        "file": "litdata/streaming/item_loader.py",
+        "name": "BaseItemLoader.delete",
+        "kind": "function",
+        "symbol": "litdata.streaming.item_loader.BaseItemLoader.delete",
+        "start": 60,
+        "end": 62,
+        "code": "    def delete(self, chunk_index: int, chunk_filepath: str) -> None:\n        \"\"\"Delete a chunk from the local filesystem.\"\"\"\n        pass"
+      },
+      {
+        "file": "litdata/streaming/item_loader.py",
+        "name": "BaseItemLoader",
+        "kind": "class",
+        "symbol": "litdata.streaming.item_loader.BaseItemLoader",
+        "start": 33,
+        "end": 62,
+        "code": "class BaseItemLoader(ABC):\n    \"\"\"The base item loader is responsible to decide how the items within a chunk are loaded.\"\"\"\n\n    def setup(self, config: Dict, chunks: List, serializers: Dict[str, Serializer]) -> None:\n        self._config = config\n        self._chunks = chunks\n        self._serializers = serializers\n\n    def state_dict(self) -> Dict:\n        return {}\n\n    @abstractmethod\n    def generate_intervals(self) -> List[Tuple[int, int]]:\n        \"\"\"Returns a list of tuple describing the indexes intervals of the chunks.\"\"\"\n        pass\n\n    @abstractmethod\n    def pre_load_chunk(self, chunk_index: int, chunk_filepath: str) -> None:\n        \"\"\"Logic to load the chunk in background to gain some time.\"\"\"\n        pass\n\n    @abstractmethod\n    def load_item_from_chunk(self, index: int, chunk_index: int, chunk_filepath: str, begin: int) -> Any:\n        \"\"\"Returns an item loaded from a chunk.\"\"\"\n        pass\n\n    @abstractmethod\n    def delete(self, chunk_index: int, chunk_filepath: str) -> None:\n        \"\"\"Delete a chunk from the local filesystem.\"\"\"\n        pass"
+      },
+      {
+        "file": "litdata/streaming/item_loader.py",
+        "name": "PyTreeLoader.delete",
+        "kind": "function",
+        "symbol": "litdata.streaming.item_loader.PyTreeLoader.delete",
+        "start": 129,
+        "end": 131,
+        "code": "    def delete(self, chunk_index: int, chunk_filepath: str) -> None:\n        if os.path.exists(chunk_filepath):\n            os.remove(chunk_filepath)"
+      },
+      {
+        "file": "litdata/streaming/item_loader.py",
+        "name": "PyTreeLoader",
+        "kind": "class",
+        "symbol": "litdata.streaming.item_loader.PyTreeLoader",
+        "start": 65,
+        "end": 131,
+        "code": "class PyTreeLoader(BaseItemLoader):\n    \"\"\"The Pytree Loader is the default loader of the Cache object.\"\"\"\n\n    def __init__(self) -> None:\n        self._chunk_filepaths: Dict[str, bool] = {}\n\n    def generate_intervals(self) -> List[Tuple[int, int]]:\n        intervals = []\n        begin = 0\n        end = 0\n        for chunk in self._chunks:\n            end += chunk[\"chunk_size\"]\n            intervals.append((begin, end))\n            begin += chunk[\"chunk_size\"]\n        return intervals\n\n    def pre_load_chunk(self, chunk_index: int, chunk_filepath: str) -> None:\n        pass\n\n    def load_item_from_chunk(self, index: int, chunk_index: int, chunk_filepath: str, begin: int) -> bytes:\n        offset = (1 + (index - begin) if index >= begin else index + 1) * 4\n\n        if chunk_filepath in self._chunk_filepaths and not os.path.isfile(chunk_filepath):\n            del self._chunk_filepaths[chunk_filepath]\n\n        if chunk_filepath not in self._chunk_filepaths:\n            exists = os.path.exists(chunk_filepath) and os.stat(chunk_filepath).st_size > 0\n\n            while not exists:\n                sleep(0.1)\n                exists = os.path.exists(chunk_filepath) and os.stat(chunk_filepath).st_size > 0\n\n            self._chunk_filepaths[chunk_filepath] = True\n\n        with open(chunk_filepath, \"rb\", 0) as fp:\n            fp.seek(offset)\n            pair = fp.read(8)\n            begin, end = np.frombuffer(pair, np.uint32)\n            fp.seek(begin)\n            data = fp.read(end - begin)\n\n        return self.deserialize(data)\n\n    @functools.lru_cache(maxsize=128)\n    def _data_format_to_key(self, data_format: str) -> str:\n        if \":\" in data_format:\n            serialier, serializer_sub_type = data_format.split(\":\")\n            if serializer_sub_type in self._serializers:\n                return serializer_sub_type\n            return serialier\n        return data_format\n\n    def deserialize(self, raw_item_data: bytes) -> \"PyTree\":\n        \"\"\"Deserialize the raw bytes into their python equivalent.\"\"\"\n        idx = len(self._config[\"data_format\"]) * 4\n        sizes = np.frombuffer(raw_item_data[:idx], np.uint32)\n        data = []\n        for size, data_format in zip(sizes, self._config[\"data_format\"]):\n            serializer = self._serializers[self._data_format_to_key(data_format)]\n            data_bytes = raw_item_data[idx : idx + size]\n            data.append(serializer.deserialize(data_bytes))\n            idx += size\n        return tree_unflatten(data, self._config[\"data_spec\"])\n\n    def delete(self, chunk_index: int, chunk_filepath: str) -> None:\n        if os.path.exists(chunk_filepath):\n            os.remove(chunk_filepath)"
+      }
+    ],
+    "unresolved": [
+      "litdata/streaming/reader.py:variable: _to_delete_queue",
+      "litdata/streaming/reader.py:variable: _chunks_index_to_be_deleted",
+      "litdata/streaming/reader.py:function: _delete",
+      "litdata/streaming/reader.py:function: _maybe_delete_chunks",
+      "litdata/streaming/item_loader.py:function: delete",
+      "litdata/streaming/item_loader.py:function: delete"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "litdata.streaming.reader.PrepareChunksThread._to_delete_queue"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 9,
+    "returned_files": 2,
+    "unresolved_locations": 6,
+    "returned_code_chars": 11125
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 35644,
+    "completion_tokens": 747,
+    "total_tokens": 36391,
+    "seconds": 52.21718215942383,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 237.11338138580322,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

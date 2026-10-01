@@ -1,0 +1,95 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 592,
+  "namespace": "bentoml._internal.resource.CpuResource.from_system",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nsrc/bentoml/_internal/resource.py\nclass: CpuResource\nfunction: from_system\n\nsrc/bentoml/_internal/resource.py\nfunction: get_resource\n\nsrc/bentoml/_internal/runner/strategy.py\nclass: DefaultStrategy\nfunction: get_worker_count\n\nsrc/bentoml/_internal/runner/strategy.py\nclass: DefaultStrategy\nfunction: get_worker_env\n\nsrc/bentoml/_internal/configuration/containers.py\nclass: BentoMLConfiguration\nfunction: _finalize\n```",
+  "final_locations": {
+    "files": [
+      "src/bentoml/_internal/resource.py",
+      "src/bentoml/_internal/runner/strategy.py",
+      "src/bentoml/_internal/configuration/containers.py"
+    ],
+    "entities": [
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "CpuResource",
+        "kind": "class",
+        "symbol": "bentoml._internal.resource.CpuResource",
+        "start": 77,
+        "end": 120,
+        "code": "class CpuResource(Resource[float], resource_id=\"cpu\"):\n    @classmethod\n    def from_spec(cls, spec: t.Any) -> float:\n        \"\"\"\n        Convert spec to CpuResource.\n\n        spec can be a float, int or string.\n        - 1.0 -> 1.0\n        - 1 -> 1.0\n        - \"1\" -> 1.0\n        - \"10m\" -> 0.01\n        \"\"\"\n        if not isinstance(spec, (int, float, str)):\n            raise TypeError(\"cpu must be int, float or str\")\n\n        if isinstance(spec, (int, float)):\n            return float(spec)\n\n        milli_match = re.match(\"([0-9]+)m\", spec)\n        if milli_match:\n            return float(milli_match[1]) / 1000.0\n\n        try:\n            return float(spec)\n        except ValueError:\n            raise BentoMLConfigException(f\"Invalid CPU resource limit '{spec}'. \")\n\n    @classmethod\n    def from_system(cls) -> float:\n        pass\n\n\n\n\n    @classmethod\n    def validate(cls, val: float):\n        if val < 0:\n            raise BentoMLConfigException(\n                f\"Invalid negative CPU resource limit '{val}'.\"\n            )\n        if not math.isclose(val, cls.from_system()) and val > cls.from_system():\n            raise BentoMLConfigException(\n                f\"CPU resource limit {val} is greater than the system available: {cls.from_system()}\"\n            )"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "get_resource",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.get_resource",
+        "start": 23,
+        "end": 40,
+        "code": "def get_resource(\n    resources: dict[str, t.Any], resource_kind: str, validate: bool = True\n) -> t.Any:\n    if resource_kind not in _RESOURCE_REGISTRY:\n        raise BentoMLConfigException(f\"Unknown resource kind '{resource_kind}'.\")\n\n    resource: t.Type[Resource[t.Any]] = _RESOURCE_REGISTRY[resource_kind]\n\n    if resource_kind in resources:\n        if resources[resource_kind] == \"system\":\n            return resource.from_system()\n        else:\n            res = resource.from_spec(resources[resource_kind])\n            if validate:\n                resource.validate(res)\n            return res\n    else:\n        return None"
+      },
+      {
+        "file": "src/bentoml/_internal/runner/strategy.py",
+        "name": "DefaultStrategy",
+        "kind": "class",
+        "symbol": "bentoml._internal.runner.strategy.DefaultStrategy",
+        "start": 59,
+        "end": 182,
+        "code": "class DefaultStrategy(Strategy):\n    @classmethod\n    def get_worker_count(\n        cls,\n        runnable_class: t.Type[Runnable],\n        resource_request: dict[str, t.Any] | None,\n        workers_per_resource: int | float,\n    ) -> int:\n        if resource_request is None:\n            resource_request = system_resources()\n\n        # use nvidia gpu\n        nvidia_gpus = get_resource(resource_request, \"nvidia.com/gpu\")\n        if (\n            nvidia_gpus is not None\n            and len(nvidia_gpus) > 0\n            and \"nvidia.com/gpu\" in runnable_class.SUPPORTED_RESOURCES\n        ):\n            return math.ceil(len(nvidia_gpus) * workers_per_resource)\n\n        # use CPU\n        cpus = get_resource(resource_request, \"cpu\")\n        if cpus is not None and cpus > 0:\n            if \"cpu\" not in runnable_class.SUPPORTED_RESOURCES:\n                logger.warning(\n                    \"No known supported resource available for %s, falling back to using CPU.\",\n                    runnable_class,\n                )\n\n            if runnable_class.SUPPORTS_CPU_MULTI_THREADING:\n                if isinstance(workers_per_resource, float):\n                    raise ValueError(\n                        \"Fractional CPU multi threading support is not yet supported.\"\n                    )\n                return workers_per_resource\n\n            return math.ceil(cpus) * workers_per_resource\n\n        # this should not be reached by user since we always read system resource as default\n        raise ValueError(\n            f\"No known supported resource available for {runnable_class}. Please check your resource request. \"\n            \"Leaving it blank will allow BentoML to use system resources.\"\n        )\n\n    @classmethod\n    def get_worker_env(\n        cls,\n        runnable_class: t.Type[Runnable],\n        resource_request: dict[str, t.Any] | None,\n        workers_per_resource: int | float,\n        worker_index: int,\n    ) -> dict[str, t.Any]:\n        \"\"\"\n        Args:\n            runnable_class : The runnable class to be run.\n            resource_request : The resource request of the runnable.\n            worker_index : The index of the worker, start from 0.\n        \"\"\"\n        environ: dict[str, t.Any] = {}\n        if resource_request is None:\n            resource_request = system_resources()\n        # use nvidia gpu\n        nvidia_gpus: list[int] | None = get_resource(resource_request, \"nvidia.com/gpu\")\n        if (\n            nvidia_gpus is not None\n            and len(nvidia_gpus) > 0\n            and \"nvidia.com/gpu\" in runnable_class.SUPPORTED_RESOURCES\n        ):\n            if isinstance(workers_per_resource, float):\n                # NOTE: We hit this branch when workers_per_resource is set to\n                # float, for example 0.5 or 0.25\n                if workers_per_resource > 1:\n                    raise ValueError(\n                        \"Currently, the default strategy doesn't support workers_per_resource > 1. It is recommended that one should implement a custom strategy in this case.\"\n                    )\n                # We are round the assigned resource here. This means if workers_per_resource=.4\n                # then it will round down to 2. If workers_per_source=0.6, then it will also round up to 2.\n                assigned_resource_per_worker = round(1 / workers_per_resource)\n                if len(nvidia_gpus) < assigned_resource_per_worker:\n                    logger.warning(\n                        \"Failed to allocate %s GPUs for %s (number of available GPUs < assigned workers per resource [%s])\",\n                        nvidia_gpus,\n                        worker_index,\n                        assigned_resource_per_worker,\n                    )\n                    raise IndexError(\n                        f\"There aren't enough assigned GPU(s) for given worker id '{worker_index}' [required: {assigned_resource_per_worker}].\"\n                    )\n                assigned_gpu = nvidia_gpus[\n                    assigned_resource_per_worker\n                    * worker_index : assigned_resource_per_worker\n                    * (worker_index + 1)\n                ]\n                dev = \",\".join(map(str, assigned_gpu))\n            else:\n                dev = str(nvidia_gpus[worker_index // workers_per_resource])\n            environ[\"CUDA_VISIBLE_DEVICES\"] = dev\n            logger.info(\n                \"Environ for worker %s: set CUDA_VISIBLE_DEVICES to %s\",\n                worker_index,\n                dev,\n            )\n            return environ\n\n        # use CPU\n        cpus = get_resource(resource_request, \"cpu\")\n        if cpus is not None and cpus > 0:\n            environ[\"CUDA_VISIBLE_DEVICES\"] = \"-1\"  # disable gpu\n            if runnable_class.SUPPORTS_CPU_MULTI_THREADING:\n                thread_count = math.ceil(cpus)\n                for thread_env in THREAD_ENVS:\n                    environ[thread_env] = str(thread_count)\n                logger.info(\n                    \"Environ for worker %d: set CPU thread count to %d\",\n                    worker_index,\n                    thread_count,\n                )\n                return environ\n            else:\n                for thread_env in THREAD_ENVS:\n                    environ[thread_env] = \"1\"\n                return environ\n\n        return environ"
+      },
+      {
+        "file": "src/bentoml/_internal/configuration/containers.py",
+        "name": "BentoMLConfiguration",
+        "kind": "class",
+        "symbol": "bentoml._internal.configuration.containers.BentoMLConfiguration",
+        "start": 57,
+        "end": 173,
+        "code": "class BentoMLConfiguration:\n    def __init__(\n        self,\n        override_config_file: str | None = None,\n        override_config_values: str | None = None,\n        *,\n        validate_schema: bool = True,\n        use_version: int = 1,\n    ):\n        # Load default configuration with latest version.\n        self.config = get_default_config(version=use_version)\n        spec_module = import_configuration_spec(version=use_version)\n\n        # User override configuration\n        if override_config_file is not None:\n            logger.info(\n                \"Applying user config override from path: %s\" % override_config_file\n            )\n            override = load_config_file(override_config_file)\n            if \"version\" not in override:\n                # If users does not define a version, we then by default assume they are using v1\n                # and we will migrate it to latest version\n                logger.debug(\n                    \"User config does not define a version, assuming given config is version %d...\"\n                    % use_version\n                )\n                current = use_version\n            else:\n                current = override[\"version\"]\n            migration = getattr(import_configuration_spec(current), \"migration\", None)\n            # Running migration layer if it exists\n            if migration is not None:\n                override = migration(override_config=dict(flatten_dict(override)))\n            config_merger.merge(self.config, override)\n\n        if override_config_values is not None:\n            logger.info(\n                \"Applying user config override from ENV VAR: %s\", override_config_values\n            )\n            lines = split_with_quotes(\n                override_config_values,\n                sep=r\"\\s+\",\n                quote='\"',\n                use_regex=True,\n            )\n            override_config_map = {\n                k: yaml.safe_load(v)\n                for k, v in [\n                    split_with_quotes(line, sep=\"=\", quote='\"')\n                    for line in lines\n                    if line.strip()\n                ]\n            }\n            # Note that this values will only support latest version of configuration,\n            # as there is no way for us to infer what values user can pass in.\n            # however, if users pass in a version inside this value, we will that to migrate up\n            # if possible\n            override_version = override_config_map.get(\"version\", use_version)\n            logger.debug(\n                \"Found defined 'version=%d' in BENTOML_CONFIG_OPTIONS.\"\n                % override_version\n            )\n            migration = getattr(\n                import_configuration_spec(override_version), \"migration\", None\n            )\n            # Running migration layer if it exists\n            if migration is not None:\n                override_config_map = migration(override_config=override_config_map)\n            # Previous behaviour, before configuration versioning.\n            try:\n                override = unflatten(override_config_map)\n            except ValueError as e:\n                raise BentoMLConfigException(\n                    f\"Failed to parse config options from the env var:\\n{e}.\\n*** Note: You can use '\\\"' to quote the key if it contains special characters. ***\"\n                ) from None\n            config_merger.merge(self.config, override)\n\n        if override_config_file is not None or override_config_values is not None:\n            self._finalize()\n\n        if validate_schema:\n            try:\n                spec_module.SCHEMA.validate(self.config)\n            except s.SchemaError as e:\n                raise BentoMLConfigException(\n                    f\"Invalid configuration file was given:\\n{e}\"\n                ) from None\n\n    def _finalize(self):\n        RUNNER_CFG_KEYS = [\n            \"batching\",\n            \"resources\",\n            \"logging\",\n            \"metrics\",\n            \"traffic\",\n            \"workers_per_resource\",\n        ]\n        global_runner_cfg = {k: self.config[\"runners\"][k] for k in RUNNER_CFG_KEYS}\n        custom_runners_cfg = dict(\n            filter(\n                lambda kv: kv[0] not in RUNNER_CFG_KEYS,\n                self.config[\"runners\"].items(),\n            )\n        )\n        if custom_runners_cfg:\n            for runner_name, runner_cfg in custom_runners_cfg.items():\n                # key is a runner name\n                if runner_cfg.get(\"resources\") == \"system\":\n                    runner_cfg[\"resources\"] = system_resources()\n                self.config[\"runners\"][runner_name] = config_merger.merge(\n                    deepcopy(global_runner_cfg),\n                    runner_cfg,\n                )\n        expand_env_var_in_values(self.config)\n\n    def to_dict(self) -> providers.ConfigDictType:\n        return t.cast(providers.ConfigDictType, self.config)"
+      }
+    ],
+    "unresolved": [
+      "src/bentoml/_internal/resource.py:function: from_system",
+      "src/bentoml/_internal/runner/strategy.py:function: get_worker_count",
+      "src/bentoml/_internal/runner/strategy.py:function: get_worker_env",
+      "src/bentoml/_internal/configuration/containers.py:function: _finalize"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 4,
+    "returned_code_chars": 12113
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 8717,
+    "completion_tokens": 1035,
+    "total_tokens": 9752,
+    "seconds": 35.48521566390991,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 46.045886278152466,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

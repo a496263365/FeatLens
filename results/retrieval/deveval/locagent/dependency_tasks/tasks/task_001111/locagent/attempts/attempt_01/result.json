@@ -1,0 +1,136 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1111,
+  "namespace": "praw.util.token_manager.SQLiteTokenManager.pre_refresh_callback",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7462,
+      "input_estimate_after": 7462,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I need to identify reusable dependencies for implementing the `pre_refresh_callback` method in `SQLiteTokenManager`. Looking at the current code structure and the requirement to load the refresh token from the database, I can identify several key dependencies:\n\n1. The `_get()` method in `SQLiteTokenManager` already handles retrieving refresh tokens from the database.\n2. The `FileTokenManager.pre_refresh_callback` provides a reference implementation pattern.\n3. The `post_refresh_callback` method in `SQLiteTokenManager` shows how tokens are managed and cleared.\n4. The `BaseTokenManager` abstract class defines the interface.\n5. The `authorizer` parameter pattern is established in the abstract method.\n\nHere are the verified locations containing reusable dependencies:\n\n```\npraw/util/token_manager.py\nline: 138\nline: III\nfunction: SQLiteTokenManager._get\n\npraw/util/token_manager.py\nline: 93\nline: 97\nclass: FileTokenManager\nfunction: pre_refresh_callback\n\npraw/util/token_manager.py\nline: 167\nline: 174\nclass: SQLiteTokenManager\nfunction: post_refresh_callback\n\npraw/util/token_manager.py\nline: 35\nline: 44\nclass: BaseTokenManager\nfunction: pre_refresh_callback\n\npraw/util/token_manager.py\nline: 176\nline: 177\nclass: SQLiteTokenManager\nfunction: pre_refresh_callback\n```",
+  "final_locations": {
+    "files": [
+      "praw/util/token_manager.py"
+    ],
+    "entities": [
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "SQLiteTokenManager._get",
+        "kind": "function",
+        "symbol": "praw.util.token_manager.SQLiteTokenManager._get",
+        "start": 138,
+        "end": 145,
+        "code": "    def _get(self):\n        cursor = self._connection.execute(\n            \"SELECT refresh_token FROM tokens WHERE id=?\", (self.key,)\n        )\n        result = cursor.fetchone()\n        if result is None:\n            raise KeyError\n        return result[0]"
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "FileTokenManager.pre_refresh_callback",
+        "kind": "function",
+        "symbol": "praw.util.token_manager.FileTokenManager.pre_refresh_callback",
+        "start": 93,
+        "end": 97,
+        "code": "    def pre_refresh_callback(self, authorizer):\n        \"\"\"Load the refresh token from the file.\"\"\"\n        if authorizer.refresh_token is None:\n            with open(self._filename) as fp:\n                authorizer.refresh_token = fp.read().strip()"
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "FileTokenManager",
+        "kind": "class",
+        "symbol": "praw.util.token_manager.FileTokenManager",
+        "start": 64,
+        "end": 97,
+        "code": "class FileTokenManager(BaseTokenManager):\n    \"\"\"Provides a single-file based token manager.\n\n    It is expected that the file with the initial ``refresh_token`` is created prior to\n    use.\n\n    .. warning::\n\n        The same ``file`` should not be used by more than one instance of this class\n        concurrently. Doing so may result in data corruption. Consider using\n        :class:`.SQLiteTokenManager` if you want more than one instance of PRAW to\n        concurrently manage a specific ``refresh_token`` chain.\n\n    \"\"\"\n\n    def __init__(self, filename):\n        \"\"\"Initialize a :class:`.FileTokenManager` instance.\n\n        :param filename: The file the contains the refresh token.\n\n        \"\"\"\n        super().__init__()\n        self._filename = filename\n\n    def post_refresh_callback(self, authorizer):\n        \"\"\"Update the saved copy of the refresh token.\"\"\"\n        with open(self._filename, \"w\") as fp:\n            fp.write(authorizer.refresh_token)\n\n    def pre_refresh_callback(self, authorizer):\n        \"\"\"Load the refresh token from the file.\"\"\"\n        if authorizer.refresh_token is None:\n            with open(self._filename) as fp:\n                authorizer.refresh_token = fp.read().strip()"
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "SQLiteTokenManager.post_refresh_callback",
+        "kind": "function",
+        "symbol": "praw.util.token_manager.SQLiteTokenManager.post_refresh_callback",
+        "start": 167,
+        "end": 174,
+        "code": "    def post_refresh_callback(self, authorizer):\n        \"\"\"Update the refresh token in the database.\"\"\"\n        self._set(authorizer.refresh_token)\n\n        # While the following line is not strictly necessary, it ensures that the\n        # refresh token is not used elsewhere. And also forces the pre_refresh_callback\n        # to always load the latest refresh_token from the database.\n        authorizer.refresh_token = None"
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "SQLiteTokenManager",
+        "kind": "class",
+        "symbol": "praw.util.token_manager.SQLiteTokenManager",
+        "start": 100,
+        "end": 194,
+        "code": "class SQLiteTokenManager(BaseTokenManager):\n    \"\"\"Provides a SQLite3 based token manager.\n\n    Unlike, :class:`.FileTokenManager`, the initial database need not be created ahead\n    of time, as it'll automatically be created on first use. However, initial refresh\n    tokens will need to be registered via :meth:`.register` prior to use.\n\n    .. warning::\n\n        This class is untested on Windows because we encountered file locking issues in\n        the test environment.\n\n    \"\"\"\n\n    @_deprecate_args(\"database\", \"key\")\n    def __init__(self, *, database, key):\n        \"\"\"Initialize a :class:`.SQLiteTokenManager` instance.\n\n        :param database: The path to the SQLite database.\n        :param key: The key used to locate the refresh token. This ``key`` can be\n            anything. You might use the ``client_id`` if you expect to have unique a\n            refresh token for each ``client_id``, or you might use a redditor's\n            ``username`` if you're managing multiple users' authentications.\n\n        \"\"\"\n        super().__init__()\n        import sqlite3\n\n        self._connection = sqlite3.connect(database)\n        self._connection.execute(\n            \"CREATE TABLE IF NOT EXISTS tokens (id, refresh_token, updated_at)\"\n        )\n        self._connection.execute(\n            \"CREATE UNIQUE INDEX IF NOT EXISTS ux_tokens_id on tokens(id)\"\n        )\n        self._connection.commit()\n        self.key = key\n\n    def _get(self):\n        cursor = self._connection.execute(\n            \"SELECT refresh_token FROM tokens WHERE id=?\", (self.key,)\n        )\n        result = cursor.fetchone()\n        if result is None:\n            raise KeyError\n        return result[0]\n\n    def _set(self, refresh_token):\n        \"\"\"Set the refresh token in the database.\n\n        This function will overwrite an existing value if the corresponding ``key``\n        already exists.\n\n        \"\"\"\n        self._connection.execute(\n            \"REPLACE INTO tokens VALUES (?, ?, datetime('now'))\",\n            (self.key, refresh_token),\n        )\n        self._connection.commit()\n\n    def is_registered(self):\n        \"\"\"Return whether or not ``key`` already has a ``refresh_token``.\"\"\"\n        cursor = self._connection.execute(\n            \"SELECT refresh_token FROM tokens WHERE id=?\", (self.key,)\n        )\n        return cursor.fetchone() is not None\n\n    def post_refresh_callback(self, authorizer):\n        \"\"\"Update the refresh token in the database.\"\"\"\n        self._set(authorizer.refresh_token)\n\n        # While the following line is not strictly necessary, it ensures that the\n        # refresh token is not used elsewhere. And also forces the pre_refresh_callback\n        # to always load the latest refresh_token from the database.\n        authorizer.refresh_token = None\n\n    def pre_refresh_callback(self, authorizer):\n        pass\n\n\n\n    def register(self, refresh_token):\n        \"\"\"Register the initial refresh token in the database.\n\n        :returns: ``True`` if ``refresh_token`` is saved to the database, otherwise,\n            ``False`` if there is already a ``refresh_token`` for the associated\n            ``key``.\n\n        \"\"\"\n        cursor = self._connection.execute(\n            \"INSERT OR IGNORE INTO tokens VALUES (?, ?, datetime('now'))\",\n            (self.key, refresh_token),\n        )\n        self._connection.commit()\n        return cursor.rowcount == 1"
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "BaseTokenManager.pre_refresh_callback",
+        "kind": "function",
+        "symbol": "praw.util.token_manager.BaseTokenManager.pre_refresh_callback",
+        "start": 35,
+        "end": 44,
+        "code": "    def pre_refresh_callback(self, authorizer):\n        \"\"\"Handle callback that is invoked before refreshing PRAW's authorization.\n\n        :param authorizer: The ``prawcore.Authorizer`` instance used containing\n            ``access_token`` and ``refresh_token`` attributes.\n\n        This callback can be used to inspect and modify the attributes of the\n        ``prawcore.Authorizer`` instance, such as setting the ``refresh_token``.\n\n        \"\"\""
+      },
+      {
+        "file": "praw/util/token_manager.py",
+        "name": "BaseTokenManager",
+        "kind": "class",
+        "symbol": "praw.util.token_manager.BaseTokenManager",
+        "start": 19,
+        "end": 61,
+        "code": "class BaseTokenManager(ABC):\n    \"\"\"An abstract class for all token managers.\"\"\"\n\n    @abstractmethod\n    def post_refresh_callback(self, authorizer):\n        \"\"\"Handle callback that is invoked after a refresh token is used.\n\n        :param authorizer: The ``prawcore.Authorizer`` instance used containing\n            ``access_token`` and ``refresh_token`` attributes.\n\n        This function will be called after refreshing the access and refresh tokens.\n        This callback can be used for saving the updated ``refresh_token``.\n\n        \"\"\"\n\n    @abstractmethod\n    def pre_refresh_callback(self, authorizer):\n        \"\"\"Handle callback that is invoked before refreshing PRAW's authorization.\n\n        :param authorizer: The ``prawcore.Authorizer`` instance used containing\n            ``access_token`` and ``refresh_token`` attributes.\n\n        This callback can be used to inspect and modify the attributes of the\n        ``prawcore.Authorizer`` instance, such as setting the ``refresh_token``.\n\n        \"\"\"\n\n    @property\n    def reddit(self):\n        \"\"\"Return the :class:`.Reddit` instance bound to the token manager.\"\"\"\n        return self._reddit\n\n    @reddit.setter\n    def reddit(self, value):\n        if self._reddit is not None:\n            raise RuntimeError(\n                \"'reddit' can only be set once and is done automatically\"\n            )\n        self._reddit = value\n\n    def __init__(self):\n        \"\"\"Initialize a :class:`.BaseTokenManager` instance.\"\"\"\n        self._reddit = None"
+      }
+    ],
+    "unresolved": [
+      "praw/util/token_manager.py:function: pre_refresh_callback",
+      "praw/util/token_manager.py:function: post_refresh_callback",
+      "praw/util/token_manager.py:function: pre_refresh_callback",
+      "praw/util/token_manager.py:function: pre_refresh_callback"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "praw.util.token_manager.SQLiteTokenManager._get"
+    ],
+    "exact_hit_dependencies": [
+      "praw.util.token_manager.SQLiteTokenManager._get"
+    ],
+    "returned_entities": 7,
+    "returned_files": 1,
+    "unresolved_locations": 4,
+    "returned_code_chars": 7498
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 24474,
+    "completion_tokens": 744,
+    "total_tokens": 25218,
+    "seconds": 153.9039785861969,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 167.03464007377625,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

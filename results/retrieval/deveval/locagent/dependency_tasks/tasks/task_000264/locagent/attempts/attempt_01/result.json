@@ -1,0 +1,101 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 264,
+  "namespace": "authlib.jose.util.extract_header",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2447,
+      "input_estimate_after": 2447,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nauthlib/jose/rfc7515/jws.py\nfunction: JsonWebSignature.deserialize_compact\nfunction: JsonWebSignature._validate_json_jws\n\nauthlib/jose/rfc7516/jwe.py\nfunction: JsonWebEncryption.deserialize_compact\nfunction: JsonWebEncryption.deserialize_json\n```",
+  "final_locations": {
+    "files": [
+      "authlib/jose/rfc7515/jws.py",
+      "authlib/jose/rfc7516/jwe.py"
+    ],
+    "entities": [
+      {
+        "file": "authlib/jose/rfc7515/jws.py",
+        "name": "JsonWebSignature.deserialize_compact",
+        "kind": "function",
+        "symbol": "authlib.jose.rfc7515.jws.JsonWebSignature.deserialize_compact",
+        "start": 72,
+        "end": 104,
+        "code": "    def deserialize_compact(self, s, key, decode=None):\n        \"\"\"Exact JWS Compact Serialization, and validate with the given key.\n        If key is not provided, the returned dict will contain the signature,\n        and signing input values. Via `Section 7.1`_.\n\n        :param s: text of JWS Compact Serialization\n        :param key: key used to verify the signature\n        :param decode: a function to decode payload data\n        :return: JWSObject\n        :raise: BadSignatureError\n\n        .. _`Section 7.1`: https://tools.ietf.org/html/rfc7515#section-7.1\n        \"\"\"\n        try:\n            s = to_bytes(s)\n            signing_input, signature_segment = s.rsplit(b'.', 1)\n            protected_segment, payload_segment = signing_input.split(b'.', 1)\n        except ValueError:\n            raise DecodeError('Not enough segments')\n\n        protected = _extract_header(protected_segment)\n        jws_header = JWSHeader(protected, None)\n\n        payload = _extract_payload(payload_segment)\n        if decode:\n            payload = decode(payload)\n\n        signature = _extract_signature(signature_segment)\n        rv = JWSObject(jws_header, payload, 'compact')\n        algorithm, key = self._prepare_algorithm_key(jws_header, payload, key)\n        if algorithm.verify(signing_input, signature, key):\n            return rv\n        raise BadSignatureError(rv)"
+      },
+      {
+        "file": "authlib/jose/rfc7515/jws.py",
+        "name": "JsonWebSignature._validate_json_jws",
+        "kind": "function",
+        "symbol": "authlib.jose.rfc7515.jws.JsonWebSignature._validate_json_jws",
+        "start": 271,
+        "end": 292,
+        "code": "    def _validate_json_jws(self, payload_segment, payload, header_obj, key):\n        protected_segment = header_obj.get('protected')\n        if not protected_segment:\n            raise DecodeError('Missing \"protected\" value')\n\n        signature_segment = header_obj.get('signature')\n        if not signature_segment:\n            raise DecodeError('Missing \"signature\" value')\n\n        protected_segment = to_bytes(protected_segment)\n        protected = _extract_header(protected_segment)\n        header = header_obj.get('header')\n        if header and not isinstance(header, dict):\n            raise DecodeError('Invalid \"header\" value')\n\n        jws_header = JWSHeader(protected, header)\n        algorithm, key = self._prepare_algorithm_key(jws_header, payload, key)\n        signing_input = b'.'.join([protected_segment, payload_segment])\n        signature = _extract_signature(to_bytes(signature_segment))\n        if algorithm.verify(signing_input, signature, key):\n            return jws_header, True\n        return jws_header, False"
+      },
+      {
+        "file": "authlib/jose/rfc7516/jwe.py",
+        "name": "JsonWebEncryption.deserialize_compact",
+        "kind": "function",
+        "symbol": "authlib.jose.rfc7516.jwe.JsonWebEncryption.deserialize_compact",
+        "start": 414,
+        "end": 478,
+        "code": "    def deserialize_compact(self, s, key, decode=None, sender_key=None):\n        \"\"\"Extract JWE Compact Serialization.\n\n        :param s: JWE Compact Serialization as bytes\n        :param key: Private key used to decrypt payload\n            (optionally can be a tuple of kid and essentially key)\n        :param decode: Function to decode payload data\n        :param sender_key: Sender's public key in case\n            JWEAlgorithmWithTagAwareKeyAgreement is used\n        :return: dict with `header` and `payload` keys where `header` value is\n            a dict containing protected header fields\n        \"\"\"\n        try:\n            s = to_bytes(s)\n            protected_s, ek_s, iv_s, ciphertext_s, tag_s = s.rsplit(b'.')\n        except ValueError:\n            raise DecodeError('Not enough segments')\n\n        protected = extract_header(protected_s, DecodeError)\n        ek = extract_segment(ek_s, DecodeError, 'encryption key')\n        iv = extract_segment(iv_s, DecodeError, 'initialization vector')\n        ciphertext = extract_segment(ciphertext_s, DecodeError, 'ciphertext')\n        tag = extract_segment(tag_s, DecodeError, 'authentication tag')\n\n        alg = self.get_header_alg(protected)\n        enc = self.get_header_enc(protected)\n        zip_alg = self.get_header_zip(protected)\n\n        self._validate_sender_key(sender_key, alg)\n        self._validate_private_headers(protected, alg)\n\n        if isinstance(key, tuple) and len(key) == 2:\n            # Ignore separately provided kid, extract essentially key only\n            key = key[1]\n\n        key = prepare_key(alg, protected, key)\n\n        if sender_key is not None:\n            sender_key = alg.prepare_key(sender_key)\n\n        if isinstance(alg, JWEAlgorithmWithTagAwareKeyAgreement):\n            # For a JWE algorithm with tag-aware key agreement:\n            if alg.key_size is not None:\n                # In case key agreement with key wrapping mode is used:\n                # Provide authentication tag to .unwrap method\n                cek = alg.unwrap(enc, ek, protected, key, sender_key, tag)\n            else:\n                # Otherwise, don't provide authentication tag to .unwrap method\n                cek = alg.unwrap(enc, ek, protected, key, sender_key)\n        else:\n            # For any other JWE algorithm:\n            # Don't provide authentication tag to .unwrap method\n            cek = alg.unwrap(enc, ek, protected, key)\n\n        aad = to_bytes(protected_s, 'ascii')\n        msg = enc.decrypt(ciphertext, aad, iv, tag, cek)\n\n        if zip_alg:\n            payload = zip_alg.decompress(to_bytes(msg))\n        else:\n            payload = msg\n\n        if decode:\n            payload = decode(payload)\n        return {'header': protected, 'payload': payload}"
+      },
+      {
+        "file": "authlib/jose/rfc7516/jwe.py",
+        "name": "JsonWebEncryption.deserialize_json",
+        "kind": "function",
+        "symbol": "authlib.jose.rfc7516.jwe.JsonWebEncryption.deserialize_json",
+        "start": 480,
+        "end": 625,
+        "code": "    def deserialize_json(self, obj, key, decode=None, sender_key=None):\n        \"\"\"Extract JWE JSON Serialization.\n\n        :param obj: JWE JSON Serialization as dict or str\n        :param key: Private key used to decrypt payload\n            (optionally can be a tuple of kid and essentially key)\n        :param decode: Function to decode payload data\n        :param sender_key: Sender's public key in case\n            JWEAlgorithmWithTagAwareKeyAgreement is used\n        :return: dict with `header` and `payload` keys where `header` value is\n            a dict containing `protected`, `unprotected`, `recipients` and/or\n            `aad` keys\n        \"\"\"\n        obj = ensure_dict(obj, 'JWE')\n        obj = deepcopy(obj)\n\n        if 'protected' in obj:\n            protected = extract_header(to_bytes(obj['protected']), DecodeError)\n        else:\n            protected = None\n\n        unprotected = obj.get('unprotected')\n\n        recipients = obj['recipients']\n        for recipient in recipients:\n            if 'header' not in recipient:\n                recipient['header'] = {}\n            recipient['encrypted_key'] = extract_segment(\n                to_bytes(recipient['encrypted_key']), DecodeError, 'encrypted key')\n\n        if 'aad' in obj:\n            jwe_aad = extract_segment(to_bytes(obj['aad']), DecodeError, 'JWE AAD')\n        else:\n            jwe_aad = None\n\n        iv = extract_segment(to_bytes(obj['iv']), DecodeError, 'initialization vector')\n\n        ciphertext = extract_segment(to_bytes(obj['ciphertext']), DecodeError, 'ciphertext')\n\n        tag = extract_segment(to_bytes(obj['tag']), DecodeError, 'authentication tag')\n\n        shared_header = JWESharedHeader(protected, unprotected)\n\n        alg = self.get_header_alg(shared_header)\n        enc = self.get_header_enc(shared_header)\n        zip_alg = self.get_header_zip(shared_header)\n\n        self._validate_sender_key(sender_key, alg)\n        self._validate_private_headers(shared_header, alg)\n        for recipient in recipients:\n            self._validate_private_headers(recipient['header'], alg)\n\n        kid = None\n        if isinstance(key, tuple) and len(key) == 2:\n            # Extract separately provided kid and essentially key\n            kid = key[0]\n            key = key[1]\n\n        key = alg.prepare_key(key)\n\n        if kid is None:\n            # If kid has not been provided separately, try to get it from key itself\n            kid = key.kid\n\n        if sender_key is not None:\n            sender_key = alg.prepare_key(sender_key)\n\n        def _unwrap_with_sender_key_and_tag(ek, header):\n            return alg.unwrap(enc, ek, header, key, sender_key, tag)\n\n        def _unwrap_with_sender_key_and_without_tag(ek, header):\n            return alg.unwrap(enc, ek, header, key, sender_key)\n\n        def _unwrap_without_sender_key_and_tag(ek, header):\n            return alg.unwrap(enc, ek, header, key)\n\n        def _unwrap_for_matching_recipient(unwrap_func):\n            if kid is not None:\n                for recipient in recipients:\n                    if recipient['header'].get('kid') == kid:\n                        header = JWEHeader(protected, unprotected, recipient['header'])\n                        return unwrap_func(recipient['encrypted_key'], header)\n\n            # Since no explicit match has been found, iterate over all the recipients\n            error = None\n            for recipient in recipients:\n                header = JWEHeader(protected, unprotected, recipient['header'])\n                try:\n                    return unwrap_func(recipient['encrypted_key'], header)\n                except Exception as e:\n                    error = e\n            else:\n                if error is None:\n                    raise KeyMismatchError()\n                else:\n                    raise error\n\n        if isinstance(alg, JWEAlgorithmWithTagAwareKeyAgreement):\n            # For a JWE algorithm with tag-aware key agreement:\n            if alg.key_size is not None:\n                # In case key agreement with key wrapping mode is used:\n                # Provide authentication tag to .unwrap method\n                cek = _unwrap_for_matching_recipient(_unwrap_with_sender_key_and_tag)\n            else:\n                # Otherwise, don't provide authentication tag to .unwrap method\n                cek = _unwrap_for_matching_recipient(_unwrap_with_sender_key_and_without_tag)\n        else:\n            # For any other JWE algorithm:\n            # Don't provide authentication tag to .unwrap method\n            cek = _unwrap_for_matching_recipient(_unwrap_without_sender_key_and_tag)\n\n        aad = to_bytes(obj.get('protected', ''))\n        if 'aad' in obj:\n           aad += b'.' + to_bytes(obj['aad'])\n        aad = to_bytes(aad, 'ascii')\n\n        msg = enc.decrypt(ciphertext, aad, iv, tag, cek)\n\n        if zip_alg:\n            payload = zip_alg.decompress(to_bytes(msg))\n        else:\n            payload = msg\n\n        if decode:\n            payload = decode(payload)\n\n        for recipient in recipients:\n            if not recipient['header']:\n                del recipient['header']\n            for member in set(recipient.keys()):\n                if member != 'header':\n                    del recipient[member]\n\n        header = {}\n        if protected:\n            header['protected'] = protected\n        if unprotected:\n            header['unprotected'] = unprotected\n        header['recipients'] = recipients\n        if jwe_aad is not None:\n            header['aad'] = jwe_aad\n\n        return {\n            'header': header,\n            'payload': payload\n        }"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 10755
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 12920,
+    "completion_tokens": 315,
+    "total_tokens": 13235,
+    "seconds": 19.922624349594116,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 27.364365339279175,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

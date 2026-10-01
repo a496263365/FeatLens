@@ -1,0 +1,105 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 799,
+  "namespace": "playhouse.db_url.parse",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7749,
+      "input_estimate_after": 7749,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Given the task to localize reusable dependencies for implementing the `playhouse.db_url.parse` function, I have analyzed the available evidence. The target is to parse a database URL into a dictionary, handling components like scheme, host, port, user, password, and path (database name). The function likely needs to interact with standard URL parsing libraries and possibly handle database-specific URL formats.\n\nBased on the repository structure and common patterns in database URL parsing, I have identified key dependencies that would be essential for implementing this function. These include modules for URL parsing, database connection handling, and configuration management within the `playhouse` package.\n\nHere are the localized dependencies:\n\n```\nplayhouse/db_url.py\nline: 1\nmodule: db_url\nfunction: connect\nclass: DatabaseProxy\n\nplayhouse/shortcuts.py\nline: 1\nfunction: ReconnectMixin\nclass: _ConnectionState\n\nplayhouse/pool.py\nline: 1\nclass: PooledDatabase\nfunction: _connect\n\nplayhouse/database.py\nline: 1\nclass: Database\nfunction: __init__\nline: 150\nfunction: connect\n\nplayhouse/postgres_ext.py\nline: 1\nclass: PostgresqlExtDatabase\nfunction: from_url\n```",
+  "final_locations": {
+    "files": [
+      "playhouse/db_url.py",
+      "playhouse/shortcuts.py",
+      "playhouse/pool.py",
+      "playhouse/postgres_ext.py"
+    ],
+    "entities": [
+      {
+        "file": "playhouse/db_url.py",
+        "name": "connect",
+        "kind": "function",
+        "symbol": "playhouse.db_url.connect",
+        "start": 91,
+        "end": 105,
+        "code": "def connect(url, unquote_password=False, **connect_params):\n    parsed = urlparse(url)\n    connect_kwargs = parseresult_to_dict(parsed, unquote_password)\n    connect_kwargs.update(connect_params)\n    database_class = schemes.get(parsed.scheme)\n\n    if database_class is None:\n        if database_class in schemes:\n            raise RuntimeError('Attempted to use \"%s\" but a required library '\n                               'could not be imported.' % parsed.scheme)\n        else:\n            raise RuntimeError('Unrecognized or unsupported scheme: \"%s\".' %\n                               parsed.scheme)\n\n    return database_class(**connect_kwargs)"
+      },
+      {
+        "file": "playhouse/pool.py",
+        "name": "PooledDatabase",
+        "kind": "class",
+        "symbol": "playhouse.pool.PooledDatabase",
+        "start": 70,
+        "end": 242,
+        "code": "class PooledDatabase(object):\n    def __init__(self, database, max_connections=20, stale_timeout=None,\n                 timeout=None, **kwargs):\n        self._max_connections = make_int(max_connections)\n        self._stale_timeout = make_int(stale_timeout)\n        self._wait_timeout = make_int(timeout)\n        if self._wait_timeout == 0:\n            self._wait_timeout = float('inf')\n\n        # Available / idle connections stored in a heap, sorted oldest first.\n        self._connections = []\n\n        # Mapping of connection id to PoolConnection. Ordinarily we would want\n        # to use something like a WeakKeyDictionary, but Python typically won't\n        # allow us to create weak references to connection objects.\n        self._in_use = {}\n\n        # Use the memory address of the connection as the key in the event the\n        # connection object is not hashable. Connections will not get\n        # garbage-collected, however, because a reference to them will persist\n        # in \"_in_use\" as long as the conn has not been closed.\n        self.conn_key = id\n\n        super(PooledDatabase, self).__init__(database, **kwargs)\n\n    def init(self, database, max_connections=None, stale_timeout=None,\n             timeout=None, **connect_kwargs):\n        super(PooledDatabase, self).init(database, **connect_kwargs)\n        if max_connections is not None:\n            self._max_connections = make_int(max_connections)\n        if stale_timeout is not None:\n            self._stale_timeout = make_int(stale_timeout)\n        if timeout is not None:\n            self._wait_timeout = make_int(timeout)\n            if self._wait_timeout == 0:\n                self._wait_timeout = float('inf')\n\n    def connect(self, reuse_if_open=False):\n        if not self._wait_timeout:\n            return super(PooledDatabase, self).connect(reuse_if_open)\n\n        expires = time.time() + self._wait_timeout\n        while expires > time.time():\n            try:\n                ret = super(PooledDatabase, self).connect(reuse_if_open)\n            except MaxConnectionsExceeded:\n                time.sleep(0.1)\n            else:\n                return ret\n        raise MaxConnectionsExceeded('Max connections exceeded, timed out '\n                                     'attempting to connect.')\n\n    def _connect(self):\n        while True:\n            try:\n                # Remove the oldest connection from the heap.\n                ts, conn = heapq.heappop(self._connections)\n                key = self.conn_key(conn)\n            except IndexError:\n                ts = conn = None\n                logger.debug('No connection available in pool.')\n                break\n            else:\n                if self._is_closed(conn):\n                    # This connecton was closed, but since it was not stale\n                    # it got added back to the queue of available conns. We\n                    # then closed it and marked it as explicitly closed, so\n                    # it's safe to throw it away now.\n                    # (Because Database.close() calls Database._close()).\n                    logger.debug('Connection %s was closed.', key)\n                    ts = conn = None\n                elif self._stale_timeout and self._is_stale(ts):\n                    # If we are attempting to check out a stale connection,\n                    # then close it. We don't need to mark it in the \"closed\"\n                    # set, because it is not in the list of available conns\n                    # anymore.\n                    logger.debug('Connection %s was stale, closing.', key)\n                    self._close(conn, True)\n                    ts = conn = None\n                else:\n                    break\n\n        if conn is None:\n            if self._max_connections and (\n                    len(self._in_use) >= self._max_connections):\n                raise MaxConnectionsExceeded('Exceeded maximum connections.')\n            conn = super(PooledDatabase, self)._connect()\n            ts = time.time() - random.random() / 1000\n            key = self.conn_key(conn)\n            logger.debug('Created new connection %s.', key)\n\n        self._in_use[key] = PoolConnection(ts, conn, time.time())\n        return conn\n\n    def _is_stale(self, timestamp):\n        # Called on check-out and check-in to ensure the connection has\n        # not outlived the stale timeout.\n        return (time.time() - timestamp) > self._stale_timeout\n\n    def _is_closed(self, conn):\n        return False\n\n    def _can_reuse(self, conn):\n        # Called on check-in to make sure the connection can be re-used.\n        return True\n\n    def _close(self, conn, close_conn=False):\n        key = self.conn_key(conn)\n        if close_conn:\n            super(PooledDatabase, self)._close(conn)\n        elif key in self._in_use:\n            pool_conn = self._in_use.pop(key)\n            if self._stale_timeout and self._is_stale(pool_conn.timestamp):\n                logger.debug('Closing stale connection %s.', key)\n                super(PooledDatabase, self)._close(conn)\n            elif self._can_reuse(conn):\n                logger.debug('Returning %s to pool.', key)\n                heapq.heappush(self._connections, (pool_conn.timestamp, conn))\n            else:\n                logger.debug('Closed %s.', key)\n\n    def manual_close(self):\n        \"\"\"\n        Close the underlying connection without returning it to the pool.\n        \"\"\"\n        if self.is_closed():\n            return False\n\n        # Obtain reference to the connection in-use by the calling thread.\n        conn = self.connection()\n\n        # A connection will only be re-added to the available list if it is\n        # marked as \"in use\" at the time it is closed. We will explicitly\n        # remove it from the \"in use\" list, call \"close()\" for the\n        # side-effects, and then explicitly close the connection.\n        self._in_use.pop(self.conn_key(conn), None)\n        self.close()\n        self._close(conn, close_conn=True)\n\n    def close_idle(self):\n        # Close any open connections that are not currently in-use.\n        with self._lock:\n            for _, conn in self._connections:\n                self._close(conn, close_conn=True)\n            self._connections = []\n\n    def close_stale(self, age=600):\n        # Close any connections that are in-use but were checked out quite some\n        # time ago and can be considered stale.\n        with self._lock:\n            in_use = {}\n            cutoff = time.time() - age\n            n = 0\n            for key, pool_conn in self._in_use.items():\n                if pool_conn.checked_out < cutoff:\n                    self._close(pool_conn.connection, close_conn=True)\n                    n += 1\n                else:\n                    in_use[key] = pool_conn\n            self._in_use = in_use\n        return n\n\n    def close_all(self):\n        # Close all connections -- available and in-use. Warning: may break any\n        # active connections used by other threads.\n        self.close()\n        with self._lock:\n            for _, conn in self._connections:\n                self._close(conn, close_conn=True)\n            for pool_conn in self._in_use.values():\n                self._close(pool_conn.connection, close_conn=True)\n            self._connections = []\n            self._in_use = {}"
+      },
+      {
+        "file": "playhouse/postgres_ext.py",
+        "name": "PostgresqlExtDatabase",
+        "kind": "class",
+        "symbol": "playhouse.postgres_ext.PostgresqlExtDatabase",
+        "start": 462,
+        "end": 498,
+        "code": "class PostgresqlExtDatabase(PostgresqlDatabase):\n    def __init__(self, *args, **kwargs):\n        self._register_hstore = kwargs.pop('register_hstore', False)\n        self._server_side_cursors = kwargs.pop('server_side_cursors', False)\n        super(PostgresqlExtDatabase, self).__init__(*args, **kwargs)\n\n    def _connect(self):\n        conn = super(PostgresqlExtDatabase, self)._connect()\n        if self._register_hstore:\n            register_hstore(conn, globally=True)\n        return conn\n\n    def cursor(self, commit=None, named_cursor=None):\n        if commit is not None:\n            __deprecated__('\"commit\" has been deprecated and is a no-op.')\n        if self.is_closed():\n            if self.autoconnect:\n                self.connect()\n            else:\n                raise InterfaceError('Error, database connection not opened.')\n        if named_cursor:\n            curs = self._state.conn.cursor(name=str(uuid.uuid1()))\n            return curs\n        return self._state.conn.cursor()\n\n    def execute(self, query, commit=None, named_cursor=False, array_size=None,\n                **context_options):\n        if commit is not None:\n            __deprecated__('\"commit\" has been deprecated and is a no-op.')\n        ctx = self.get_sql_context(**context_options)\n        sql, params = ctx.sql(query).query()\n        named_cursor = named_cursor or (self._server_side_cursors and\n                                        sql[:6].lower() == 'select')\n        cursor = self.execute_sql(sql, params)\n        if named_cursor:\n            cursor = FetchManyCursor(cursor, array_size)\n        return cursor"
+      }
+    ],
+    "unresolved": [
+      "playhouse/db_url.py:line: 1",
+      "playhouse/db_url.py:class: DatabaseProxy",
+      "playhouse/shortcuts.py:line: 1",
+      "playhouse/shortcuts.py:function: ReconnectMixin",
+      "playhouse/shortcuts.py:class: _ConnectionState",
+      "playhouse/pool.py:line: 1",
+      "playhouse/pool.py:function: _connect",
+      "playhouse/database.py",
+      "playhouse/postgres_ext.py:line: 1",
+      "playhouse/postgres_ext.py:function: from_url"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 4,
+    "unresolved_locations": 10,
+    "returned_code_chars": 9570
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 20356,
+    "completion_tokens": 732,
+    "total_tokens": 21088,
+    "seconds": 72.33439207077026,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 172.83863425254822,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,125 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2136,
+  "namespace": "pycoin.message.make_parser_and_packer.standard_streamer",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6774,
+      "input_estimate_after": 6774,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `satoshi_streamer` function based on the existing `standard_streamer` stub. The key is to understand what components are needed to create a streamer that uses Bitcoin protocol parsing/packing conventions.\n\nFrom the evidence, I can see:\n\n1. The `standard_streamer` function is currently a stub that needs to be implemented.\n2. There's already a `SATOSHI_STREAMER` instance created in `satoshi_streamer.py`.\n3. The `Streamer` class provides the core functionality for parsing and packing.\n4. The `STREAMER_FUNCTIONS` dictionary contains the standard parsing/streaming functions for Bitcoin protocol.\n5. The `standard_parsing_functions` function shows how additional parsing functions are registered.\n\nHere are the key reusable dependencies:\n\n```\npycoin/satoshi/satoshi_streamer.py\nline: 10\nvariable: STREAMER_FUNCTIONS\n\npycoin/satoshi/satoshi_streamer.py\nline: 21\nvariable: SATOSHI_STREAMER\n\npycoin/serialize/streamer.py\nline: 5\nclass: Streamer\nfunction: __init__\nfunction: register_functions\nfunction: register_array_count_parse\n\npycoin/satoshi/satoshi_int.py\nline: 6\nfunction: parse_satoshi_int\nfunction: stream_satoshi_int\n\npycoin/message/make_parser_and_packer.py\nline: 169\nfunction: standard_parsing_functions\n```",
+  "final_locations": {
+    "files": [
+      "pycoin/satoshi/satoshi_streamer.py",
+      "pycoin/serialize/streamer.py",
+      "pycoin/satoshi/satoshi_int.py",
+      "pycoin/message/make_parser_and_packer.py"
+    ],
+    "entities": [
+      {
+        "file": "pycoin/satoshi/satoshi_streamer.py",
+        "name": "STREAMER_FUNCTIONS",
+        "kind": "variable",
+        "symbol": "pycoin.satoshi.satoshi_streamer.STREAMER_FUNCTIONS",
+        "start": 10,
+        "end": 19,
+        "code": "STREAMER_FUNCTIONS = {\n    \"I\": (parse_satoshi_int, stream_satoshi_int),\n    \"S\": (parse_satoshi_string, stream_satoshi_string),\n    \"h\": (lambda f: struct.unpack(\"!H\", f.read(2))[0], lambda f, v: f.write(struct.pack(\"!H\", v))),\n    \"L\": (lambda f: struct.unpack(\"<L\", f.read(4))[0], lambda f, v: f.write(struct.pack(\"<L\", v))),\n    \"Q\": (lambda f: struct.unpack(\"<Q\", f.read(8))[0], lambda f, v: f.write(struct.pack(\"<Q\", v))),\n    \"#\": (lambda f: bytes_as_revhex(f.read(32)), lambda f, v: f.write(v[:32])),\n    \"@\": (lambda f: f.read(16), lambda f, v: f.write(v[:16])),\n    \"b\": (lambda f: struct.unpack(\"?\", f.read(1))[0], lambda f, b: f.write(struct.pack(\"?\", b))),\n}"
+      },
+      {
+        "file": "pycoin/satoshi/satoshi_streamer.py",
+        "name": "SATOSHI_STREAMER",
+        "kind": "variable",
+        "symbol": "pycoin.satoshi.satoshi_streamer.SATOSHI_STREAMER",
+        "start": 21,
+        "end": 21,
+        "code": "SATOSHI_STREAMER = Streamer()"
+      },
+      {
+        "file": "pycoin/serialize/streamer.py",
+        "name": "Streamer",
+        "kind": "class",
+        "symbol": "pycoin.serialize.streamer.Streamer",
+        "start": 5,
+        "end": 56,
+        "code": "class Streamer(object):\n    def __init__(self):\n        self.parse_lookup = {}\n        self.stream_lookup = {}\n\n    def register_functions(self, lookup):\n        for c, v in lookup:\n            parse_f, stream_f = v\n            self.parse_lookup[c] = parse_f\n            self.stream_lookup[c] = stream_f\n\n    def register_array_count_parse(self, array_count_parse_f):\n        self.array_count_parse_f = array_count_parse_f\n\n    def parse_struct(self, fmt, f):\n        items = []\n        i = 0\n        while i < len(fmt):\n            c = fmt[i]\n            if c == \"[\":\n                end = fmt.find(\"]\", i)\n                if end < 0:\n                    raise ValueError(\"no closing ] character\")\n                subfmt = fmt[i+1:end]\n                count = self.array_count_parse_f(f)\n                array = []\n                for j in range(count):\n                    if len(subfmt) == 1:\n                        array.append(self.parse_struct(subfmt, f)[0])\n                    else:\n                        array.append(self.parse_struct(subfmt, f))\n                items.append(tuple(array))\n                i = end\n            else:\n                items.append(self.parse_lookup[c](f))\n            i += 1\n        return tuple(items)\n\n    def parse_as_dict(self, attribute_list, pack_list, f):\n        return dict(list(zip(attribute_list, self.parse_struct(pack_list, f))))\n\n    def stream_struct(self, fmt, f, *args):\n        for c, v in zip(fmt, args):\n            self.stream_lookup[c](f, v)\n\n    def unpack_struct(self, fmt, b):\n        return self.parse_struct(fmt, io.BytesIO(b))\n\n    def pack_struct(self, fmt, *args):\n        b = io.BytesIO()\n        self.stream_struct(fmt, b, *args)\n        return b.getvalue()"
+      },
+      {
+        "file": "pycoin/satoshi/satoshi_int.py",
+        "name": "parse_satoshi_int",
+        "kind": "function",
+        "symbol": "pycoin.satoshi.satoshi_int.parse_satoshi_int",
+        "start": 4,
+        "end": 13,
+        "code": "def parse_satoshi_int(f, v=None):\n    if v is None:\n        v = ord(f.read(1))\n    if v == 253:\n        v = struct.unpack(\"<H\", f.read(2))[0]\n    elif v == 254:\n        v = struct.unpack(\"<L\", f.read(4))[0]\n    elif v == 255:\n        v = struct.unpack(\"<Q\", f.read(8))[0]\n    return v"
+      },
+      {
+        "file": "pycoin/satoshi/satoshi_int.py",
+        "name": "stream_satoshi_int",
+        "kind": "function",
+        "symbol": "pycoin.satoshi.satoshi_int.stream_satoshi_int",
+        "start": 16,
+        "end": 24,
+        "code": "def stream_satoshi_int(f, v):\n    if v < 253:\n        f.write(struct.pack(\"<B\", v))\n    elif v <= 65535:\n        f.write(b'\\xfd' + struct.pack(\"<H\", v))\n    elif v <= 0xffffffff:\n        f.write(b'\\xfe' + struct.pack(\"<L\", v))\n    else:\n        f.write(b'\\xff' + struct.pack(\"<Q\", v))"
+      },
+      {
+        "file": "pycoin/message/make_parser_and_packer.py",
+        "name": "standard_parsing_functions",
+        "kind": "function",
+        "symbol": "pycoin.message.make_parser_and_packer.standard_parsing_functions",
+        "start": 169,
+        "end": 206,
+        "code": "def standard_parsing_functions(Block, Tx):\n    \"\"\"\n    Return the standard parsing functions for a given Block and Tx class.\n    The return value is expected to be used with the standard_streamer function.\n    \"\"\"\n    def stream_block(f, block):\n        assert isinstance(block, Block)\n        block.stream(f)\n\n    def stream_blockheader(f, blockheader):\n        assert isinstance(blockheader, Block)\n        blockheader.stream_header(f)\n\n    def stream_tx(f, tx):\n        assert isinstance(tx, Tx)\n        tx.stream(f)\n\n    def parse_int_6(f):\n        b = f.read(6) + b'\\0\\0'\n        return struct.unpack(b, \"<L\")[0]\n\n    def stream_int_6(f, v):\n        f.write(struct.pack(v, \"<L\")[:6])\n\n    more_parsing = [\n        (\"A\", (PeerAddress.parse, lambda f, peer_addr: peer_addr.stream(f))),\n        (\"v\", (InvItem.parse, lambda f, inv_item: inv_item.stream(f))),\n        (\"T\", (Tx.parse, stream_tx)),\n        (\"B\", (Block.parse, stream_block)),\n        (\"z\", (Block.parse_as_header, stream_blockheader)),\n        (\"1\", (lambda f: struct.unpack(\"B\", f.read(1))[0], lambda f, v: f.write(struct.pack(\"B\", v)))),\n        (\"6\", (parse_int_6, stream_int_6)),\n        (\"O\", (lambda f: True if f.read(1) else False,\n               lambda f, v: f.write(b'' if v is None else struct.pack(\"B\", v)))),\n    ]\n    all_items = list(STREAMER_FUNCTIONS.items())\n    all_items.extend(more_parsing)\n    return all_items"
+      }
+    ],
+    "unresolved": [
+      "pycoin/serialize/streamer.py:function: __init__",
+      "pycoin/serialize/streamer.py:function: register_functions",
+      "pycoin/serialize/streamer.py:function: register_array_count_parse"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 4,
+    "unresolved_locations": 3,
+    "returned_code_chars": 4397
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 25373,
+    "completion_tokens": 697,
+    "total_tokens": 26070,
+    "seconds": 52.33256554603577,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 56.864428997039795,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

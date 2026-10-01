@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 687,
+  "namespace": "msticpy.analysis.anomalous_sequence.utils.cmds_params_values.get_params_to_model_values",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8459,
+      "input_estimate_after": 8459,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the following key locations that contain reusable dependencies for implementing the `get_params_to_model_values` function. These locations provide necessary context about the `StateMatrix` class, the model computation flow, and the overall structure of the anomalous sequence analysis module.\n\n```\nmsticpy/analysis/anomalous_sequence/utils/data_structures.py\nline: 14\nclass: StateMatrix\n\nmsticpy/analysis/anomalous_sequence/model.py\nline: 169\nfunction: Model._compute_counts\nline: -1\nline: 232\nline: 233\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_params_values.py\nline: -1\nfunction: compute_counts\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_params_only.py\nline: -1\nfunction: compute_counts\n\nmsticpy/analysis/anomalous_sequence/utils/cmds_only.py\nline: -1\nfunction: compute_counts\n```",
+  "final_locations": {
+    "files": [
+      "msticpy/analysis/anomalous_sequence/utils/data_structures.py",
+      "msticpy/analysis/anomalous_sequence/model.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_values.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_only.py",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_only.py"
+    ],
+    "entities": [
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/data_structures.py",
+        "name": "StateMatrix",
+        "kind": "class",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix",
+        "start": 14,
+        "end": 73,
+        "code": "class StateMatrix(dict):\n    \"\"\"Class for storing trained counts/probabilities.\"\"\"\n\n    def __init__(self, states: Union[dict, defaultdict], unk_token: str):\n        \"\"\"\n        Containr for dict of counts/probs or dict of dicts of cond counts/probs.\n\n        If you try and retrieve the count/probability for an unseen\n        command/param/value from the resulting object, it will return\n        the value associated with the `unk_token` key.\n\n        Parameters\n        ----------\n        states: Union[dict, defaultdict]\n            Either a dict representing counts or probabilities.\n            Or a dict of dicts representing\n            conditional counts or conditional probabilities.\n            E.g.::\n\n                {'Set-Mailbox': 20,'##UNK##': 1}\n\n            or::\n\n                {'Set-Mailbox': {'Set-Mailbox': 5, '##UNK##': 1},\n                '##UNK##': {'Set-Mailbox': 1, '##UNK##': 1}}\n\n        unk_token: str\n            dummy token to signify an unseen command (e.g. \"##UNK##\").\n            This token should be present in the `states` keys. And if `states`\n            is a dict of dicts, then the `unk_token` should be present in\n            the keys of the outer dict and all the inner dicts.\n\n        \"\"\"\n        super().__init__(states)\n        if unk_token not in states:\n            raise MsticpyException(\"`unk_token` should be a key in `states`\")\n        self.states = dict(states)\n        self.unk_token = unk_token\n        for key, val in self.states.items():\n            if isinstance(val, dict):\n                self.states[key] = StateMatrix(self.states[key], unk_token)\n\n    def __getitem__(self, item):\n        \"\"\"\n        Get value or self.unk_token for unseen cmds/params/values.\n\n        Parameters\n        ----------\n        item:\n            desired key to retrieve value for from the dictionary\n\n        Returns\n        -------\n        Value associated with the key `item` if it exists, else the\n        value associated with the `unk_token`\n\n        \"\"\"\n        if item not in self.states:\n            return self.states[self.unk_token]\n        return self.states[item]"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/model.py",
+        "name": "Model._compute_counts",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.model.Model._compute_counts",
+        "start": 169,
+        "end": 242,
+        "code": "    def _compute_counts(self):\n        \"\"\"\n        Compute all the counts for the model.\n\n        The items we will count depend on the the `session_type` attribute.\n        We will compute the individual command and transition command counts.\n\n        If params are provided with the commands, then, in addition,\n        we will compute the individual param counts and param conditional\n        on the command counts.\n\n        If values are provided with the params, then in addition, we\n        will compute the individual value counts and value conditional\n        on the param counts. Also, we will use rough heuristics\n        to determine which params take categorical values, and hence\n        have modellable values.\n\n        \"\"\"\n        if self.session_type is None:\n            raise MsticpyException(\"session_type attribute should not be None\")\n\n        if self.session_type == SessionType.cmds_only:\n            seq1_counts, seq2_counts = cmds_only.compute_counts(\n                sessions=self.sessions,\n                start_token=self.start_token,\n                end_token=self.end_token,\n                unk_token=self.unk_token,\n            )\n            self._seq1_counts = seq1_counts\n            self._seq2_counts = seq2_counts\n\n        elif self.session_type == SessionType.cmds_params_only:\n            (\n                seq1_counts,\n                seq2_counts,\n                param_counts,\n                cmd_param_counts,\n            ) = cmds_params_only.compute_counts(\n                sessions=self.sessions,\n                start_token=self.start_token,\n                end_token=self.end_token,\n            )\n\n            self._seq1_counts = seq1_counts\n            self._seq2_counts = seq2_counts\n            self._param_counts = param_counts\n            self._cmd_param_counts = cmd_param_counts\n\n        elif self.session_type == SessionType.cmds_params_values:\n            (\n                seq1_counts,\n                seq2_counts,\n                param_counts,\n                cmd_param_counts,\n                value_counts,\n                param_value_counts,\n            ) = cmds_params_values.compute_counts(\n                sessions=self.sessions,\n                start_token=self.start_token,\n                end_token=self.end_token,\n            )\n\n            if self.modellable_params is None:\n                modellable_params = cmds_params_values.get_params_to_model_values(\n                    param_counts=param_counts, param_value_counts=param_value_counts\n                )\n                self.modellable_params = modellable_params\n\n            self._seq1_counts = seq1_counts\n            self._seq2_counts = seq2_counts\n            self._param_counts = param_counts\n            self._cmd_param_counts = cmd_param_counts\n            self._value_counts = value_counts\n            self._param_value_counts = param_value_counts"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/cmds_params_values.py",
+        "name": "compute_counts",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.cmds_params_values.compute_counts",
+        "start": 30,
+        "end": 126,
+        "code": "def compute_counts(  # noqa MC0001  # nosec\n    sessions: List[List[Cmd]], start_token: str, end_token: str\n) -> Tuple[\n    DefaultDict[str, int],\n    DefaultDict[str, DefaultDict[str, int]],\n    DefaultDict[str, int],\n    DefaultDict[str, DefaultDict[str, int]],\n    DefaultDict[str, int],\n    DefaultDict[str, DefaultDict[str, int]],\n]:\n    \"\"\"\n    Compute the training counts for the sessions.\n\n    In particular, computes counts of individual commands and of sequences\n    of two commands. It also computes the counts of individual params as\n    well as counts of params conditional on the command. It also computes\n    the counts of individual values as well as counts of values conditional\n    on the param.\n\n    Parameters\n    ----------\n    sessions: List[List[Cmd]]\n        each session is a list of the Cmd datatype.\n        Where the Cmd datatype has a name attribute (command name) and\n        a params attribute (dict with the params and values associated\n        with the command)\n        an example session::\n\n            [\n                Cmd(\n                    name='Set-User',\n                    params={'Identity': 'blahblah', 'Force': 'true'}\n                ),\n                Cmd(\n                    name='Set-Mailbox',\n                    params={'Identity': 'blahblah', 'AuditEnabled': 'false'}\n                )\n            ]\n\n    start_token: str\n        dummy command to signify the start of a session (e.g. \"##START##\")\n    end_token: str\n        dummy command to signify the end of a session (e.g. \"##END##\")\n\n    Returns\n    -------\n    tuple of counts:\n        individual command counts,\n        sequence command (length 2) counts,\n        individual param counts,\n        param conditional on command counts\n        individual value counts,\n        value conditional on param counts\n\n    \"\"\"\n    seq1_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    seq2_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    param_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    cmd_param_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    value_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    param_value_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    for session in sessions:\n        prev = start_token\n        seq1_counts[prev] += 1\n        for cmd in session:\n            seq1_counts[cmd.name] += 1\n            seq2_counts[prev][cmd.name] += 1\n            prev = cmd.name\n            pars = cmd.params\n            if isinstance(pars, set):\n                pars = dict.fromkeys(pars)\n            for par, val in pars.items():\n                param_counts[par] += 1\n                cmd_param_counts[cmd.name][par] += 1\n                if val:\n                    value_counts[val] += 1\n                    param_value_counts[par][val] += 1\n        seq2_counts[prev][end_token] += 1\n        seq1_counts[end_token] += 1\n\n    return (\n        seq1_counts,\n        seq2_counts,\n        param_counts,\n        cmd_param_counts,\n        value_counts,\n        param_value_counts,\n    )"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/cmds_params_only.py",
+        "name": "compute_counts",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.cmds_params_only.compute_counts",
+        "start": 26,
+        "end": 89,
+        "code": "def compute_counts(  # nosec\n    sessions: List[List[Cmd]], start_token: str, end_token: str\n) -> Tuple[\n    DefaultDict[str, int],\n    DefaultDict[str, DefaultDict[str, int]],\n    DefaultDict[str, int],\n    DefaultDict[str, DefaultDict[str, int]],\n]:\n    \"\"\"\n    Compute the training counts for the sessions.\n\n    In particular, computes counts of individual commands and of sequences\n    of two commands. It also computes the counts of individual params as\n    well as counts of params conditional on the command.\n\n    Parameters\n    ----------\n    sessions: List[List[Cmd]]\n        each session is a list of the Cmd datatype. Where the Cmd datatype\n        has a name attribute (command name) and a params attribute\n        (set containing params associated with the command)\n        an example session::\n\n            [Cmd(name='Set-User', params={'Identity', 'Force'}),\n             Cmd(name='Set-Mailbox', params={'Identity', 'AuditEnabled'})]\n\n    start_token: str\n        dummy command to signify the start of a session (e.g. \"##START##\")\n    end_token: str\n        dummy command to signify the end of a session (e.g. \"##END##\")\n\n    Returns\n    -------\n    tuple of counts:\n        individual command counts,\n        sequence command (length 2) counts,\n        individual param counts,\n        param conditional on command counts\n\n    \"\"\"\n    seq1_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    seq2_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    param_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    cmd_param_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    for session in sessions:\n        prev = start_token\n        seq1_counts[prev] += 1\n        for cmd in session:\n            seq1_counts[cmd.name] += 1\n            seq2_counts[prev][cmd.name] += 1\n            prev = cmd.name\n            for par in cmd.params:\n                param_counts[par] += 1\n                cmd_param_counts[cmd.name][par] += 1\n        seq2_counts[prev][end_token] += 1\n        seq1_counts[end_token] += 1\n\n    return seq1_counts, seq2_counts, param_counts, cmd_param_counts"
+      },
+      {
+        "file": "msticpy/analysis/anomalous_sequence/utils/cmds_only.py",
+        "name": "compute_counts",
+        "kind": "function",
+        "symbol": "msticpy.analysis.anomalous_sequence.utils.cmds_only.compute_counts",
+        "start": 19,
+        "end": 68,
+        "code": "def compute_counts(  # nosec\n    sessions: List[List[str]], start_token: str, end_token: str, unk_token: str\n) -> Tuple[DefaultDict[str, int], DefaultDict[str, DefaultDict[str, int]]]:\n    \"\"\"\n    Compute counts of individual commands and of sequences of two commands.\n\n    Parameters\n    ----------\n    sessions: List[List[str]]\n        each session is a list of commands (strings)\n        an example session::\n\n            ['Set-User', 'Set-Mailbox']\n\n    start_token: str\n        dummy command to signify the start of a session (e.g. \"##START##\")\n    end_token: str\n        dummy command to signify the end of a session (e.g. \"##END##\")\n    unk_token: str\n        dummy command to signify an unseen command (e.g. \"##UNK##\")\n\n    Returns\n    -------\n    tuple of counts:\n        individual command counts,\n        sequence command (length 2) counts\n\n    \"\"\"\n    if not start_token != end_token != unk_token:\n        raise MsticpyException(\n            \"start_token, end_token, unk_tokens should all be set to something \"\n            \"different\"\n        )\n\n    seq1_counts: DefaultDict[str, int] = defaultdict(lambda: 0)\n    seq2_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(\n        lambda: defaultdict(lambda: 0)\n    )\n\n    for session in sessions:\n        prev = start_token\n        seq1_counts[prev] += 1\n        for cmd in session:\n            seq1_counts[cmd] += 1\n            seq2_counts[prev][cmd] += 1\n            prev = cmd\n        seq2_counts[prev][end_token] += 1\n        seq1_counts[end_token] += 1\n\n    return seq1_counts, seq2_counts"
+      }
+    ],
+    "unresolved": [
+      "msticpy/analysis/anomalous_sequence/model.py:line: -1",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_values.py:line: -1",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_params_only.py:line: -1",
+      "msticpy/analysis/anomalous_sequence/utils/cmds_only.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix"
+    ],
+    "exact_hit_dependencies": [
+      "msticpy.analysis.anomalous_sequence.utils.data_structures.StateMatrix"
+    ],
+    "returned_entities": 5,
+    "returned_files": 5,
+    "unresolved_locations": 4,
+    "returned_code_chars": 11995
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 23588,
+    "completion_tokens": 1060,
+    "total_tokens": 24648,
+    "seconds": 41.781057596206665,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 90.14172840118408,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

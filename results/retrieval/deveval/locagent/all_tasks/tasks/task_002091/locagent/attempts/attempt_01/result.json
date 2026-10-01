@@ -1,0 +1,181 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2091,
+  "namespace": "mopidy.httpclient.format_proxy",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6133,
+      "input_estimate_after": 6133,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `format_proxy` function in `mopidy/httpclient.py`:\n\n```\nmopidy/audio/utils.py\nline: 57\nfunction: setup_proxy\nline: 68\nline: 69\nline: 70\n\nmopidy/audio/scan.py\nline: 44\nclass: Scanner\nfunction: __init__\nline: 46\nline: 82\nfunction: _setup_pipeline\nline: 88\n\nmopidy/config/__init__.py\nline: 314\nclass: Proxy\nline: 318\nfunction: __getitem__\n\nmopidy/config/types.py\nline: 9\nfunction: decode\nline: 21\nfunction: encode\nline: 45\nclass: ConfigValue\nline: 62\nfunction: deserialize\nline: 66\nfunction: serialize\n\nmopidy/httpclient.py\nline: 36\nfunction: format_user_agent\nline: 44\nline: 46\nline: 47\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/audio/utils.py",
+      "mopidy/audio/scan.py",
+      "mopidy/config/__init__.py",
+      "mopidy/config/types.py",
+      "mopidy/httpclient.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/audio/utils.py",
+        "name": "setup_proxy",
+        "kind": "function",
+        "symbol": "mopidy.audio.utils.setup_proxy",
+        "start": 57,
+        "end": 70,
+        "code": "def setup_proxy(element, config):\n    \"\"\"Configure a GStreamer element with proxy settings.\n\n    :param element: element to setup proxy in.\n    :type element: :class:`Gst.GstElement`\n    :param config: proxy settings to use.\n    :type config: :class:`dict`\n    \"\"\"\n    if not hasattr(element.props, \"proxy\") or not config.get(\"hostname\"):\n        return\n\n    element.set_property(\"proxy\", httpclient.format_proxy(config, auth=False))\n    element.set_property(\"proxy-id\", config.get(\"username\"))\n    element.set_property(\"proxy-pw\", config.get(\"password\"))"
+      },
+      {
+        "file": "mopidy/audio/scan.py",
+        "name": "Scanner.__init__",
+        "kind": "function",
+        "symbol": "mopidy.audio.scan.Scanner.__init__",
+        "start": 44,
+        "end": 46,
+        "code": "    def __init__(self, timeout=1000, proxy_config=None):\n        self._timeout_ms = int(timeout)\n        self._proxy_config = proxy_config or {}"
+      },
+      {
+        "file": "mopidy/audio/scan.py",
+        "name": "Scanner",
+        "kind": "class",
+        "symbol": "mopidy.audio.scan.Scanner",
+        "start": 34,
+        "end": 77,
+        "code": "class Scanner:\n\n    \"\"\"\n    Helper to get tags and other relevant info from URIs.\n\n    :param timeout: timeout for scanning a URI in ms\n    :param proxy_config: dictionary containing proxy config strings.\n    :type event: int\n    \"\"\"\n\n    def __init__(self, timeout=1000, proxy_config=None):\n        self._timeout_ms = int(timeout)\n        self._proxy_config = proxy_config or {}\n\n    def scan(self, uri, timeout=None):\n        \"\"\"\n        Scan the given uri collecting relevant metadata.\n\n        :param uri: URI of the resource to scan.\n        :type uri: string\n        :param timeout: timeout for scanning a URI in ms. Defaults to the\n            ``timeout`` value used when creating the scanner.\n        :type timeout: int\n        :return: A named tuple containing\n            ``(uri, tags, duration, seekable, mime)``.\n            ``tags`` is a dictionary of lists for all the tags we found.\n            ``duration`` is the length of the URI in milliseconds, or\n            :class:`None` if the URI has no duration. ``seekable`` is boolean.\n            indicating if a seek would succeed.\n        \"\"\"\n        timeout = int(timeout or self._timeout_ms)\n        tags, duration, seekable, mime = None, None, None, None\n        pipeline, signals = _setup_pipeline(uri, self._proxy_config)\n\n        try:\n            _start_pipeline(pipeline)\n            tags, mime, have_audio, duration = _process(pipeline, timeout)\n            seekable = _query_seekable(pipeline)\n        finally:\n            signals.clear()\n            pipeline.set_state(Gst.State.NULL)\n            del pipeline\n\n        return _Result(uri, tags, duration, seekable, mime, have_audio)"
+      },
+      {
+        "file": "mopidy/audio/scan.py",
+        "name": "_setup_pipeline",
+        "kind": "function",
+        "symbol": "mopidy.audio.scan._setup_pipeline",
+        "start": 82,
+        "end": 101,
+        "code": "def _setup_pipeline(uri, proxy_config=None):\n    src = Gst.Element.make_from_uri(Gst.URIType.SRC, uri)\n    if not src:\n        raise exceptions.ScannerError(f\"GStreamer can not open: {uri}\")\n\n    if proxy_config:\n        utils.setup_proxy(src, proxy_config)\n\n    signals = utils.Signals()\n    pipeline = Gst.ElementFactory.make(\"pipeline\")\n    pipeline.add(src)\n\n    if _has_src_pads(src):\n        _setup_decodebin(src, src.get_static_pad(\"src\"), pipeline, signals)\n    elif _has_dynamic_src_pad(src):\n        signals.connect(src, \"pad-added\", _setup_decodebin, pipeline, signals)\n    else:\n        raise exceptions.ScannerError(\"No pads found in source element.\")\n\n    return pipeline, signals"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "Proxy",
+        "kind": "class",
+        "symbol": "mopidy.config.Proxy",
+        "start": 314,
+        "end": 331,
+        "code": "class Proxy(Mapping):\n    def __init__(self, data):\n        self._data = data\n\n    def __getitem__(self, key):\n        item = self._data.__getitem__(key)\n        if isinstance(item, dict):\n            return Proxy(item)\n        return item\n\n    def __iter__(self):\n        return self._data.__iter__()\n\n    def __len__(self):\n        return self._data.__len__()\n\n    def __repr__(self):\n        return f\"Proxy({self._data!r})\""
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "Proxy.__getitem__",
+        "kind": "function",
+        "symbol": "mopidy.config.Proxy.__getitem__",
+        "start": 318,
+        "end": 322,
+        "code": "    def __getitem__(self, key):\n        item = self._data.__getitem__(key)\n        if isinstance(item, dict):\n            return Proxy(item)\n        return item"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "decode",
+        "kind": "function",
+        "symbol": "mopidy.config.types.decode",
+        "start": 9,
+        "end": 18,
+        "code": "def decode(value):\n    if isinstance(value, bytes):\n        value = value.decode(errors=\"surrogateescape\")\n\n    for char in (\"\\\\\", \"\\n\", \"\\t\"):\n        value = value.replace(\n            char.encode(encoding=\"unicode-escape\").decode(), char\n        )\n\n    return value"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "encode",
+        "kind": "function",
+        "symbol": "mopidy.config.types.encode",
+        "start": 21,
+        "end": 30,
+        "code": "def encode(value):\n    if isinstance(value, bytes):\n        value = value.decode(errors=\"surrogateescape\")\n\n    for char in (\"\\\\\", \"\\n\", \"\\t\"):\n        value = value.replace(\n            char, char.encode(encoding=\"unicode-escape\").decode()\n        )\n\n    return value"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "ConfigValue",
+        "kind": "class",
+        "symbol": "mopidy.config.types.ConfigValue",
+        "start": 45,
+        "end": 70,
+        "code": "class ConfigValue:\n    \"\"\"Represents a config key's value and how to handle it.\n\n    Normally you will only be interacting with sub-classes for config values\n    that encode either deserialization behavior and/or validation.\n\n    Each config value should be used for the following actions:\n\n    1. Deserializing from a raw string and validating, raising ValueError on\n       failure.\n    2. Serializing a value back to a string that can be stored in a config.\n    3. Formatting a value to a printable form (useful for masking secrets).\n\n    :class:`None` values should not be deserialized, serialized or formatted,\n    the code interacting with the config should simply skip None config values.\n    \"\"\"\n\n    def deserialize(self, value):\n        \"\"\"Cast raw string to appropriate type.\"\"\"\n        return decode(value)\n\n    def serialize(self, value, display=False):\n        \"\"\"Convert value back to string for saving.\"\"\"\n        if value is None:\n            return \"\"\n        return str(value)"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "ConfigValue.deserialize",
+        "kind": "function",
+        "symbol": "mopidy.config.types.ConfigValue.deserialize",
+        "start": 62,
+        "end": 64,
+        "code": "    def deserialize(self, value):\n        \"\"\"Cast raw string to appropriate type.\"\"\"\n        return decode(value)"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "ConfigValue.serialize",
+        "kind": "function",
+        "symbol": "mopidy.config.types.ConfigValue.serialize",
+        "start": 66,
+        "end": 70,
+        "code": "    def serialize(self, value, display=False):\n        \"\"\"Convert value back to string for saving.\"\"\"\n        if value is None:\n            return \"\"\n        return str(value)"
+      },
+      {
+        "file": "mopidy/httpclient.py",
+        "name": "format_user_agent",
+        "kind": "function",
+        "symbol": "mopidy.httpclient.format_user_agent",
+        "start": 36,
+        "end": 51,
+        "code": "def format_user_agent(name=None):\n    \"\"\"Construct a User-Agent suitable for use in client code.\n\n    This will identify use by the provided ``name`` (which should be on the\n    format ``dist_name/version``), Mopidy version and Python version.\n\n    .. versionadded:: 1.1\n    \"\"\"\n    import mopidy\n    parts = [\n        f\"Mopidy/{mopidy.__version__}\",\n        f\"{platform.python_implementation()}/{platform.python_version()}\",\n    ]\n    if name:\n        parts.insert(0, name)\n    return \" \".join(parts)"
+      }
+    ],
+    "unresolved": [
+      "mopidy/audio/scan.py:function: __init__",
+      "mopidy/config/__init__.py:function: __getitem__",
+      "mopidy/config/types.py:function: deserialize",
+      "mopidy/config/types.py:function: serialize"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 12,
+    "returned_files": 5,
+    "unresolved_locations": 4,
+    "returned_code_chars": 5954
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21126,
+    "completion_tokens": 636,
+    "total_tokens": 21762,
+    "seconds": 93.91260266304016,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 115.47159075737,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

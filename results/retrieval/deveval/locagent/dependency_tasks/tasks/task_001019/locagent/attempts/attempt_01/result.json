@@ -1,0 +1,116 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1019,
+  "namespace": "boltons.funcutils.FunctionBuilder.get_defaults_dict",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 22416,
+      "input_estimate_after": 22416,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the key reusable dependencies for implementing the `get_defaults_dict` method in the `FunctionBuilder` class. The method needs to return a dictionary mapping argument names to their default values, handling both positional arguments with defaults and keyword-only arguments with defaults.\n\nFrom the code analysis, I can see:\n\n1. The `FunctionBuilder` class has attributes for storing defaults: `self.defaults` (tuple for positional args), `self.kwonlydefaults` (dict for keyword-only args), and `self.args` (list of positional arg names).\n2. The `remove_arg` method already calls `get_defaults_dict()` and expects it to return a dictionary.\n3. The `get_arg_names` method also calls `get_defaults_dict()` to filter out arguments with defaults.\n4. The class handles Python 2/3 compatibility with different attributes.\n\nHere are the key reusable dependencies:\n\n```\nboltons/funcutils.py\nline: 751\nline: 767\nline: 773\nline: 775\nclass: FunctionBuilder\nattributes: args, defaults, kwonlyargs, kwonlydefaults\n\nboltons/funcutils.py\nline: 962\nline: 965\nfunction: FunctionBuilder.get_arg_names\nreference: get_defaults_dict usage\n\nboltons/funcutils.py\nline: 998\nline: 1010\nline: 1025\nfunction: FunctionBuilder.remove_arg\nreference: get_defaults_dict usage and defaults handling\n\nboltons/funcutils.py\nline: 68\nvariable: NO_DEFAULT\npurpose: Sentinel for arguments without defaults\n\nboltons/funcutils.py\nline: 976\nline: 979\nline: 993\nline: 995\nfunction: FunctionBuilder.add_arg\nreference: How defaults are added for both positional and keyword-only args\n```",
+  "final_locations": {
+    "files": [
+      "boltons/funcutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/funcutils.py",
+        "name": "FunctionBuilder",
+        "kind": "class",
+        "symbol": "boltons.funcutils.FunctionBuilder",
+        "start": 688,
+        "end": 1038,
+        "code": "class FunctionBuilder(object):\n    \"\"\"The FunctionBuilder type provides an interface for programmatically\n    creating new functions, either based on existing functions or from\n    scratch.\n\n    Values are passed in at construction or set as attributes on the\n    instance. For creating a new function based of an existing one,\n    see the :meth:`~FunctionBuilder.from_func` classmethod. At any\n    point, :meth:`~FunctionBuilder.get_func` can be called to get a\n    newly compiled function, based on the values configured.\n\n    >>> fb = FunctionBuilder('return_five', doc='returns the integer 5',\n    ...                      body='return 5')\n    >>> f = fb.get_func()\n    >>> f()\n    5\n    >>> fb.varkw = 'kw'\n    >>> f_kw = fb.get_func()\n    >>> f_kw(ignored_arg='ignored_val')\n    5\n\n    Note that function signatures themselves changed quite a bit in\n    Python 3, so several arguments are only applicable to\n    FunctionBuilder in Python 3. Except for *name*, all arguments to\n    the constructor are keyword arguments.\n\n    Args:\n        name (str): Name of the function.\n        doc (str): `Docstring`_ for the function, defaults to empty.\n        module (str): Name of the module from which this function was\n            imported. Defaults to None.\n        body (str): String version of the code representing the body\n            of the function. Defaults to ``'pass'``, which will result\n            in a function which does nothing and returns ``None``.\n        args (list): List of argument names, defaults to empty list,\n            denoting no arguments.\n        varargs (str): Name of the catch-all variable for positional\n            arguments. E.g., \"args\" if the resultant function is to have\n            ``*args`` in the signature. Defaults to None.\n        varkw (str): Name of the catch-all variable for keyword\n            arguments. E.g., \"kwargs\" if the resultant function is to have\n            ``**kwargs`` in the signature. Defaults to None.\n        defaults (tuple): A tuple containing default argument values for\n            those arguments that have defaults.\n        kwonlyargs (list): Argument names which are only valid as\n            keyword arguments. **Python 3 only.**\n        kwonlydefaults (dict): A mapping, same as normal *defaults*,\n            but only for the *kwonlyargs*. **Python 3 only.**\n        annotations (dict): Mapping of type hints and so\n            forth. **Python 3 only.**\n        filename (str): The filename that will appear in\n            tracebacks. Defaults to \"boltons.funcutils.FunctionBuilder\".\n        indent (int): Number of spaces with which to indent the\n            function *body*. Values less than 1 will result in an error.\n        dict (dict): Any other attributes which should be added to the\n            functions compiled with this FunctionBuilder.\n\n    All of these arguments are also made available as attributes which\n    can be mutated as necessary.\n\n    .. _Docstring: https://en.wikipedia.org/wiki/Docstring#Python\n\n    \"\"\"\n\n    if _IS_PY2:\n        _argspec_defaults = {'args': list,\n                             'varargs': lambda: None,\n                             'varkw': lambda: None,\n                             'defaults': lambda: None}\n\n        @classmethod\n        def _argspec_to_dict(cls, f):\n            args, varargs, varkw, defaults = inspect.getargspec(f)\n            return {'args': args,\n                    'varargs': varargs,\n                    'varkw': varkw,\n                    'defaults': defaults}\n\n    else:\n        _argspec_defaults = {'args': list,\n                             'varargs': lambda: None,\n                             'varkw': lambda: None,\n                             'defaults': lambda: None,\n                             'kwonlyargs': list,\n                             'kwonlydefaults': dict,\n                             'annotations': dict}\n\n        @classmethod\n        def _argspec_to_dict(cls, f):\n            argspec = inspect.getfullargspec(f)\n            return dict((attr, getattr(argspec, attr))\n                        for attr in cls._argspec_defaults)\n\n    _defaults = {'doc': str,\n                 'dict': dict,\n                 'is_async': lambda: False,\n                 'module': lambda: None,\n                 'body': lambda: 'pass',\n                 'indent': lambda: 4,\n                 \"annotations\": dict,\n                 'filename': lambda: 'boltons.funcutils.FunctionBuilder'}\n\n    _defaults.update(_argspec_defaults)\n\n    _compile_count = itertools.count()\n\n    def __init__(self, name, **kw):\n        self.name = name\n        for a, default_factory in self._defaults.items():\n            val = kw.pop(a, None)\n            if val is None:\n                val = default_factory()\n            setattr(self, a, val)\n\n        if kw:\n            raise TypeError('unexpected kwargs: %r' % kw.keys())\n        return\n\n    # def get_argspec(self):  # TODO\n\n    if _IS_PY2:\n        def get_sig_str(self, with_annotations=True):\n            \"\"\"Return function signature as a string.\n\n            with_annotations is ignored on Python 2.  On Python 3 signature\n            will omit annotations if it is set to False.\n            \"\"\"\n            return inspect_formatargspec(self.args, self.varargs,\n                                         self.varkw, [])\n\n        def get_invocation_str(self):\n            return inspect_formatargspec(self.args, self.varargs,\n                                         self.varkw, [])[1:-1]\n    else:\n        def get_sig_str(self, with_annotations=True):\n            \"\"\"Return function signature as a string.\n\n            with_annotations is ignored on Python 2.  On Python 3 signature\n            will omit annotations if it is set to False.\n            \"\"\"\n            if with_annotations:\n                annotations = self.annotations\n            else:\n                annotations = {}\n\n            return inspect_formatargspec(self.args,\n                                         self.varargs,\n                                         self.varkw,\n                                         [],\n                                         self.kwonlyargs,\n                                         {},\n                                         annotations)\n\n        _KWONLY_MARKER = re.compile(r\"\"\"\n        \\*     # a star\n        \\s*    # followed by any amount of whitespace\n        ,      # followed by a comma\n        \\s*    # followed by any amount of whitespace\n        \"\"\", re.VERBOSE)\n\n        def get_invocation_str(self):\n            kwonly_pairs = None\n            formatters = {}\n            if self.kwonlyargs:\n                kwonly_pairs = dict((arg, arg)\n                                    for arg in self.kwonlyargs)\n                formatters['formatvalue'] = lambda value: '=' + value\n\n            sig = inspect_formatargspec(self.args,\n                                        self.varargs,\n                                        self.varkw,\n                                        [],\n                                        kwonly_pairs,\n                                        kwonly_pairs,\n                                        {},\n                                        **formatters)\n            sig = self._KWONLY_MARKER.sub('', sig)\n            return sig[1:-1]\n\n    @classmethod\n    def from_func(cls, func):\n        \"\"\"Create a new FunctionBuilder instance based on an existing\n        function. The original function will not be stored or\n        modified.\n        \"\"\"\n        # TODO: copy_body? gonna need a good signature regex.\n        # TODO: might worry about __closure__?\n        if not callable(func):\n            raise TypeError('expected callable object, not %r' % (func,))\n\n        if isinstance(func, functools.partial):\n            if _IS_PY2:\n                raise ValueError('Cannot build FunctionBuilder instances from partials in python 2.')\n            kwargs = {'name': func.func.__name__,\n                      'doc': func.func.__doc__,\n                      'module': getattr(func.func, '__module__', None),  # e.g., method_descriptor\n                      'annotations': getattr(func.func, \"__annotations__\", {}),\n                      'dict': getattr(func.func, '__dict__', {})}\n        else:\n            kwargs = {'name': func.__name__,\n                      'doc': func.__doc__,\n                      'module': getattr(func, '__module__', None),  # e.g., method_descriptor\n                      'annotations': getattr(func, \"__annotations__\", {}),\n                      'dict': getattr(func, '__dict__', {})}\n\n        kwargs.update(cls._argspec_to_dict(func))\n\n        if _inspect_iscoroutinefunction(func):\n            kwargs['is_async'] = True\n\n        return cls(**kwargs)\n\n    def get_func(self, execdict=None, add_source=True, with_dict=True):\n        \"\"\"Compile and return a new function based on the current values of\n        the FunctionBuilder.\n\n        Args:\n            execdict (dict): The dictionary representing the scope in\n                which the compilation should take place. Defaults to an empty\n                dict.\n            add_source (bool): Whether to add the source used to a\n                special ``__source__`` attribute on the resulting\n                function. Defaults to True.\n            with_dict (bool): Add any custom attributes, if\n                applicable. Defaults to True.\n\n        To see an example of usage, see the implementation of\n        :func:`~boltons.funcutils.wraps`.\n        \"\"\"\n        execdict = execdict or {}\n        body = self.body or self._default_body\n\n        tmpl = 'def {name}{sig_str}:'\n        tmpl += '\\n{body}'\n\n        if self.is_async:\n            tmpl = 'async ' + tmpl\n\n        body = _indent(self.body, ' ' * self.indent)\n\n        name = self.name.replace('<', '_').replace('>', '_')  # lambdas\n        src = tmpl.format(name=name, sig_str=self.get_sig_str(with_annotations=False),\n                          doc=self.doc, body=body)\n        self._compile(src, execdict)\n        func = execdict[name]\n\n        func.__name__ = self.name\n        func.__doc__ = self.doc\n        func.__defaults__ = self.defaults\n        if not _IS_PY2:\n            func.__kwdefaults__ = self.kwonlydefaults\n            func.__annotations__ = self.annotations\n\n        if with_dict:\n            func.__dict__.update(self.dict)\n        func.__module__ = self.module\n        # TODO: caller module fallback?\n\n        if add_source:\n            func.__source__ = src\n\n        return func\n\n    def get_defaults_dict(self):\n        pass\n\n\n\n\n\n\n\n\n\n    def get_arg_names(self, only_required=False):\n        arg_names = tuple(self.args) + tuple(getattr(self, 'kwonlyargs', ()))\n        if only_required:\n            defaults_dict = self.get_defaults_dict()\n            arg_names = tuple([an for an in arg_names if an not in defaults_dict])\n        return arg_names\n\n    if _IS_PY2:\n        def add_arg(self, arg_name, default=NO_DEFAULT):\n            \"Add an argument with optional *default* (defaults to ``funcutils.NO_DEFAULT``).\"\n            if arg_name in self.args:\n                raise ExistingArgument('arg %r already in func %s arg list' % (arg_name, self.name))\n            self.args.append(arg_name)\n            if default is not NO_DEFAULT:\n                self.defaults = (self.defaults or ()) + (default,)\n            return\n    else:\n        def add_arg(self, arg_name, default=NO_DEFAULT, kwonly=False):\n            \"\"\"Add an argument with optional *default* (defaults to\n            ``funcutils.NO_DEFAULT``). Pass *kwonly=True* to add a\n            keyword-only argument\n            \"\"\"\n            if arg_name in self.args:\n                raise ExistingArgument('arg %r already in func %s arg list' % (arg_name, self.name))\n            if arg_name in self.kwonlyargs:\n                raise ExistingArgument('arg %r already in func %s kwonly arg list' % (arg_name, self.name))\n            if not kwonly:\n                self.args.append(arg_name)\n                if default is not NO_DEFAULT:\n                    self.defaults = (self.defaults or ()) + (default,)\n            else:\n                self.kwonlyargs.append(arg_name)\n                if default is not NO_DEFAULT:\n                    self.kwonlydefaults[arg_name] = default\n            return\n\n    def remove_arg(self, arg_name):\n        \"\"\"Remove an argument from this FunctionBuilder's argument list. The\n        resulting function will have one less argument per call to\n        this function.\n\n        Args:\n            arg_name (str): The name of the argument to remove.\n\n        Raises a :exc:`ValueError` if the argument is not present.\n\n        \"\"\"\n        args = self.args\n        d_dict = self.get_defaults_dict()\n        try:\n            args.remove(arg_name)\n        except ValueError:\n            try:\n                self.kwonlyargs.remove(arg_name)\n            except (AttributeError, ValueError):\n                # py2, or py3 and missing from both\n                exc = MissingArgument('arg %r not found in %s argument list:'\n                                      ' %r' % (arg_name, self.name, args))\n                exc.arg_name = arg_name\n                raise exc\n            else:\n                self.kwonlydefaults.pop(arg_name, None)\n        else:\n            d_dict.pop(arg_name, None)\n            self.defaults = tuple([d_dict[a] for a in args if a in d_dict])\n        return\n\n    def _compile(self, src, execdict):\n\n        filename = ('<%s-%d>'\n                    % (self.filename, next(self._compile_count),))\n        try:\n            code = compile(src, filename, 'single')\n            exec(code, execdict)\n        except Exception:\n            raise\n        return execdict"
+      },
+      {
+        "file": "boltons/funcutils.py",
+        "name": "FunctionBuilder.get_arg_names",
+        "kind": "function",
+        "symbol": "boltons.funcutils.FunctionBuilder.get_arg_names",
+        "start": 962,
+        "end": 967,
+        "code": "    def get_arg_names(self, only_required=False):\n        arg_names = tuple(self.args) + tuple(getattr(self, 'kwonlyargs', ()))\n        if only_required:\n            defaults_dict = self.get_defaults_dict()\n            arg_names = tuple([an for an in arg_names if an not in defaults_dict])\n        return arg_names"
+      },
+      {
+        "file": "boltons/funcutils.py",
+        "name": "FunctionBuilder.remove_arg",
+        "kind": "function",
+        "symbol": "boltons.funcutils.FunctionBuilder.remove_arg",
+        "start": 998,
+        "end": 1027,
+        "code": "    def remove_arg(self, arg_name):\n        \"\"\"Remove an argument from this FunctionBuilder's argument list. The\n        resulting function will have one less argument per call to\n        this function.\n\n        Args:\n            arg_name (str): The name of the argument to remove.\n\n        Raises a :exc:`ValueError` if the argument is not present.\n\n        \"\"\"\n        args = self.args\n        d_dict = self.get_defaults_dict()\n        try:\n            args.remove(arg_name)\n        except ValueError:\n            try:\n                self.kwonlyargs.remove(arg_name)\n            except (AttributeError, ValueError):\n                # py2, or py3 and missing from both\n                exc = MissingArgument('arg %r not found in %s argument list:'\n                                      ' %r' % (arg_name, self.name, args))\n                exc.arg_name = arg_name\n                raise exc\n            else:\n                self.kwonlydefaults.pop(arg_name, None)\n        else:\n            d_dict.pop(arg_name, None)\n            self.defaults = tuple([d_dict[a] for a in args if a in d_dict])\n        return"
+      },
+      {
+        "file": "boltons/funcutils.py",
+        "name": "NO_DEFAULT",
+        "kind": "variable",
+        "symbol": "boltons.funcutils.NO_DEFAULT",
+        "start": 68,
+        "end": 68,
+        "code": "    NO_DEFAULT = make_sentinel(var_name='NO_DEFAULT')"
+      },
+      {
+        "file": "boltons/funcutils.py",
+        "name": "FunctionBuilder.add_arg",
+        "kind": "function",
+        "symbol": "boltons.funcutils.FunctionBuilder.add_arg",
+        "start": 979,
+        "end": 996,
+        "code": "        def add_arg(self, arg_name, default=NO_DEFAULT, kwonly=False):\n            \"\"\"Add an argument with optional *default* (defaults to\n            ``funcutils.NO_DEFAULT``). Pass *kwonly=True* to add a\n            keyword-only argument\n            \"\"\"\n            if arg_name in self.args:\n                raise ExistingArgument('arg %r already in func %s arg list' % (arg_name, self.name))\n            if arg_name in self.kwonlyargs:\n                raise ExistingArgument('arg %r already in func %s kwonly arg list' % (arg_name, self.name))\n            if not kwonly:\n                self.args.append(arg_name)\n                if default is not NO_DEFAULT:\n                    self.defaults = (self.defaults or ()) + (default,)\n            else:\n                self.kwonlyargs.append(arg_name)\n                if default is not NO_DEFAULT:\n                    self.kwonlydefaults[arg_name] = default\n            return"
+      }
+    ],
+    "unresolved": [
+      "boltons/funcutils.py:variable: NO_DEFAULT",
+      "boltons/funcutils.py:function: FunctionBuilder.add_arg"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "boltons.funcutils.FunctionBuilder.args",
+      "boltons.funcutils.FunctionBuilder.defaults",
+      "boltons.funcutils.FunctionBuilder.kwonlydefaults"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 16070
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 65483,
+    "completion_tokens": 797,
+    "total_tokens": 66280,
+    "seconds": 193.9008617401123,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 209.25790810585022,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,91 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1122,
+  "namespace": "sacred.config.signature.Signature.get_free_parameters",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nsacred/config/signature.py\nclass: Signature\nfunction: get_free_parameters\nfunction: _fill_in_options\nfunction: construct_arguments\nfunction: _assert_no_missing_args\n\nsacred/experiment.py\nfunction: Experiment.add_config\nfunction: Experiment.main\n\nsacred/capture.py\nfunction: capture\nfunction: CapturedFunction.__call__\n\nsacred/config/config_dict.py\nclass: ConfigDict\nfunction: ConfigDict.update\nfunction: ConfigDict.__getitem__\n\nsacred/util.py\nfunction: get_function_arguments\nfunction: get_signature\n```",
+  "final_locations": {
+    "files": [
+      "sacred/config/signature.py",
+      "sacred/experiment.py",
+      "sacred/config/config_dict.py"
+    ],
+    "entities": [
+      {
+        "file": "sacred/config/signature.py",
+        "name": "Signature",
+        "kind": "class",
+        "symbol": "sacred.config.signature.Signature",
+        "start": 45,
+        "end": 156,
+        "code": "class Signature:\n    \"\"\"\n    Extracts and stores information about the signature of a function.\n\n    name : the functions name\n    arguments : list of all arguments\n    vararg_name : name of the *args variable\n    kw_wildcard_name : name of the **kwargs variable\n    positional_args : list of all positional-only arguments\n    kwargs : dict of all keyword arguments mapped to their default\n    \"\"\"\n\n    def __init__(self, f):\n        self.name = f.__name__\n        args, vararg_name, kw_wildcard_name, pos_args, kwargs = get_argspec(f)\n        self.arguments = args\n        self.vararg_name = vararg_name\n        self.kw_wildcard_name = kw_wildcard_name\n        self.positional_args = pos_args\n        self.kwargs = kwargs\n\n    def get_free_parameters(self, args, kwargs, bound=False):\n        pass\n\n\n    def construct_arguments(self, args, kwargs, options, bound=False):\n        \"\"\"\n        Construct args list and kwargs dictionary for this signature.\n\n        They are created such that:\n          - the original explicit call arguments (args, kwargs) are preserved\n          - missing arguments are filled in by name using options (if possible)\n          - default arguments are overridden by options\n          - TypeError is thrown if:\n            * kwargs contains one or more unexpected keyword arguments\n            * conflicting values for a parameter in both args and kwargs\n            * there is an unfilled parameter at the end of this process\n        \"\"\"\n        expected_args = self._get_expected_args(bound)\n        self._assert_no_unexpected_args(expected_args, args)\n        self._assert_no_unexpected_kwargs(expected_args, kwargs)\n        self._assert_no_duplicate_args(expected_args, args, kwargs)\n\n        args, kwargs = self._fill_in_options(args, kwargs, options, bound)\n\n        self._assert_no_missing_args(args, kwargs, bound)\n        return args, kwargs\n\n    def __str__(self):\n        pos_args = self.positional_args\n        varg = [\"*\" + self.vararg_name] if self.vararg_name else []\n        kwargs = [\"{}={}\".format(n, v.__repr__()) for n, v in self.kwargs.items()]\n        kw_wc = [\"**\" + self.kw_wildcard_name] if self.kw_wildcard_name else []\n        arglist = pos_args + varg + kwargs + kw_wc\n        return \"{}({})\".format(self.name, \", \".join(arglist))\n\n    def __repr__(self):\n        return \"<Signature at 0x{1:x} for '{0}'>\".format(self.name, id(self))\n\n    def _get_expected_args(self, bound):\n        if bound:\n            # When called as instance method, the instance ('self') will be\n            # passed as first argument automatically, so the first argument\n            # should be excluded from the signature during this invocation.\n            return self.arguments[1:]\n        else:\n            return self.arguments\n\n    def _assert_no_unexpected_args(self, expected_args, args):\n        if not self.vararg_name and len(args) > len(expected_args):\n            unexpected_args = args[len(expected_args) :]\n            raise SignatureError(\n                \"{} got unexpected argument(s): {}\".format(self.name, unexpected_args)\n            )\n\n    def _assert_no_unexpected_kwargs(self, expected_args, kwargs):\n        if self.kw_wildcard_name:\n            return\n        unexpected_kwargs = set(kwargs) - set(expected_args)\n        if unexpected_kwargs:\n            raise SignatureError(\n                \"{} got unexpected kwarg(s): {}\".format(\n                    self.name, sorted(unexpected_kwargs)\n                )\n            )\n\n    def _assert_no_duplicate_args(self, expected_args, args, kwargs):\n        positional_arguments = expected_args[: len(args)]\n        duplicate_arguments = [v for v in positional_arguments if v in kwargs]\n        if duplicate_arguments:\n            raise SignatureError(\n                \"{} got multiple values for argument(s) {}\".format(\n                    self.name, duplicate_arguments\n                )\n            )\n\n    def _fill_in_options(self, args, kwargs, options, bound):\n        free_params = self.get_free_parameters(args, kwargs, bound)\n        new_kwargs = dict(kwargs) if free_params else kwargs\n        for param in free_params:\n            if param in options:\n                new_kwargs[param] = options[param]\n        return args, new_kwargs\n\n    def _assert_no_missing_args(self, args, kwargs, bound):\n        free_params = self.get_free_parameters(args, kwargs, bound)\n        missing_args = [m for m in free_params if m not in self.kwargs]\n        if missing_args:\n            raise MissingConfigError(\n                \"{} is missing value(s):\".format(self.name),\n                missing_configs=missing_args,\n            )"
+      },
+      {
+        "file": "sacred/experiment.py",
+        "name": "Experiment.main",
+        "kind": "function",
+        "symbol": "sacred.experiment.Experiment.main",
+        "start": 140,
+        "end": 151,
+        "code": "    def main(self, function):\n        \"\"\"\n        Decorator to define the main function of the experiment.\n\n        The main function of an experiment is the default command that is being\n        run when no command is specified, or when calling the run() method.\n\n        Usually it is more convenient to use ``automain`` instead.\n        \"\"\"\n        captured = self.command(function)\n        self.default_command = captured.__name__\n        return captured"
+      },
+      {
+        "file": "sacred/config/config_dict.py",
+        "name": "ConfigDict",
+        "kind": "class",
+        "symbol": "sacred.config.config_dict.ConfigDict",
+        "start": 13,
+        "end": 24,
+        "code": "class ConfigDict:\n    def __init__(self, d):\n        self._conf = normalize_or_die(d)\n\n    def __call__(self, fixed=None, preset=None, fallback=None):\n        result = dogmatize(fixed or {})\n        recursive_fill_in(result, self._conf)\n        recursive_fill_in(result, preset or {})\n        added = result.revelation()\n        config_summary = ConfigSummary(added, result.modified, result.typechanges)\n        config_summary.update(undogmatize(result))\n        return config_summary"
+      }
+    ],
+    "unresolved": [
+      "sacred/config/signature.py:function: get_free_parameters",
+      "sacred/config/signature.py:function: _fill_in_options",
+      "sacred/config/signature.py:function: construct_arguments",
+      "sacred/config/signature.py:function: _assert_no_missing_args",
+      "sacred/experiment.py:function: Experiment.add_config",
+      "sacred/capture.py",
+      "sacred/config/config_dict.py:function: ConfigDict.update",
+      "sacred/config/config_dict.py:function: ConfigDict.__getitem__",
+      "sacred/util.py"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 3,
+    "unresolved_locations": 9,
+    "returned_code_chars": 5575
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 8033,
+    "completion_tokens": 1359,
+    "total_tokens": 9392,
+    "seconds": 49.01626110076904,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 52.96352171897888,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

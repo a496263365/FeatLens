@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 727,
+  "namespace": "pyt.vulnerabilities.vulnerabilities.build_sanitiser_node_dict",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7691,
+      "input_estimate_after": 7691,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies that should be inspected for implementing the `build_sanitiser_node_dict` function:\n\n```\npyt/cfg/make_cfg.py:CFG\nline: 4\nclass: CFG\n\npyt/vulnerabilities/vulnerability_helper.py:TriggerNode\nline: 160\nclass: TriggerNode\n\npyt/vulnerabilities/vulnerabilities.py:identify_triggers\nline: 24\nfunction: identify_triggers\n\npyt/vulnerabilities/vulnerabilities.py:find_triggers\nline: 129\nfunction: find_triggers\n\npyt/vulnerabilities/vulnerabilities.py:label_contains\nline: 151\nfunction: label_contains\n```",
+  "final_locations": {
+    "files": [
+      "pyt/cfg/make_cfg.py",
+      "pyt/vulnerabilities/vulnerability_helper.py",
+      "pyt/vulnerabilities/vulnerabilities.py"
+    ],
+    "entities": [
+      {
+        "file": "pyt/cfg/make_cfg.py",
+        "name": "CFG",
+        "kind": "class",
+        "symbol": "pyt.cfg.make_cfg.CFG",
+        "start": 4,
+        "end": 25,
+        "code": "class CFG():\n    def __init__(\n        self,\n        nodes,\n        blackbox_assignments,\n        filename\n    ):\n        self.nodes = nodes\n        self.blackbox_assignments = blackbox_assignments\n        self.filename = filename\n\n    def __repr__(self):\n        output = ''\n        for x, n in enumerate(self.nodes):\n            output = ''.join((output, 'Node: ' + str(x) + ' ' + repr(n), '\\n\\n'))\n        return output\n\n    def __str__(self):\n        output = ''\n        for x, n in enumerate(self.nodes):\n            output = ''.join((output, 'Node: ' + str(x) + ' ' + str(n), '\\n\\n'))\n        return output"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerability_helper.py",
+        "name": "TriggerNode",
+        "kind": "class",
+        "symbol": "pyt.vulnerabilities.vulnerability_helper.TriggerNode",
+        "start": 160,
+        "end": 199,
+        "code": "class TriggerNode():\n    def __init__(\n        self,\n        trigger,\n        cfg_node,\n        secondary_nodes=[]\n    ):\n        self.trigger = trigger\n        self.cfg_node = cfg_node\n        self.secondary_nodes = secondary_nodes\n\n    @property\n    def trigger_word(self):\n        return self.trigger.trigger_word\n\n    @property\n    def sanitisers(self):\n        return self.trigger.sanitisers if hasattr(self.trigger, 'sanitisers') else []\n\n    def append(self, cfg_node):\n        if not cfg_node == self.cfg_node:\n            if self.secondary_nodes and cfg_node not in self.secondary_nodes:\n                self.secondary_nodes.append(cfg_node)\n            elif not self.secondary_nodes:\n                self.secondary_nodes = [cfg_node]\n\n    def __repr__(self):\n        output = 'TriggerNode('\n\n        if self.trigger_word:\n            output = '{} trigger_word is {}, '.format(\n                output,\n                self.trigger_word\n            )\n\n        return (\n            output +\n            'sanitisers are {}, '.format(self.sanitisers) +\n            'cfg_node is {})\\n'.format(self.cfg_node)\n        )"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "identify_triggers",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.identify_triggers",
+        "start": 24,
+        "end": 59,
+        "code": "def identify_triggers(\n    cfg,\n    sources,\n    sinks,\n    lattice,\n    nosec_lines\n):\n    \"\"\"Identify sources, sinks and sanitisers in a CFG.\n\n    Args:\n        cfg(CFG): CFG to find sources, sinks and sanitisers in.\n        sources(tuple): list of sources, a source is a (source, sanitiser) tuple.\n        sinks(tuple): list of sources, a sink is a (sink, sanitiser) tuple.\n        nosec_lines(set): lines with # nosec whitelisting\n\n    Returns:\n        Triggers tuple with sink and source nodes and a sanitiser node dict.\n    \"\"\"\n    assignment_nodes = filter_cfg_nodes(cfg, AssignmentNode)\n    tainted_nodes = filter_cfg_nodes(cfg, TaintedNode)\n    tainted_trigger_nodes = [\n        TriggerNode(\n            Source('Framework function URL parameter'),\n            cfg_node=node\n        ) for node in tainted_nodes\n    ]\n    sources_in_file = find_triggers(assignment_nodes, sources, nosec_lines)\n    sources_in_file.extend(tainted_trigger_nodes)\n\n    find_secondary_sources(assignment_nodes, sources_in_file, lattice)\n\n    sinks_in_file = find_triggers(cfg.nodes, sinks, nosec_lines)\n\n    sanitiser_node_dict = build_sanitiser_node_dict(cfg, sinks_in_file)\n\n    return Triggers(sources_in_file, sinks_in_file, sanitiser_node_dict)"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "find_triggers",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.find_triggers",
+        "start": 129,
+        "end": 148,
+        "code": "def find_triggers(\n    nodes,\n    trigger_words,\n    nosec_lines\n):\n    \"\"\"Find triggers from the trigger_word_list in the nodes.\n\n    Args:\n        nodes(list[Node]): the nodes to find triggers in.\n        trigger_word_list(list[Union[Sink, Source]]): list of trigger words to look for.\n        nosec_lines(set): lines with # nosec whitelisting\n\n    Returns:\n        List of found TriggerNodes\n    \"\"\"\n    trigger_nodes = list()\n    for node in nodes:\n        if node.line_number not in nosec_lines:\n            trigger_nodes.extend(iter(label_contains(node, trigger_words)))\n    return trigger_nodes"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "label_contains",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.label_contains",
+        "start": 151,
+        "end": 167,
+        "code": "def label_contains(\n    node,\n    triggers\n):\n    \"\"\"Determine if node contains any of the trigger_words provided.\n\n    Args:\n        node(Node): CFG node to check.\n        trigger_words(list[Union[Sink, Source]]): list of trigger words to look for.\n\n    Returns:\n        Iterable of TriggerNodes found. Can be multiple because multiple\n        trigger_words can be in one node.\n    \"\"\"\n    for trigger in triggers:\n        if trigger.trigger_word in node.label:\n            yield TriggerNode(trigger, node)"
+      }
+    ],
+    "unresolved": [
+      "pyt/cfg/make_cfg.py:function: CFG",
+      "pyt/vulnerabilities/vulnerability_helper.py:function: TriggerNode"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 4076
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 19360,
+    "completion_tokens": 1227,
+    "total_tokens": 20587,
+    "seconds": 65.68263959884644,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 69.52443432807922,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

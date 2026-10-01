@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 277,
+  "namespace": "jinja2.idtracking.symbols_for_node",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5683,
+      "input_estimate_after": 5683,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/jinja2/idtracking.py\nclass: Symbols\nclass: FrameSymbolVisitor\n\nsrc/jinja2/nodes.py\nclass: Node\n\nsrc/jinja2/visitor.py\nclass: NodeVisitor\n\nsrc/jinja2/compiler.py\nfunction: visit\n\nsrc/jinja2/environment.py\nclass: Environment\n```",
+  "final_locations": {
+    "files": [
+      "src/jinja2/idtracking.py",
+      "src/jinja2/nodes.py",
+      "src/jinja2/visitor.py",
+      "src/jinja2/compiler.py",
+      "src/jinja2/environment.py"
+    ],
+    "entities": [
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols",
+        "kind": "class",
+        "symbol": "jinja2.idtracking.Symbols",
+        "start": 30,
+        "end": 171,
+        "code": "class Symbols:\n    def __init__(\n        self, parent: t.Optional[\"Symbols\"] = None, level: t.Optional[int] = None\n    ) -> None:\n        if level is None:\n            if parent is None:\n                level = 0\n            else:\n                level = parent.level + 1\n\n        self.level: int = level\n        self.parent = parent\n        self.refs: t.Dict[str, str] = {}\n        self.loads: t.Dict[str, t.Any] = {}\n        self.stores: t.Set[str] = set()\n\n    def analyze_node(self, node: nodes.Node, **kwargs: t.Any) -> None:\n        visitor = RootVisitor(self)\n        visitor.visit(node, **kwargs)\n\n    def _define_ref(\n        self, name: str, load: t.Optional[t.Tuple[str, t.Optional[str]]] = None\n    ) -> str:\n        ident = f\"l_{self.level}_{name}\"\n        self.refs[name] = ident\n        if load is not None:\n            self.loads[ident] = load\n        return ident\n\n    def find_load(self, target: str) -> t.Optional[t.Any]:\n        if target in self.loads:\n            return self.loads[target]\n\n        if self.parent is not None:\n            return self.parent.find_load(target)\n\n        return None\n\n    def find_ref(self, name: str) -> t.Optional[str]:\n        if name in self.refs:\n            return self.refs[name]\n\n        if self.parent is not None:\n            return self.parent.find_ref(name)\n\n        return None\n\n    def ref(self, name: str) -> str:\n        rv = self.find_ref(name)\n        if rv is None:\n            raise AssertionError(\n                \"Tried to resolve a name to a reference that was\"\n                f\" unknown to the frame ({name!r})\"\n            )\n        return rv\n\n    def copy(self) -> \"Symbols\":\n        rv = object.__new__(self.__class__)\n        rv.__dict__.update(self.__dict__)\n        rv.refs = self.refs.copy()\n        rv.loads = self.loads.copy()\n        rv.stores = self.stores.copy()\n        return rv\n\n    def store(self, name: str) -> None:\n        self.stores.add(name)\n\n        # If we have not see the name referenced yet, we need to figure\n        # out what to set it to.\n        if name not in self.refs:\n            # If there is a parent scope we check if the name has a\n            # reference there.  If it does it means we might have to alias\n            # to a variable there.\n            if self.parent is not None:\n                outer_ref = self.parent.find_ref(name)\n                if outer_ref is not None:\n                    self._define_ref(name, load=(VAR_LOAD_ALIAS, outer_ref))\n                    return\n\n            # Otherwise we can just set it to undefined.\n            self._define_ref(name, load=(VAR_LOAD_UNDEFINED, None))\n\n    def declare_parameter(self, name: str) -> str:\n        self.stores.add(name)\n        return self._define_ref(name, load=(VAR_LOAD_PARAMETER, None))\n\n    def load(self, name: str) -> None:\n        if self.find_ref(name) is None:\n            self._define_ref(name, load=(VAR_LOAD_RESOLVE, name))\n\n    def branch_update(self, branch_symbols: t.Sequence[\"Symbols\"]) -> None:\n        stores: t.Dict[str, int] = {}\n        for branch in branch_symbols:\n            for target in branch.stores:\n                if target in self.stores:\n                    continue\n                stores[target] = stores.get(target, 0) + 1\n\n        for sym in branch_symbols:\n            self.refs.update(sym.refs)\n            self.loads.update(sym.loads)\n            self.stores.update(sym.stores)\n\n        for name, branch_count in stores.items():\n            if branch_count == len(branch_symbols):\n                continue\n\n            target = self.find_ref(name)  # type: ignore\n            assert target is not None, \"should not happen\"\n\n            if self.parent is not None:\n                outer_target = self.parent.find_ref(name)\n                if outer_target is not None:\n                    self.loads[target] = (VAR_LOAD_ALIAS, outer_target)\n                    continue\n            self.loads[target] = (VAR_LOAD_RESOLVE, name)\n\n    def dump_stores(self) -> t.Dict[str, str]:\n        rv: t.Dict[str, str] = {}\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for name in sorted(node.stores):\n                if name not in rv:\n                    rv[name] = self.find_ref(name)  # type: ignore\n\n            node = node.parent\n\n        return rv\n\n    def dump_param_targets(self) -> t.Set[str]:\n        rv = set()\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for target, (instr, _) in self.loads.items():\n                if instr == VAR_LOAD_PARAMETER:\n                    rv.add(target)\n\n            node = node.parent\n\n        return rv"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "FrameSymbolVisitor",
+        "kind": "class",
+        "symbol": "jinja2.idtracking.FrameSymbolVisitor",
+        "start": 232,
+        "end": 318,
+        "code": "class FrameSymbolVisitor(NodeVisitor):\n    \"\"\"A visitor for `Frame.inspect`.\"\"\"\n\n    def __init__(self, symbols: \"Symbols\") -> None:\n        self.symbols = symbols\n\n    def visit_Name(\n        self, node: nodes.Name, store_as_param: bool = False, **kwargs: t.Any\n    ) -> None:\n        \"\"\"All assignments to names go through this function.\"\"\"\n        if store_as_param or node.ctx == \"param\":\n            self.symbols.declare_parameter(node.name)\n        elif node.ctx == \"store\":\n            self.symbols.store(node.name)\n        elif node.ctx == \"load\":\n            self.symbols.load(node.name)\n\n    def visit_NSRef(self, node: nodes.NSRef, **kwargs: t.Any) -> None:\n        self.symbols.load(node.name)\n\n    def visit_If(self, node: nodes.If, **kwargs: t.Any) -> None:\n        self.visit(node.test, **kwargs)\n        original_symbols = self.symbols\n\n        def inner_visit(nodes: t.Iterable[nodes.Node]) -> \"Symbols\":\n            self.symbols = rv = original_symbols.copy()\n\n            for subnode in nodes:\n                self.visit(subnode, **kwargs)\n\n            self.symbols = original_symbols\n            return rv\n\n        body_symbols = inner_visit(node.body)\n        elif_symbols = inner_visit(node.elif_)\n        else_symbols = inner_visit(node.else_ or ())\n        self.symbols.branch_update([body_symbols, elif_symbols, else_symbols])\n\n    def visit_Macro(self, node: nodes.Macro, **kwargs: t.Any) -> None:\n        self.symbols.store(node.name)\n\n    def visit_Import(self, node: nodes.Import, **kwargs: t.Any) -> None:\n        self.generic_visit(node, **kwargs)\n        self.symbols.store(node.target)\n\n    def visit_FromImport(self, node: nodes.FromImport, **kwargs: t.Any) -> None:\n        self.generic_visit(node, **kwargs)\n\n        for name in node.names:\n            if isinstance(name, tuple):\n                self.symbols.store(name[1])\n            else:\n                self.symbols.store(name)\n\n    def visit_Assign(self, node: nodes.Assign, **kwargs: t.Any) -> None:\n        \"\"\"Visit assignments in the correct order.\"\"\"\n        self.visit(node.node, **kwargs)\n        self.visit(node.target, **kwargs)\n\n    def visit_For(self, node: nodes.For, **kwargs: t.Any) -> None:\n        \"\"\"Visiting stops at for blocks.  However the block sequence\n        is visited as part of the outer scope.\n        \"\"\"\n        self.visit(node.iter, **kwargs)\n\n    def visit_CallBlock(self, node: nodes.CallBlock, **kwargs: t.Any) -> None:\n        self.visit(node.call, **kwargs)\n\n    def visit_FilterBlock(self, node: nodes.FilterBlock, **kwargs: t.Any) -> None:\n        self.visit(node.filter, **kwargs)\n\n    def visit_With(self, node: nodes.With, **kwargs: t.Any) -> None:\n        for target in node.values:\n            self.visit(target)\n\n    def visit_AssignBlock(self, node: nodes.AssignBlock, **kwargs: t.Any) -> None:\n        \"\"\"Stop visiting at block assigns.\"\"\"\n        self.visit(node.target, **kwargs)\n\n    def visit_Scope(self, node: nodes.Scope, **kwargs: t.Any) -> None:\n        \"\"\"Stop visiting at scopes.\"\"\"\n\n    def visit_Block(self, node: nodes.Block, **kwargs: t.Any) -> None:\n        \"\"\"Stop visiting at blocks.\"\"\"\n\n    def visit_OverlayScope(self, node: nodes.OverlayScope, **kwargs: t.Any) -> None:\n        \"\"\"Do not visit into overlay scopes.\"\"\""
+      },
+      {
+        "file": "src/jinja2/nodes.py",
+        "name": "Node",
+        "kind": "class",
+        "symbol": "jinja2.nodes.Node",
+        "start": 103,
+        "end": 277,
+        "code": "class Node(metaclass=NodeType):\n    \"\"\"Baseclass for all Jinja nodes.  There are a number of nodes available\n    of different types.  There are four major types:\n\n    -   :class:`Stmt`: statements\n    -   :class:`Expr`: expressions\n    -   :class:`Helper`: helper nodes\n    -   :class:`Template`: the outermost wrapper node\n\n    All nodes have fields and attributes.  Fields may be other nodes, lists,\n    or arbitrary values.  Fields are passed to the constructor as regular\n    positional arguments, attributes as keyword arguments.  Each node has\n    two attributes: `lineno` (the line number of the node) and `environment`.\n    The `environment` attribute is set at the end of the parsing process for\n    all nodes automatically.\n    \"\"\"\n\n    fields: t.Tuple[str, ...] = ()\n    attributes: t.Tuple[str, ...] = (\"lineno\", \"environment\")\n    abstract = True\n\n    lineno: int\n    environment: t.Optional[\"Environment\"]\n\n    def __init__(self, *fields: t.Any, **attributes: t.Any) -> None:\n        if self.abstract:\n            raise TypeError(\"abstract nodes are not instantiable\")\n        if fields:\n            if len(fields) != len(self.fields):\n                if not self.fields:\n                    raise TypeError(f\"{type(self).__name__!r} takes 0 arguments\")\n                raise TypeError(\n                    f\"{type(self).__name__!r} takes 0 or {len(self.fields)}\"\n                    f\" argument{'s' if len(self.fields) != 1 else ''}\"\n                )\n            for name, arg in zip(self.fields, fields):\n                setattr(self, name, arg)\n        for attr in self.attributes:\n            setattr(self, attr, attributes.pop(attr, None))\n        if attributes:\n            raise TypeError(f\"unknown attribute {next(iter(attributes))!r}\")\n\n    def iter_fields(\n        self,\n        exclude: t.Optional[t.Container[str]] = None,\n        only: t.Optional[t.Container[str]] = None,\n    ) -> t.Iterator[t.Tuple[str, t.Any]]:\n        \"\"\"This method iterates over all fields that are defined and yields\n        ``(key, value)`` tuples.  Per default all fields are returned, but\n        it's possible to limit that to some fields by providing the `only`\n        parameter or to exclude some using the `exclude` parameter.  Both\n        should be sets or tuples of field names.\n        \"\"\"\n        for name in self.fields:\n            if (\n                (exclude is None and only is None)\n                or (exclude is not None and name not in exclude)\n                or (only is not None and name in only)\n            ):\n                try:\n                    yield name, getattr(self, name)\n                except AttributeError:\n                    pass\n\n    def iter_child_nodes(\n        self,\n        exclude: t.Optional[t.Container[str]] = None,\n        only: t.Optional[t.Container[str]] = None,\n    ) -> t.Iterator[\"Node\"]:\n        \"\"\"Iterates over all direct child nodes of the node.  This iterates\n        over all fields and yields the values of they are nodes.  If the value\n        of a field is a list all the nodes in that list are returned.\n        \"\"\"\n        for _, item in self.iter_fields(exclude, only):\n            if isinstance(item, list):\n                for n in item:\n                    if isinstance(n, Node):\n                        yield n\n            elif isinstance(item, Node):\n                yield item\n\n    def find(self, node_type: t.Type[_NodeBound]) -> t.Optional[_NodeBound]:\n        \"\"\"Find the first node of a given type.  If no such node exists the\n        return value is `None`.\n        \"\"\"\n        for result in self.find_all(node_type):\n            return result\n\n        return None\n\n    def find_all(\n        self, node_type: t.Union[t.Type[_NodeBound], t.Tuple[t.Type[_NodeBound], ...]]\n    ) -> t.Iterator[_NodeBound]:\n        \"\"\"Find all the nodes of a given type.  If the type is a tuple,\n        the check is performed for any of the tuple items.\n        \"\"\"\n        for child in self.iter_child_nodes():\n            if isinstance(child, node_type):\n                yield child  # type: ignore\n            yield from child.find_all(node_type)\n\n    def set_ctx(self, ctx: str) -> \"Node\":\n        \"\"\"Reset the context of a node and all child nodes.  Per default the\n        parser will all generate nodes that have a 'load' context as it's the\n        most common one.  This method is used in the parser to set assignment\n        targets and other nodes to a store context.\n        \"\"\"\n        todo = deque([self])\n        while todo:\n            node = todo.popleft()\n            if \"ctx\" in node.fields:\n                node.ctx = ctx  # type: ignore\n            todo.extend(node.iter_child_nodes())\n        return self\n\n    def set_lineno(self, lineno: int, override: bool = False) -> \"Node\":\n        \"\"\"Set the line numbers of the node and children.\"\"\"\n        todo = deque([self])\n        while todo:\n            node = todo.popleft()\n            if \"lineno\" in node.attributes:\n                if node.lineno is None or override:\n                    node.lineno = lineno\n            todo.extend(node.iter_child_nodes())\n        return self\n\n    def set_environment(self, environment: \"Environment\") -> \"Node\":\n        \"\"\"Set the environment for all nodes.\"\"\"\n        todo = deque([self])\n        while todo:\n            node = todo.popleft()\n            node.environment = environment\n            todo.extend(node.iter_child_nodes())\n        return self\n\n    def __eq__(self, other: t.Any) -> bool:\n        if type(self) is not type(other):\n            return NotImplemented\n\n        return tuple(self.iter_fields()) == tuple(other.iter_fields())\n\n    __hash__ = object.__hash__\n\n    def __repr__(self) -> str:\n        args_str = \", \".join(f\"{a}={getattr(self, a, None)!r}\" for a in self.fields)\n        return f\"{type(self).__name__}({args_str})\"\n\n    def dump(self) -> str:\n        def _dump(node: t.Union[Node, t.Any]) -> None:\n            if not isinstance(node, Node):\n                buf.append(repr(node))\n                return\n\n            buf.append(f\"nodes.{type(node).__name__}(\")\n            if not node.fields:\n                buf.append(\")\")\n                return\n            for idx, field in enumerate(node.fields):\n                if idx:\n                    buf.append(\", \")\n                value = getattr(node, field)\n                if isinstance(value, list):\n                    buf.append(\"[\")\n                    for idx, item in enumerate(value):\n                        if idx:\n                            buf.append(\", \")\n                        _dump(item)\n                    buf.append(\"]\")\n                else:\n                    _dump(value)\n            buf.append(\")\")\n\n        buf: t.List[str] = []\n        _dump(self)\n        return \"\".join(buf)"
+      },
+      {
+        "file": "src/jinja2/visitor.py",
+        "name": "NodeVisitor",
+        "kind": "class",
+        "symbol": "jinja2.visitor.NodeVisitor",
+        "start": 16,
+        "end": 47,
+        "code": "class NodeVisitor:\n    \"\"\"Walks the abstract syntax tree and call visitor functions for every\n    node found.  The visitor functions may return values which will be\n    forwarded by the `visit` method.\n\n    Per default the visitor functions for the nodes are ``'visit_'`` +\n    class name of the node.  So a `TryFinally` node visit function would\n    be `visit_TryFinally`.  This behavior can be changed by overriding\n    the `get_visitor` function.  If no visitor function exists for a node\n    (return value `None`) the `generic_visit` visitor is used instead.\n    \"\"\"\n\n    def get_visitor(self, node: Node) -> \"t.Optional[VisitCallable]\":\n        \"\"\"Return the visitor function for this node or `None` if no visitor\n        exists for this node.  In that case the generic visit function is\n        used instead.\n        \"\"\"\n        return getattr(self, f\"visit_{type(node).__name__}\", None)\n\n    def visit(self, node: Node, *args: t.Any, **kwargs: t.Any) -> t.Any:\n        \"\"\"Visit a node.\"\"\"\n        f = self.get_visitor(node)\n\n        if f is not None:\n            return f(node, *args, **kwargs)\n\n        return self.generic_visit(node, *args, **kwargs)\n\n    def generic_visit(self, node: Node, *args: t.Any, **kwargs: t.Any) -> t.Any:\n        \"\"\"Called if no explicit visitor function exists for a node.\"\"\"\n        for child_node in node.iter_child_nodes():\n            self.visit(child_node, *args, **kwargs)"
+      }
+    ],
+    "unresolved": [
+      "src/jinja2/compiler.py:function: visit",
+      "src/jinja2/environment.py:class: Environment"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "jinja2.idtracking.Symbols"
+    ],
+    "exact_hit_dependencies": [
+      "jinja2.idtracking.Symbols"
+    ],
+    "returned_entities": 4,
+    "returned_files": 5,
+    "unresolved_locations": 2,
+    "returned_code_chars": 16102
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 23766,
+    "completion_tokens": 3666,
+    "total_tokens": 27432,
+    "seconds": 108.95926928520203,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 118.40676665306091,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,1582 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "join_rows",
+                    "func_desc": "Given a series of rows return them as a single row where the inner edge cells are merged .",
+                    "func_file": "cleanup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def join_rows(rows, joiner=' '):\n    \"\"\"\n    Given a series of rows, return them as a single row where the inner edge cells are merged. By default joins with a\n    single space character, but you can specify new-line, empty string, or anything else with the 'joiner' kwarg.\n    \"\"\"\n    rows = list(rows)\n    fixed_row = rows[0][:]\n\n    for row in rows[1:]:\n        if len(row) == 0:\n            row = ['']\n\n        fixed_row[-1] += f\"{joiner}{row[0]}\"\n        fixed_row.extend(row[1:])\n\n    return fixed_row",
+                    "func_fullName": "csvkit.cleanup.join_rows(rows, joiner)"
+                },
+                {
+                    "func_id": 2,
+                    "func_name": "checked_rows",
+                    "func_desc": "A generator which yields rows which are ready to write to output .",
+                    "func_file": "cleanup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def checked_rows(self):\n        \"\"\"\n        A generator which yields rows which are ready to write to output.\n        \"\"\"\n        length = len(self.column_names)\n        line_number = self.reader.line_num\n        joinable_row_errors = []\n\n        for row in self.reader:\n            try:\n                if len(row) != length:\n                    raise LengthMismatchError(line_number, row, length)\n\n                yield row\n\n                # Don't join rows across valid rows.\n                joinable_row_errors = []\n            except LengthMismatchError as e:\n                self.errors.append(e)\n\n                # Don't join with long rows.\n                if len(row) > length:\n                    joinable_row_errors = []\n                else:\n                    joinable_row_errors.append(e)\n\n                    while joinable_row_errors:\n                        fixed_row = join_rows([error.row for error in joinable_row_errors], joiner=' ')\n\n                        if len(fixed_row) < length:\n                            break\n\n                        if len(fixed_row) == length:\n                            self.rows_joined += len(joinable_row_errors)\n                            self.joins += 1\n\n                            yield fixed_row\n\n                            for fixed in joinable_row_errors:\n                                joinable_row_errors.remove(fixed)\n                                self.errors.remove(fixed)\n\n                            break\n\n                        # keep trying in case we're too long because of a straggler\n                        joinable_row_errors = joinable_row_errors[1:]\n\n            except CSVTestException as e:\n                self.errors.append(e)\n\n                # Don't join rows across other errors.\n                joinable_row_errors = []\n\n            line_number = self.reader.line_num",
+                    "func_fullName": "csvkit.cleanup.RowChecker.checked_rows(self)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "__call__",
+                    "func_desc": "Generate a fixed - width field based on this instance s n - term parameters .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __call__(self, row):\n        \"\"\"\n        Return a tuple (column, start, length) based on this instance's\n        parameters. If the first time this is called, the row's 'start'\n        value is 1, then all 'start' values including the first will be one\n        less than in the actual input data, to adjust for one-based\n        specifications.  Values for 'start' and 'length' will be cast to\n        integers.\n        \"\"\"\n        if self.one_based is None:\n            self.one_based = int(row[self.start]) == 1\n\n        if self.one_based:\n            adjusted_start = int(row[self.start]) - 1\n        else:\n            adjusted_start = int(row[self.start])\n\n        return FixedWidthField(row[self.column], adjusted_start, int(row[self.length]))",
+                    "func_fullName": "csvkit.convert.fixed.SchemaDecoder.__call__(self, row)"
+                },
+                {
+                    "func_id": 110,
+                    "func_name": "generate_feature_collection",
+                    "func_desc": "Generate FeatureCollection from Table .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def generate_feature_collection(self, table):\n            features = []\n            bounds = self.GeoJsonBounds()\n\n            for row in table.rows:\n                feature = self.feature_for_row(row)\n\n                if not self.args.no_bbox:\n                    bounds.add_feature(feature)\n\n                features.append(feature)\n\n            items = [\n                ('type', 'FeatureCollection'),\n                ('features', features),\n            ]\n\n            if not self.args.no_bbox:\n                items.insert(1, ('bbox', bounds.bbox()))\n\n            if self.args.crs:\n                items.append(('crs', OrderedDict([\n                    ('type', 'name'),\n                    ('properties', {\n                        'name': self.args.crs,\n                    }),\n                ])))\n\n            return OrderedDict(items)",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.generate_feature_collection(self, table)"
+                },
+                {
+                    "func_id": 111,
+                    "func_name": "feature_for_row",
+                    "func_desc": "Generate a feature dictionary for a given row of data .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def feature_for_row(self, row):\n            feature = OrderedDict([\n                ('type', 'Feature'),\n                ('properties', OrderedDict()),\n            ])\n\n            for i, c in enumerate(row):\n                # Prevent \"type\" or geo fields from being added to properties.\n                if c is None or i in (self.type_column, self.lat_column, self.lon_column, self.geometry_column):\n                    continue\n                if i == self.id_column:\n                    feature['id'] = c\n                elif c:\n                    feature['properties'][self.column_names[i]] = c\n\n            feature['geometry'] = self.geometry_for_row(row)\n\n            return feature",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.feature_for_row(self, row)"
+                },
+                {
+                    "func_id": 112,
+                    "func_name": "geometry_for_row",
+                    "func_desc": "Return a dictionary of geometry for a given row .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def geometry_for_row(self, row):\n            lat = None\n            lon = None\n\n            if self.geometry_column is not None:\n                return json.loads(row[self.geometry_column])\n\n            if self.lat_column is not None and self.lon_column is not None:\n                try:\n                    lon = float(row[self.lon_column])\n                    lat = float(row[self.lat_column])\n                except ValueError:\n                    lon = None\n                    lat = None\n\n            if lon and lat:\n                return OrderedDict([\n                    ('type', 'Point'),\n                    ('coordinates', [lon, lat]),\n                ])",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.geometry_for_row(self, row)"
+                },
+                {
+                    "func_id": 114,
+                    "func_name": "bbox",
+                    "func_desc": "returns a list of bounding boxes of the plan as a list of integers .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def bbox(self):\n                return [self.min_lon, self.min_lat, self.max_lon, self.max_lat]",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.bbox(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for the grammar .",
+                    "func_file": "cleanup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, reader):\n        self.reader = reader\n        try:\n            self.column_names = next(reader)\n        except StopIteration:\n            self.column_names = []\n        self.errors = []\n        self.rows_joined = 0\n        self.joins = 0",
+                    "func_fullName": "csvkit.cleanup.RowChecker.__init__(self, reader)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a language file from a file - like object .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, reader, patterns, header=True, any_match=False, inverse=False):\n        super().__init__()\n\n        self.reader = reader\n        self.header = header\n\n        if self.header:\n            self.column_names = next(reader)\n\n        self.any_match = any_match\n        self.inverse = inverse\n        self.patterns = standardize_patterns(self.column_names, patterns)",
+                    "func_fullName": "csvkit.grep.FilteringCSVReader.__init__(self, reader, patterns, header, any_match, inverse)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "standardize_patterns",
+                    "func_desc": "Standardize patterns in any of the permitted input forms .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def standardize_patterns(column_names, patterns):\n    \"\"\"\n    Given patterns in any of the permitted input forms, return a dict whose keys\n    are column indices and whose values are functions which return a boolean value whether the value passes.\n    If patterns is a dictionary and any of its keys are values in column_names, the returned dictionary will\n    have those keys replaced with the integer position of that value in column_names\n    \"\"\"\n    try:\n        # Dictionary of patterns\n        patterns = {k: pattern_as_function(v) for k, v in patterns.items() if v}\n        if not column_names:\n            return patterns\n        p2 = {}\n        for k in patterns:\n            if k in column_names:\n                idx = column_names.index(k)\n                if idx in patterns:\n                    raise ColumnIdentifierError(\"Column %s has index %i which already has a pattern.\" % (k, idx))\n                p2[idx] = patterns[k]\n            else:\n                p2[k] = patterns[k]\n        return p2\n    except AttributeError:\n        # Sequence of patterns\n        return {i: pattern_as_function(x) for i, x in enumerate(patterns)}",
+                    "func_fullName": "csvkit.grep.standardize_patterns(column_names, patterns)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "pattern_as_function",
+                    "func_desc": "Returns a function that returns True if obj is a sequence of words .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def pattern_as_function(obj):\n    # obj is function\n    if callable(obj):\n        return obj\n\n    # obj is regex object\n    if hasattr(obj, 'match'):\n        return regex_callable(obj)\n\n    # obj is string\n    return lambda x: obj in x",
+                    "func_fullName": "csvkit.grep.pattern_as_function(obj)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 5,
+                    "func_name": "__iter__",
+                    "func_desc": "Iterate over all the tokens in the tree .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __iter__(self):\n        return self",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthReader.__iter__(self)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "__iter__",
+                    "func_desc": "Iterate over all the tokens in the tree .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __iter__(self):\n        return self",
+                    "func_fullName": "csvkit.cli.LazyFile.__iter__(self)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "__iter__",
+                    "func_desc": "Iterate over all the tokens in the tree .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __iter__(self):\n        return self",
+                    "func_fullName": "csvkit.grep.FilteringCSVReader.__iter__(self)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "__call__",
+                    "func_desc": "Search for a string in the pattern .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __call__(self, arg):\n        return self.pattern.search(arg)",
+                    "func_fullName": "csvkit.grep.regex_callable.__call__(self, arg)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "__init__",
+                    "func_desc": "Construct a sequence decoder .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, header):\n        \"\"\"\n        Constructs a schema row decoder.\n        \"\"\"\n        for p, val_type in self.REQUIRED_COLUMNS:\n            try:\n                if val_type:\n                    setattr(self, p, val_type(header.index(p)))\n                else:\n                    setattr(self, p, header.index(p))\n            except ValueError:\n                raise ValueError(f'A column named \"{p}\" must exist in the schema file.')",
+                    "func_fullName": "csvkit.convert.fixed.SchemaDecoder.__init__(self, header)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "guess_format",
+                    "func_desc": "Try to guess a file s format based on its extension .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def guess_format(filename):\n    \"\"\"\n    Try to guess a file's format based on its extension (or lack thereof).\n    \"\"\"\n    last_period = filename.rfind('.')\n\n    if last_period == -1:\n        # No extension: assume fixed-width\n        return 'fixed'\n\n    extension = filename[last_period + 1:].lower()\n\n    if extension in ('csv', 'dbf', 'fixed', 'xls', 'xlsx'):\n        return extension\n    if extension in ('json', 'js'):\n        return 'json'\n\n    return None",
+                    "func_fullName": "csvkit.convert.__init__.guess_format(filename)"
+                },
+                {
+                    "func_id": 65,
+                    "func_name": "pattern",
+                    "func_desc": "Return True if x is a sequence of characters .",
+                    "func_file": "csvgrep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def pattern(x):\n                return x in lines",
+                    "func_fullName": "csvkit.utilities.csvgrep.CSVGrep.main.pattern(x)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 15,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the language language .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, init, *args, **kwargs):\n        self.init = init\n        self.f = None\n        self._is_lazy_opened = False\n\n        self._lazy_args = args\n        self._lazy_kwargs = kwargs",
+                    "func_fullName": "csvkit.cli.LazyFile.__init__(self, init, args, kwargs)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SECRET_TOKEN .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, pattern):\n        self.pattern = pattern",
+                    "func_fullName": "csvkit.grep.regex_callable.__init__(self, pattern)"
+                },
+                {
+                    "func_id": 131,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SECRET_TOKEN .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, msg):\n        self.msg = msg",
+                    "func_fullName": "csvkit.exceptions.CustomException.__init__(self, msg)"
+                },
+                {
+                    "func_id": 134,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SECRETPOINT .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, line_number, row, msg):\n        super().__init__(msg)\n        self.line_number = line_number\n        self.row = row",
+                    "func_fullName": "csvkit.exceptions.CSVTestException.__init__(self, line_number, row, msg)"
+                },
+                {
+                    "func_id": 137,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the given index value and normal type .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, index, value, normal_type):\n        self.index = index\n        self.value = value\n        self.normal_type = normal_type\n        msg = 'Unable to convert \"%s\" to type %s (at index %i)' % (value, normal_type, index)\n        super().__init__(msg)",
+                    "func_fullName": "csvkit.exceptions.InvalidValueForTypeException.__init__(self, index, value, normal_type)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 16,
+                    "func_name": "__getattr__",
+                    "func_desc": "Get an attribute of the language file .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __getattr__(self, name):\n        self._open()\n        return getattr(self.f, name)",
+                    "func_fullName": "csvkit.cli.LazyFile.__getattr__(self, name)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "__next__",
+                    "func_desc": "Returns the next record in the file .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __next__(self):\n        self._open()\n        return next(self.f).replace('\\0', '')",
+                    "func_fullName": "csvkit.cli.LazyFile.__next__(self)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "_open",
+                    "func_desc": "Open the class for lazy initialization .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _open(self):\n        if not self._is_lazy_opened:\n            self.f = self.init(*self._lazy_args, **self._lazy_kwargs)\n            self._is_lazy_opened = True",
+                    "func_fullName": "csvkit.cli.LazyFile._open(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 18,
+                    "func_name": "close",
+                    "func_desc": "Close the SEM .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def close(self):\n        if self._is_lazy_opened:\n            self.f.close()\n            self.f = None\n            self._is_lazy_opened = False",
+                    "func_fullName": "csvkit.cli.LazyFile.close(self)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "fixed2csv",
+                    "func_desc": "Convert a fixed - width file to a CSV using a CSV - formatted schema description .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def fixed2csv(f, schema, output=None, skip_lines=0, **kwargs):\n    \"\"\"\n    Convert a fixed-width file to csv using a CSV-formatted schema description.\n\n    A schema CSV must start with a header row with (at least) columns labeled\n    \"column\",\"start\", and \"length\". (Other columns will be ignored.) For each\n    subsequent row, therefore, those columns will be used to identify a column\n    name, the starting index of the column (an integer), and the length of the\n    column (also an integer).\n\n    Values in the 'start' column are assumed to be zero-based, unless the first\n    value for 'start' is 1, in which case all values are assumed to be\n    one-based.\n\n    If output is specified, rows will be written to that object, otherwise the\n    complete data will be returned.\n\n    :param skip_lines:\n        The number of lines to skip from the top of the file.\n    \"\"\"\n    streaming = bool(output)\n\n    if not streaming:\n        output = StringIO()\n\n    try:\n        encoding = kwargs['encoding']\n    except KeyError:\n        encoding = None\n\n    if isinstance(skip_lines, int):\n        while skip_lines > 0:\n            f.readline()\n            skip_lines -= 1\n    else:\n        raise ValueError('skip_lines argument must be an int')\n\n    writer = agate.csv.writer(output)\n\n    reader = FixedWidthReader(f, schema, encoding=encoding)\n    writer.writerows(reader)\n\n    if not streaming:\n        data = output.getvalue()\n        output.close()\n\n        return data\n\n    # Return empty string when streaming\n    return ''",
+                    "func_fullName": "csvkit.convert.fixed.fixed2csv(f, schema, output, skip_lines, kwargs)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "geojson2csv",
+                    "func_desc": "Convert a GeoJSON document into a CSV format .",
+                    "func_file": "geojs",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def geojson2csv(f, key=None, **kwargs):\n    \"\"\"\n    Convert a GeoJSON document into CSV format.\n    \"\"\"\n    js = json.load(f, object_pairs_hook=OrderedDict)\n\n    if not isinstance(js, dict):\n        raise TypeError('JSON document is not valid GeoJSON: Root element is not an object.')\n\n    if 'type' not in js:\n        raise TypeError('JSON document is not valid GeoJSON: No top-level \"type\" key.')\n\n    if js['type'] != 'FeatureCollection':\n        raise TypeError(f\"Only GeoJSON with root FeatureCollection type is supported. Not {js['type']}\")\n\n    if 'features' not in js:\n        raise TypeError('JSON document is not a valid FeatureCollection: No top-level \"features\" key.')\n\n    features = js['features']\n\n    features_parsed = []    # tuples in the format (id, properties, geometry)\n    property_fields = []\n\n    for feature in features:\n        properties = feature.get('properties', {})\n\n        for prop in properties.keys():\n            if prop not in property_fields:\n                property_fields.append(prop)\n\n        geometry = feature['geometry']\n        if geometry:\n            geometry_type = geometry.get('type')\n        else:\n            geometry_type = None\n        if geometry_type == 'Point' and 'coordinates' in geometry:\n            longitude, latitude = geometry['coordinates'][0:2]  # Drop altitude or elevation.\n        else:\n            longitude, latitude = (None, None)\n\n        features_parsed.append((feature.get('id'), properties, json.dumps(\n            geometry), geometry_type, longitude, latitude))\n\n    header = ['id']\n    header.extend(property_fields)\n    header.extend(('geojson', 'type', 'longitude', 'latitude'))\n\n    o = StringIO()\n    writer = agate.csv.writer(o)\n\n    writer.writerow(header)\n\n    for geoid, properties, geometry, geometry_type, longitude, latitude in features_parsed:\n        row = [geoid]\n\n        for field in property_fields:\n            value = properties.get(field)\n            if isinstance(value, OrderedDict):\n                value = json.dumps(value)\n            row.append(value)\n\n        row.extend((geometry, geometry_type, longitude, latitude))\n\n        writer.writerow(row)\n\n    output = o.getvalue()\n    o.close()\n\n    return output",
+                    "func_fullName": "csvkit.convert.geojs.geojson2csv(f, key, kwargs)"
+                },
+                {
+                    "func_id": 95,
+                    "func_name": "open_excel_input_file",
+                    "func_desc": "Open an Excel input file .",
+                    "func_file": "in2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def open_excel_input_file(self, path):\n        if not path or path == '-':\n            return BytesIO(sys.stdin.buffer.read())\n        return open(path, 'rb')",
+                    "func_fullName": "csvkit.utilities.in2csv.In2CSV.open_excel_input_file(self, path)"
+                },
+                {
+                    "func_id": 96,
+                    "func_name": "sheet_names",
+                    "func_desc": "Get the names of the sheets in the given path .",
+                    "func_file": "in2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sheet_names(self, path, filetype):\n        input_file = self.open_excel_input_file(path)\n        if filetype == 'xls':\n            sheet_names = xlrd.open_workbook(file_contents=input_file.read()).sheet_names()\n        else:  # 'xlsx'\n            sheet_names = openpyxl.load_workbook(input_file, read_only=True, data_only=True).sheetnames\n        input_file.close()\n        return sheet_names",
+                    "func_fullName": "csvkit.utilities.in2csv.In2CSV.sheet_names(self, path, filetype)"
+                },
+                {
+                    "func_id": 97,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the command line interface .",
+                    "func_file": "in2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        path = self.args.input_path\n\n        # Determine the file type.\n        if self.args.filetype:\n            filetype = self.args.filetype\n        elif self.args.schema:\n            filetype = 'fixed'\n        elif self.args.key:\n            filetype = 'json'\n        else:\n            if not path or path == '-':\n                self.argparser.error('You must specify a format when providing input as piped data via STDIN.')\n            filetype = convert.guess_format(path)\n            if not filetype:\n                self.argparser.error('Unable to automatically determine the format of the input file. Try specifying '\n                                     'a format with --format.')\n\n        if self.args.names_only:\n            if filetype in ('xls', 'xlsx'):\n                sheets = self.sheet_names(path, filetype)\n                for sheet in sheets:\n                    self.output_file.write(f'{sheet}\\n')\n            else:\n                self.argparser.error('You cannot use the -n or --names options with non-Excel files.')\n            return\n\n        # Set the input file.\n        if filetype in ('xls', 'xlsx'):\n            self.input_file = self.open_excel_input_file(path)\n        else:\n            self.input_file = self._open_input_file(path)\n\n        # Set the reader's arguments.\n        kwargs = {}\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n\n        if self.args.schema:\n            schema = self._open_input_file(self.args.schema)\n        elif filetype == 'fixed':\n            raise ValueError('schema must not be null when format is \"fixed\"')\n\n        if filetype == 'csv':\n            kwargs.update(self.reader_kwargs)\n            kwargs['sniff_limit'] = sniff_limit\n\n        if filetype in ('xls', 'xlsx'):\n            kwargs['header'] = not self.args.no_header_row\n\n        if filetype not in ('dbf', 'geojson', 'json', 'ndjson'):  # csv, fixed, xls, xlsx\n            kwargs['skip_lines'] = self.args.skip_lines\n\n        if filetype != 'dbf':\n            kwargs['column_types'] = self.get_column_types()\n\n        # Convert the file.\n        if (\n            filetype == 'csv'\n            and self.args.no_inference\n            and not self.args.no_header_row\n            and not self.args.skip_lines\n            and sniff_limit == 0\n        ):\n            reader = agate.csv.reader(self.input_file, **self.reader_kwargs)\n            writer = agate.csv.writer(self.output_file, **self.writer_kwargs)\n            writer.writerows(reader)\n        elif filetype == 'fixed':\n            self.output_file.write(fixed2csv(self.input_file, schema, output=self.output_file, **kwargs))\n        elif filetype == 'geojson':\n            self.output_file.write(geojson2csv(self.input_file, **kwargs))\n        elif filetype in ('csv', 'dbf', 'json', 'ndjson', 'xls', 'xlsx'):\n            if filetype == 'csv':\n                table = agate.Table.from_csv(self.input_file, **kwargs)\n            elif filetype == 'json':\n                table = agate.Table.from_json(self.input_file, key=self.args.key, **kwargs)\n            elif filetype == 'ndjson':\n                table = agate.Table.from_json(self.input_file, key=self.args.key, newline=True, **kwargs)\n            elif filetype == 'xls':\n                table = agate.Table.from_xls(self.input_file, sheet=self.args.sheet,\n                                             encoding_override=self.args.encoding_xls, **kwargs)\n            elif filetype == 'xlsx':\n                table = agate.Table.from_xlsx(self.input_file, sheet=self.args.sheet, **kwargs)\n            elif filetype == 'dbf':\n                if not hasattr(self.input_file, 'name'):\n                    raise ValueError('DBF files can not be converted from stdin. You must pass a filename.')\n                table = agate.Table.from_dbf(self.input_file.name, **kwargs)\n            table.to_csv(self.output_file, **self.writer_kwargs)\n\n        if self.args.write_sheets:\n            # Close and re-open the file, as the file object has been mutated or closed.\n            self.input_file.close()\n\n            self.input_file = self.open_excel_input_file(path)\n\n            if self.args.write_sheets == '-':\n                sheets = self.sheet_names(path, filetype)\n            else:\n                sheets = [int(sheet) if sheet.isdigit() else sheet for sheet in self.args.write_sheets.split(',')]\n\n            if filetype == 'xls':\n                tables = agate.Table.from_xls(self.input_file, sheet=sheets,\n                                              encoding_override=self.args.encoding_xls, **kwargs)\n            elif filetype == 'xlsx':\n                tables = agate.Table.from_xlsx(self.input_file, sheet=sheets, **kwargs)\n\n            base = splitext(self.input_file.name)[0]\n            for i, (sheet_name, table) in enumerate(tables.items()):\n                if self.args.use_sheet_names:\n                    filename = '%s_%s.csv' % (base, sheet_name)\n                else:\n                    filename = '%s_%d.csv' % (base, i)\n                with open(filename, 'w') as f:\n                    table.to_csv(f, **self.writer_kwargs)\n\n        self.input_file.close()\n\n        if self.args.schema:\n            schema.close()",
+                    "func_fullName": "csvkit.utilities.in2csv.In2CSV.main(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the given arguments and options .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, args=None, output_file=None):\n        \"\"\"\n        Perform argument processing and other setup for a CSVKitUtility.\n        \"\"\"\n        self._init_common_parser()\n        self.add_arguments()\n        self.args = self.argparser.parse_args(args)\n        # Output file is only set during testing.\n        if output_file is None:\n            self.output_file = sys.stdout\n        else:\n            self.output_file = output_file\n\n        self.reader_kwargs = self._extract_csv_reader_kwargs()\n        self.writer_kwargs = self._extract_csv_writer_kwargs()\n\n        self._install_exception_handler()\n\n        # Ensure SIGPIPE doesn't throw an exception\n        # Prevents [Errno 32] Broken pipe errors, e.g. when piping to 'head'\n        # To test from the shell:\n        #  python -c \"for i in range(5000): print('a,b,c')\" | csvlook | head\n        # Without this fix you will see at the end:\n        #  [Errno 32] Broken pipe\n        # With this fix, there should be no error\n        # For details on Python and SIGPIPE, see https://bugs.python.org/issue1652\n        try:\n            import signal\n            signal.signal(signal.SIGPIPE, signal.SIG_DFL)\n        except (ImportError, AttributeError):\n            # Do nothing on platforms that don't have signals or don't have SIGPIPE\n            pass",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.__init__(self, args, output_file)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "add_arguments",
+                    "func_desc": "Add common arguments to the parser .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        \"\"\"\n        Called upon initialization once the parser for common arguments has been constructed.\n\n        Should be overriden by individual utilities.\n        \"\"\"\n        raise NotImplementedError('add_arguments must be provided by each subclass of CSVKitUtility.')",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.add_arguments(self)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "_init_common_parser",
+                    "func_desc": "Initialize a common argument parser .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _init_common_parser(self):\n        \"\"\"\n        Prepare a base argparse argument parser so that flags are consistent across different shell command tools.\n        If you want to constrain which common args are present, you can pass a string for 'omitflags'. Any argument\n        whose single-letter form is contained in 'omitflags' will be left out of the configured parser. Use 'f' for\n        file.\n        \"\"\"\n        self.argparser = argparse.ArgumentParser(description=self.description, epilog=self.epilog)\n\n        # Input\n        if 'f' not in self.override_flags:\n            self.argparser.add_argument(\n                metavar='FILE', nargs='?', dest='input_path',\n                help='The CSV file to operate on. If omitted, will accept input as piped data via STDIN.')\n        if 'd' not in self.override_flags:\n            self.argparser.add_argument(\n                '-d', '--delimiter', dest='delimiter',\n                help='Delimiting character of the input CSV file.')\n        if 't' not in self.override_flags:\n            self.argparser.add_argument(\n                '-t', '--tabs', dest='tabs', action='store_true',\n                help='Specify that the input CSV file is delimited with tabs. Overrides \"-d\".')\n        if 'q' not in self.override_flags:\n            self.argparser.add_argument(\n                '-q', '--quotechar', dest='quotechar',\n                help='Character used to quote strings in the input CSV file.')\n        if 'u' not in self.override_flags:\n            self.argparser.add_argument(\n                '-u', '--quoting', dest='quoting', type=int, choices=[0, 1, 2, 3],\n                help='Quoting style used in the input CSV file. 0 = Quote Minimal, 1 = Quote All, '\n                     '2 = Quote Non-numeric, 3 = Quote None.')\n        if 'b' not in self.override_flags:\n            self.argparser.add_argument(\n                '-b', '--no-doublequote', dest='doublequote', action='store_false',\n                help='Whether or not double quotes are doubled in the input CSV file.')\n        if 'p' not in self.override_flags:\n            self.argparser.add_argument(\n                '-p', '--escapechar', dest='escapechar',\n                help='Character used to escape the delimiter if --quoting 3 (\"Quote None\") is specified and to escape '\n                     'the QUOTECHAR if --no-doublequote is specified.')\n        if 'z' not in self.override_flags:\n            self.argparser.add_argument(\n                '-z', '--maxfieldsize', dest='field_size_limit', type=int,\n                help='Maximum length of a single field in the input CSV file.')\n        if 'e' not in self.override_flags:\n            self.argparser.add_argument(\n                '-e', '--encoding', dest='encoding', default='utf-8-sig',\n                help='Specify the encoding of the input CSV file.')\n        if 'L' not in self.override_flags:\n            self.argparser.add_argument(\n                '-L', '--locale', dest='locale', default='en_US',\n                help='Specify the locale (en_US) of any formatted numbers.')\n        if 'S' not in self.override_flags:\n            self.argparser.add_argument(\n                '-S', '--skipinitialspace', dest='skipinitialspace', action='store_true',\n                help='Ignore whitespace immediately following the delimiter.')\n        if 'blanks' not in self.override_flags:\n            self.argparser.add_argument(\n                '--blanks', dest='blanks', action='store_true',\n                help='Do not convert \"\", \"na\", \"n/a\", \"none\", \"null\", \".\" to NULL.')\n        if 'blanks' not in self.override_flags:\n            self.argparser.add_argument(\n                '--null-value', dest='null_values', nargs='+', default=[],\n                help='Convert this value to NULL. --null-value can be specified multiple times.')\n        if 'date-format' not in self.override_flags:\n            self.argparser.add_argument(\n                '--date-format', dest='date_format',\n                help='Specify a strptime date format string like \"%%m/%%d/%%Y\".')\n        if 'datetime-format' not in self.override_flags:\n            self.argparser.add_argument(\n                '--datetime-format', dest='datetime_format',\n                help='Specify a strptime datetime format string like \"%%m/%%d/%%Y %%I:%%M %%p\".')\n        if 'H' not in self.override_flags:\n            self.argparser.add_argument(\n                '-H', '--no-header-row', dest='no_header_row', action='store_true',\n                help='Specify that the input CSV file has no header row. Will create default headers (a,b,c,...).')\n        if 'K' not in self.override_flags:\n            self.argparser.add_argument(\n                '-K', '--skip-lines', dest='skip_lines', type=int, default=0,\n                help='Specify the number of initial lines to skip before the header row (e.g. comments, copyright '\n                     'notices, empty rows).')\n        if 'v' not in self.override_flags:\n            self.argparser.add_argument(\n                '-v', '--verbose', dest='verbose', action='store_true',\n                help='Print detailed tracebacks when errors occur.')\n\n        # Output\n        if 'l' not in self.override_flags:\n            self.argparser.add_argument(\n                '-l', '--linenumbers', dest='line_numbers', action='store_true',\n                help='Insert a column of line numbers at the front of the output. Useful when piping to grep or as a '\n                     'simple primary key.')\n\n        # Input/Output\n        if 'zero' not in self.override_flags:\n            self.argparser.add_argument(\n                '--zero', dest='zero_based', action='store_true',\n                help='When interpreting or displaying column numbers, use zero-based numbering instead of the default '\n                     '1-based numbering.')\n\n        self.argparser.add_argument(\n            '-V', '--version', action='version', version='%(prog)s 1.3.0',\n            help='Display version information and exit.')",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._init_common_parser(self)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "_extract_csv_reader_kwargs",
+                    "func_desc": "Extract those from the command - line arguments those would be passed through to the input CSV reader .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _extract_csv_reader_kwargs(self):\n        \"\"\"\n        Extracts those from the command-line arguments those would should be passed through to the input CSV reader(s).\n        \"\"\"\n        kwargs = {}\n\n        if self.args.tabs:\n            kwargs['delimiter'] = '\\t'\n        elif self.args.delimiter:\n            kwargs['delimiter'] = self.args.delimiter\n\n        for arg in ('quotechar', 'quoting', 'doublequote', 'escapechar', 'field_size_limit', 'skipinitialspace'):\n            value = getattr(self.args, arg)\n            if value is not None:\n                kwargs[arg] = value\n\n        if getattr(self.args, 'no_header_row', None):\n            kwargs['header'] = not self.args.no_header_row\n\n        return kwargs",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._extract_csv_reader_kwargs(self)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "_extract_csv_writer_kwargs",
+                    "func_desc": "Extract the kwargs for the CSV writer .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _extract_csv_writer_kwargs(self):\n        \"\"\"\n        Extracts those from the command-line arguments those would should be passed through to the output CSV writer.\n        \"\"\"\n        kwargs = {}\n\n        if getattr(self.args, 'line_numbers', None):\n            kwargs['line_numbers'] = True\n\n        return kwargs",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._extract_csv_writer_kwargs(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 23,
+                    "func_name": "run",
+                    "func_desc": "A wrapper around the main loop of the utility which handles opening and closing files .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self):\n        \"\"\"\n        A wrapper around the main loop of the utility which handles opening and\n        closing files.\n        \"\"\"\n        if 'f' not in self.override_flags:\n            self.input_file = self._open_input_file(self.args.input_path)\n\n        try:\n            with warnings.catch_warnings():\n                if getattr(self.args, 'no_header_row', None):\n                    warnings.filterwarnings(action='ignore', message='Column names not specified', module='agate')\n\n                self.main()\n        finally:\n            if 'f' not in self.override_flags:\n                self.input_file.close()",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.run(self)"
+                },
+                {
+                    "func_id": 135,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SEVA .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, line_number, row, expected_length):\n        msg = 'Expected %i columns, found %i columns' % (expected_length, len(row))\n        super().__init__(line_number, row, msg)",
+                    "func_fullName": "csvkit.exceptions.LengthMismatchError.__init__(self, line_number, row, expected_length)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVStack class .",
+                    "func_file": "csvstack",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVStack()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvstack.launch_new_instance()"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVFormat class .",
+                    "func_file": "csvformat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVFormat()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvformat.launch_new_instance()"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of CSVPy .",
+                    "func_file": "csvpy",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVPy()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvpy.launch_new_instance()"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of CSVGrep .",
+                    "func_file": "csvgrep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVGrep()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvgrep.launch_new_instance()"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVStat class .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVStat()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvstat.launch_new_instance()"
+                },
+                {
+                    "func_id": 83,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new CSVCut instance .",
+                    "func_file": "csvcut",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVCut()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvcut.launch_new_instance()"
+                },
+                {
+                    "func_id": 86,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of CSVLook .",
+                    "func_file": "csvlook",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVLook()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvlook.launch_new_instance()"
+                },
+                {
+                    "func_id": 90,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of CSVSQL .",
+                    "func_file": "csvsql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVSQL()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvsql.launch_new_instance()"
+                },
+                {
+                    "func_id": 93,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVSort class .",
+                    "func_file": "csvsort",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVSort()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvsort.launch_new_instance()"
+                },
+                {
+                    "func_id": 98,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the NCBI utility .",
+                    "func_file": "in2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = In2CSV()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.in2csv.launch_new_instance()"
+                },
+                {
+                    "func_id": 119,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the Nexus - Catalina utility .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVJSON()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvjson.launch_new_instance()"
+                },
+                {
+                    "func_id": 122,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new SQL2CSV instance .",
+                    "func_file": "sql2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = SQL2CSV()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.sql2csv.launch_new_instance()"
+                },
+                {
+                    "func_id": 126,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVClean class .",
+                    "func_file": "csvclean",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVClean()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvclean.launch_new_instance()"
+                },
+                {
+                    "func_id": 130,
+                    "func_name": "launch_new_instance",
+                    "func_desc": "Launch a new instance of the CSVJoin class .",
+                    "func_file": "csvjoin",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def launch_new_instance():\n    utility = CSVJoin()\n    utility.run()",
+                    "func_fullName": "csvkit.utilities.csvjoin.launch_new_instance()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 24,
+                    "func_name": "main",
+                    "func_desc": "Main loop of the utility .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        \"\"\"\n        Main loop of the utility.\n\n        Should be overriden by individual utilities and explicitly called by the executing script.\n        \"\"\"\n        raise NotImplementedError(' must be provided by each subclass of CSVKitUtility.')",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.main(self)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "main",
+                    "func_desc": "Entry point for the agate command line .",
+                    "func_file": "csvpy",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.input_file == sys.stdin:\n            self.argparser.error('csvpy cannot accept input as piped data via STDIN.')\n\n        # Attempt reading filename, will cause lazy loader to access file and raise error if it does not exist\n        filename = self.input_file.name\n\n        if self.args.as_dict:\n            klass = agate.csv.DictReader\n            class_name = 'agate.csv.DictReader'\n            variable_name = 'reader'\n        elif self.args.as_agate:\n            klass = agate.Table.from_csv\n            class_name = 'agate.Table'\n            variable_name = 'table'\n        else:\n            klass = agate.csv.reader\n            class_name = 'agate.csv.reader'\n            variable_name = 'reader'\n\n        variable = klass(self.input_file, **self.reader_kwargs)\n\n        welcome_message = 'Welcome! \"{}\" has been loaded in an {} object named \"{}\".'.format(\n            filename, class_name, variable_name)\n\n        try:\n            from IPython.frontend.terminal.embed import InteractiveShellEmbed\n            exec(f'{variable_name} = variable')\n            ipy = InteractiveShellEmbed(banner1=welcome_message)\n            ipy()\n        except ImportError:\n            import code\n            code.interact(welcome_message, local={variable_name: variable})",
+                    "func_fullName": "csvkit.utilities.csvpy.CSVPy.main(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 26,
+                    "func_name": "_open_input_file",
+                    "func_desc": "Open the input file specified on the command line .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _open_input_file(self, path, opened=False):\n        \"\"\"\n        Open the input file specified on the command line.\n        \"\"\"\n        if not path or path == '-':\n            # \"UnsupportedOperation: It is not possible to set the encoding or newline of stream after the first read\"\n            if not opened:\n                sys.stdin.reconfigure(encoding=self.args.encoding)\n            f = sys.stdin\n        else:\n            extension = splitext(path)[1]\n\n            if extension == '.gz':\n                func = gzip.open\n            elif extension == '.bz2':\n                func = bz2.open\n            elif extension == \".xz\":\n                func = lzma.open\n            else:\n                func = open\n\n            f = LazyFile(func, path, mode='rt', encoding=self.args.encoding)\n\n        return f",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._open_input_file(self, path, opened)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "get_column_types",
+                    "func_desc": "This function returns a TypeTester object with the correct types for a given column .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_column_types(self):\n        if getattr(self.args, 'blanks', None):\n            type_kwargs = {'null_values': []}\n        else:\n            type_kwargs = {'null_values': list(DEFAULT_NULL_VALUES)}\n        for null_value in getattr(self.args, 'null_values', []):\n            type_kwargs['null_values'].append(null_value)\n\n        text_type = agate.Text(**type_kwargs)\n\n        if self.args.no_inference:\n            types = [text_type]\n        else:\n            number_type = agate.Number(locale=self.args.locale, **type_kwargs)\n\n            # See the order in the `agate.TypeTester` class.\n            types = [\n                agate.Boolean(**type_kwargs),\n                agate.TimeDelta(**type_kwargs),\n                agate.Date(date_format=self.args.date_format, **type_kwargs),\n                agate.DateTime(datetime_format=self.args.datetime_format, **type_kwargs),\n                text_type,\n            ]\n\n            # In order to parse dates like \"20010101\".\n            if self.args.date_format or self.args.datetime_format:\n                types.insert(-1, number_type)\n            else:\n                types.insert(1, number_type)\n\n        return agate.TypeTester(types=types)",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.get_column_types(self)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "get_column_offset",
+                    "func_desc": "Returns the column offset of the nexus log record .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_column_offset(self):\n        if self.args.zero_based:\n            return 0\n        return 1",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.get_column_offset(self)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "skip_lines",
+                    "func_desc": "This function skips the specified number of lines from the beginning of the file .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def skip_lines(self):\n        if isinstance(self.args.skip_lines, int):\n            while self.args.skip_lines > 0:\n                self.input_file.readline()\n                self.args.skip_lines -= 1\n        else:\n            raise ValueError('skip_lines argument must be an int')\n\n        return self.input_file",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.skip_lines(self)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "get_rows_and_column_names_and_column_ids",
+                    "func_desc": "Get rows column names and column ids .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_rows_and_column_names_and_column_ids(self, **kwargs):\n        rows = agate.csv.reader(self.skip_lines(), **kwargs)\n\n        try:\n            next_row = next(rows)\n        except StopIteration:\n            return iter([]), [], []\n\n        if self.args.no_header_row:\n            # Peek at a row to get the number of columns.\n            row = next_row\n            rows = itertools.chain([row], rows)\n            column_names = make_default_headers(len(row))\n        else:\n            column_names = next_row\n\n        column_offset = self.get_column_offset()\n        if kwargs.get('line_numbers'):\n            column_offset -= 1\n\n        column_ids = parse_column_identifiers(\n            self.args.columns,\n            column_names,\n            column_offset,\n            getattr(self.args, 'not_columns', None),\n        )\n\n        return rows, column_names, column_ids",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.get_rows_and_column_names_and_column_ids(self, kwargs)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "print_column_names",
+                    "func_desc": "Pretty - print the names and indices of all columns to a file - like object .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def print_column_names(self):\n        \"\"\"\n        Pretty-prints the names and indices of all columns to a file-like object (usually sys.stdout).\n        \"\"\"\n        if getattr(self.args, 'no_header_row', None):\n            raise RequiredHeaderError('You cannot use --no-header-row with the -n or --names options.')\n\n        if getattr(self.args, 'zero_based', None):\n            start = 0\n        else:\n            start = 1\n\n        rows = agate.csv.reader(self.skip_lines(), **self.reader_kwargs)\n        column_names = next(rows)\n\n        for i, c in enumerate(column_names, start):\n            self.output_file.write('%3i: %s\\n' % (i, c))",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.print_column_names(self)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "additional_input_expected",
+                    "func_desc": "Returns True if the user is expected to input a file .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def additional_input_expected(self):\n        return isatty(sys.stdin) and not self.args.input_path",
+                    "func_fullName": "csvkit.cli.CSVKitUtility.additional_input_expected(self)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "isatty",
+                    "func_desc": "Check if file is a tty .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def isatty(f):\n    try:\n        return f.isatty()\n    except ValueError:  # I/O operation on closed file\n        return False",
+                    "func_fullName": "csvkit.cli.isatty(f)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "make_default_headers",
+                    "func_desc": "Make a set of simple default headers for files that are missing them .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_default_headers(n):\n    \"\"\"\n    Make a set of simple, default headers for files that are missing them.\n    \"\"\"\n    return tuple(agate.utils.letter_name(i) for i in range(n))",
+                    "func_fullName": "csvkit.cli.make_default_headers(n)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "main",
+                    "func_desc": "Entry point for the agate command line utility .",
+                    "func_file": "csvstack",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if isatty(sys.stdin) and self.args.input_paths == ['-']:\n            sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n        has_groups = self.args.groups is not None or self.args.group_by_filenames\n\n        if self.args.groups is not None and not self.args.group_by_filenames:\n            groups = self.args.groups.split(',')\n\n            if len(groups) != len(self.args.input_paths):\n                self.argparser.error(\n                    'The number of grouping values must be equal to the number of CSV files being stacked.')\n        else:\n            groups = None\n\n        group_name = self.args.group_name if self.args.group_name else 'group'\n        use_fieldnames = not self.args.no_header_row\n\n        if use_fieldnames:\n            Reader = agate.csv.DictReader\n        else:\n            Reader = agate.csv.reader\n\n        headers = []\n        stdin_fieldnames = []\n        stdin_first_row = []\n\n        for path in self.args.input_paths:\n            f = self._open_input_file(path)\n            file_is_stdin = path == '-'\n\n            _skip_lines(f, self.args)\n            rows = Reader(f, **self.reader_kwargs)\n\n            if use_fieldnames:\n                for field in rows.fieldnames:\n                    if field not in headers:\n                        headers.append(field)\n\n                # If the file is standard input, store the fieldnames so that the rows can be read correctly later.\n                if file_is_stdin:\n                    stdin_fieldnames = rows.fieldnames\n                else:\n                    f.close()\n            else:\n                row = next(rows, [])\n                headers = list(make_default_headers(len(row)))\n\n                # If the file is standard input, store the row that was used to calculate the number of columns.\n                if file_is_stdin:\n                    stdin_first_row = row\n                else:\n                    f.close()\n\n                # If we aren't using header rows, we only look at the first file and stack columns in the same order.\n                break\n\n        if has_groups:\n            headers.insert(0, group_name)\n\n        if use_fieldnames:\n            output = agate.csv.DictWriter(self.output_file, fieldnames=headers, **self.writer_kwargs)\n            output.writeheader()\n        else:\n            output = agate.csv.writer(self.output_file, **self.writer_kwargs)\n            output.writerow(headers)\n\n        for i, path in enumerate(self.args.input_paths):\n            f = self._open_input_file(path, opened=True)\n            file_is_stdin = path == '-'\n\n            if has_groups:\n                if groups:\n                    group = groups[i]\n                else:\n                    group = os.path.basename(f.name)\n\n            # If the file is standard input, we've already skipped any lines above, to find its header row.\n            if not file_is_stdin:\n                _skip_lines(f, self.args)\n\n            # If the file is standard input, we've already read the header row, so we need to provide it here.\n            kwargs = {}\n            if file_is_stdin and use_fieldnames:\n                kwargs['fieldnames'] = stdin_fieldnames\n\n            rows = Reader(f, **self.reader_kwargs, **kwargs)\n\n            # If the file is standard input, we need to add back the row we used to calculate the number of columns.\n            if file_is_stdin and stdin_first_row:\n                output.writerow(stdin_first_row)\n\n            for row in rows:\n                if has_groups:\n                    if use_fieldnames:\n                        row[group_name] = group\n                    else:\n                        row.insert(0, group)\n\n                output.writerow(row)\n\n            f.close()",
+                    "func_fullName": "csvkit.utilities.csvstack.CSVStack.main(self)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command line tool .",
+                    "func_file": "csvformat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.additional_input_expected():\n            sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n        reader = agate.csv.reader(self.skip_lines(), **self.reader_kwargs)\n        writer = agate.csv.writer(self.output_file, **self.writer_kwargs)\n        if self.args.no_header_row:\n            # Peek at a row to get the number of columns.\n            _row = next(reader)\n            headers = make_default_headers(len(_row))\n            reader = itertools.chain([headers, _row], reader)\n\n        if self.args.skip_header:\n            next(reader)\n\n        writer.writerows(reader)",
+                    "func_fullName": "csvkit.utilities.csvformat.CSVFormat.main(self)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command line tool .",
+                    "func_file": "csvgrep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.args.names_only:\n            self.print_column_names()\n            return\n\n        if self.additional_input_expected():\n            sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n        if not self.args.columns:\n            self.argparser.error('You must specify at least one column to search using the -c option.')\n\n        if self.args.regex is None and self.args.pattern is None and self.args.matchfile is None:\n            self.argparser.error('One of -r, -m or -f must be specified, unless using the -n option.')\n\n        reader_kwargs = self.reader_kwargs\n        writer_kwargs = self.writer_kwargs\n        # Move the line_numbers option from the writer to the reader.\n        if writer_kwargs.pop('line_numbers', False):\n            reader_kwargs['line_numbers'] = True\n\n        rows, column_names, column_ids = self.get_rows_and_column_names_and_column_ids(**reader_kwargs)\n\n        if self.args.regex:\n            pattern = re.compile(self.args.regex)\n        elif self.args.matchfile:\n            lines = {line.rstrip() for line in self.args.matchfile}\n            self.args.matchfile.close()\n\n            def pattern(x):\n                return x in lines\n        else:\n            pattern = self.args.pattern\n\n        patterns = {column_id: pattern for column_id in column_ids}\n        filter_reader = FilteringCSVReader(rows, header=False, patterns=patterns,\n                                           inverse=self.args.inverse, any_match=self.args.any_match)\n\n        output = agate.csv.writer(self.output_file, **writer_kwargs)\n        output.writerow(column_names)\n\n        for row in filter_reader:\n            output.writerow(row)",
+                    "func_fullName": "csvkit.utilities.csvgrep.CSVGrep.main(self)"
+                },
+                {
+                    "func_id": 67,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command line interface .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.args.names_only:\n            self.print_column_names()\n            return\n\n        if self.additional_input_expected():\n            self.argparser.error('You must provide an input file or piped data.')\n\n        operations = [op for op in OPERATIONS.keys() if getattr(self.args, op + '_only')]\n\n        if len(operations) > 1:\n            self.argparser.error('Only one operation argument may be specified (--mean, --median, etc).')\n\n        if operations and self.args.csv_output:\n            self.argparser.error(\n                'You may not specify --csv and an operation (--mean, --median, etc) at the same time.')\n        if operations and self.args.json_output:\n            self.argparser.error(\n                'You may not specify --json and an operation (--mean, --median, etc) at the same time.')\n        if operations and self.args.count_only:\n            self.argparser.error(\n                'You may not specify --count and an operation (--mean, --median, etc) at the same time.')\n\n        if self.args.count_only:\n            count = len(list(agate.csv.reader(self.skip_lines(), **self.reader_kwargs)))\n\n            if not self.args.no_header_row:\n                count -= 1\n\n            self.output_file.write('%i\\n' % count)\n\n            return\n\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n        table = agate.Table.from_csv(\n            self.input_file,\n            skip_lines=self.args.skip_lines,\n            sniff_limit=sniff_limit,\n            column_types=self.get_column_types(),\n            **self.reader_kwargs,\n        )\n\n        column_ids = parse_column_identifiers(\n            self.args.columns,\n            table.column_names,\n            self.get_column_offset(),\n        )\n\n        kwargs = {}\n\n        if self.args.freq_count:\n            kwargs['freq_count'] = self.args.freq_count\n\n        # Output a single stat\n        if operations:\n            if len(column_ids) == 1:\n                self.print_one(table, column_ids[0], operations[0], label=False, **kwargs)\n            else:\n                for column_id in column_ids:\n                    self.print_one(table, column_id, operations[0], **kwargs)\n        else:\n            stats = {}\n\n            for column_id in column_ids:\n                stats[column_id] = self.calculate_stats(table, column_id, **kwargs)\n\n            if self.args.csv_output:\n                self.print_csv(table, column_ids, stats)\n            elif self.args.json_output:\n                self.print_json(table, column_ids, stats)\n            else:\n                self.print_stats(table, column_ids, stats)",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.main(self)"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "main",
+                    "func_desc": "This is the entry point for the agate command .",
+                    "func_file": "csvcut",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.args.names_only:\n            self.print_column_names()\n            return\n\n        if self.additional_input_expected():\n            sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n        rows, column_names, column_ids = self.get_rows_and_column_names_and_column_ids(**self.reader_kwargs)\n\n        output = agate.csv.writer(self.output_file, **self.writer_kwargs)\n        output.writerow([column_names[column_id] for column_id in column_ids])\n\n        for row in rows:\n            out_row = [row[column_id] if column_id < len(row) else None for column_id in column_ids]\n\n            if not self.args.delete_empty or any(out_row):\n                output.writerow(out_row)",
+                    "func_fullName": "csvkit.utilities.csvcut.CSVCut.main(self)"
+                },
+                {
+                    "func_id": 85,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command line interface .",
+                    "func_file": "csvlook",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.additional_input_expected():\n            self.argparser.error('You must provide an input file or piped data.')\n\n        kwargs = {}\n        # In agate, max_precision defaults to 3. None means infinity.\n        if self.args.max_precision is not None:\n            kwargs['max_precision'] = self.args.max_precision\n\n        if self.args.no_number_ellipsis:\n            config.set_option('number_truncation_chars', '')\n\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n        table = agate.Table.from_csv(\n            self.input_file,\n            skip_lines=self.args.skip_lines,\n            sniff_limit=sniff_limit,\n            column_types=self.get_column_types(),\n            line_numbers=self.args.line_numbers,\n            **self.reader_kwargs,\n        )\n\n        table.print_table(\n            output=self.output_file,\n            max_rows=self.args.max_rows,\n            max_columns=self.args.max_columns,\n            max_column_width=self.args.max_column_width,\n            **kwargs,\n        )",
+                    "func_fullName": "csvkit.utilities.csvlook.CSVLook.main(self)"
+                },
+                {
+                    "func_id": 88,
+                    "func_name": "main",
+                    "func_desc": "Main function of the command line interface .",
+                    "func_file": "csvsql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if isatty(sys.stdin) and self.args.input_paths == ['-']:\n            self.argparser.error('You must provide an input file or piped data.')\n\n        self.input_files = []\n        self.connection = None\n        self.table_names = []\n        self.unique_constraint = []\n\n        if self.args.table_names:\n            self.table_names = self.args.table_names.split(',')\n        if self.args.unique_constraint:\n            self.unique_constraint = self.args.unique_constraint.split(',')\n\n        # Create an SQLite database in memory if no connection string is specified\n        if self.args.queries and not self.args.connection_string:\n            self.args.connection_string = \"sqlite:///:memory:\"\n            self.args.insert = True\n\n        if self.args.dialect and self.args.connection_string:\n            self.argparser.error('The --dialect option is only valid when neither --db nor --query are specified.')\n        if self.args.insert and not self.args.connection_string:\n            self.argparser.error('The --insert option is only valid when either --db or --query is specified.')\n\n        if self.args.no_create and not self.args.insert:\n            self.argparser.error('The --no-create option is only valid if --insert is also specified.')\n        if self.args.create_if_not_exists and not self.args.insert:\n            self.argparser.error('The --create-if-not-exists option is only valid if --insert is also specified.')\n        if self.args.overwrite and not self.args.insert:\n            self.argparser.error('The --overwrite option is only valid if --insert is also specified.')\n        if self.args.overwrite and self.args.no_create:\n            self.argparser.error('The --overwrite option is only valid if --no-create is not specified.')\n        if self.args.before_insert and not self.args.insert:\n            self.argparser.error('The --before-insert option is only valid if --insert is also specified.')\n        if self.args.after_insert and not self.args.insert:\n            self.argparser.error('The --after-insert option is only valid if --insert is also specified.')\n        if self.args.chunk_size and not self.args.insert:\n            self.argparser.error('The --chunk-size option is only valid if --insert is also specified.')\n\n        if self.args.no_create and self.args.create_if_not_exists:\n            self.argparser.error('The --no-create and --create-if-not-exists options are mutually exclusive.')\n\n        # Lazy open files\n        for path in self.args.input_paths:\n            self.input_files.append(self._open_input_file(path))\n\n        # Establish database validity before reading CSV files\n        if self.args.connection_string:\n            try:\n                engine = create_engine(self.args.connection_string)\n            except ImportError as e:\n                raise ImportError(\n                    \"You don't appear to have the necessary database backend installed for connection string you're \"\n                    \"trying to use. Available backends include:\\n\\nPostgreSQL:\\tpip install psycopg2\\nMySQL:\\t\\tpip \"\n                    \"install mysql-connector-python OR pip install mysqlclient\\n\\nFor details on connection strings \"\n                    \"and other backends, please see the SQLAlchemy documentation on dialects at:\\n\\n\"\n                    \"https://www.sqlalchemy.org/docs/dialects/\\n\\n\"\n                ) from e\n\n            self.connection = engine.connect()\n\n        try:\n            self._failsafe_main()\n        finally:\n            for f in self.input_files:\n                f.close()\n\n            if self.connection:\n                self.connection.close()\n                engine.dispose()",
+                    "func_fullName": "csvkit.utilities.csvsql.CSVSQL.main(self)"
+                },
+                {
+                    "func_id": 89,
+                    "func_name": "_failsafe_main",
+                    "func_desc": "Inner main function .",
+                    "func_file": "csvsql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _failsafe_main(self):\n        \"\"\"\n        Inner main function. If anything fails in here, file handles and\n        database connections will be safely closed.\n        \"\"\"\n        if self.connection:\n            transaction = self.connection.begin()\n\n        for f in self.input_files:\n            try:\n                # Try to use name specified via --tables\n                table_name = self.table_names.pop(0)\n            except IndexError:\n                if f == sys.stdin:\n                    table_name = \"stdin\"\n                else:\n                    # Use filename as table name\n                    table_name = os.path.splitext(os.path.basename(f.name))[0]\n\n            table = None\n            sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n\n            try:\n                table = agate.Table.from_csv(\n                    f,\n                    skip_lines=self.args.skip_lines,\n                    sniff_limit=sniff_limit,\n                    column_types=self.get_column_types(),\n                    **self.reader_kwargs,\n                )\n            except StopIteration:\n                # Catch cases where no table data was provided and fall through\n                # to query logic\n                continue\n\n            if table:\n                if self.connection:\n                    if self.args.before_insert:\n                        for query in self.args.before_insert.split(';'):\n                            self.connection.exec_driver_sql(query)\n\n                    table.to_sql(\n                        self.connection,\n                        table_name,\n                        overwrite=self.args.overwrite,\n                        create=not self.args.no_create,\n                        create_if_not_exists=self.args.create_if_not_exists,\n                        insert=self.args.insert and len(table.rows) > 0,\n                        prefixes=self.args.prefix,\n                        db_schema=self.args.db_schema,\n                        constraints=not self.args.no_constraints,\n                        unique_constraint=self.unique_constraint,\n                        chunk_size=self.args.chunk_size,\n                    )\n\n                    if self.args.after_insert:\n                        for query in self.args.after_insert.split(';'):\n                            self.connection.exec_driver_sql(query)\n\n                # Output SQL statements\n                else:\n                    statement = table.to_sql_create_statement(\n                        table_name,\n                        dialect=self.args.dialect,\n                        db_schema=self.args.db_schema,\n                        constraints=not self.args.no_constraints,\n                        unique_constraint=self.unique_constraint,\n                    )\n\n                    self.output_file.write(f'{statement}\\n')\n\n        if self.connection:\n            if self.args.queries:\n                queries = []\n                for query in self.args.queries:\n                    if os.path.exists(query):\n                        with open(query) as f:\n                            query = f.read()\n                    queries += query.split(';')\n\n                # Execute the specified SQL queries.\n                rows = None\n\n                for query in queries:\n                    if query.strip():\n                        rows = self.connection.exec_driver_sql(query)\n\n                # Output the result of the last query as CSV\n                if rows.returns_rows:\n                    output = agate.csv.writer(self.output_file, **self.writer_kwargs)\n                    output.writerow(rows._metadata.keys)\n                    for row in rows:\n                        output.writerow(row)\n\n            transaction.commit()",
+                    "func_fullName": "csvkit.utilities.csvsql.CSVSQL._failsafe_main(self)"
+                },
+                {
+                    "func_id": 92,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command line interface .",
+                    "func_file": "csvsort",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.args.names_only:\n            self.print_column_names()\n            return\n\n        if self.additional_input_expected():\n            self.argparser.error('You must provide an input file or piped data.')\n\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n        table = agate.Table.from_csv(\n            self.input_file,\n            skip_lines=self.args.skip_lines,\n            sniff_limit=sniff_limit,\n            column_types=self.get_column_types(),\n            **self.reader_kwargs,\n        )\n\n        column_ids = parse_column_identifiers(\n            self.args.columns,\n            table.column_names,\n            self.get_column_offset(),\n        )\n\n        table = table.order_by(column_ids, reverse=self.args.reverse)\n        table.to_csv(self.output_file, **self.writer_kwargs)",
+                    "func_fullName": "csvkit.utilities.csvsort.CSVSort.main(self)"
+                },
+                {
+                    "func_id": 121,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the agate command .",
+                    "func_file": "sql2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.additional_input_expected() and not self.args.query:\n            self.argparser.error('You must provide an input file or piped data.')\n\n        try:\n            engine = create_engine(self.args.connection_string)\n        except ImportError as e:\n            raise ImportError(\n                \"You don't appear to have the necessary database backend installed for connection string you're \"\n                \"trying to use. Available backends include:\\n\\nPostgreSQL:\\tpip install psycopg2\\nMySQL:\\t\\tpip \"\n                \"install mysql-connector-python OR pip install mysqlclient\\n\\nFor details on connection strings \"\n                \"and other backends, please see the SQLAlchemy documentation on dialects at:\\n\\n\"\n                \"https://www.sqlalchemy.org/docs/dialects/\\n\\n\"\n            ) from e\n\n        connection = engine.connect()\n\n        if self.args.query:\n            query = self.args.query.strip()\n        else:\n            query = \"\"\n\n            self.input_file = self._open_input_file(self.args.input_path)\n\n            for line in self.input_file:\n                query += line\n\n            self.input_file.close()\n\n        rows = connection.execution_options(no_parameters=True).exec_driver_sql(query)\n        output = agate.csv.writer(self.output_file, **self.writer_kwargs)\n\n        if rows.returns_rows:\n            if not self.args.no_header_row:\n                output.writerow(rows._metadata.keys)\n\n            for row in rows:\n                output.writerow(row)\n\n        connection.close()\n        engine.dispose()",
+                    "func_fullName": "csvkit.utilities.sql2csv.SQL2CSV.main(self)"
+                },
+                {
+                    "func_id": 124,
+                    "func_name": "main",
+                    "func_desc": "This function is the entry point for the AGVIV2 command .",
+                    "func_file": "csvclean",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if self.additional_input_expected():\n            sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n        reader = agate.csv.reader(self.skip_lines(), **self.reader_kwargs)\n\n        if self.args.dryrun:\n            checker = RowChecker(reader)\n\n            for _row in checker.checked_rows():\n                pass\n\n            if checker.errors:\n                for e in checker.errors:\n                    self.output_file.write('Line %i: %s\\n' % (e.line_number, e.msg))\n            else:\n                self.output_file.write('No errors.\\n')\n\n            if checker.joins:\n                self.output_file.write('%i rows would have been joined/reduced to %i rows after eliminating expected '\n                                       'internal line breaks.\\n' % (checker.rows_joined, checker.joins))\n        else:\n            if self.input_file == sys.stdin:\n                base = 'stdin'  # \"<stdin>_out.csv\" is invalid on Windows\n            else:\n                base = splitext(self.input_file.name)[0]\n\n            with open(f'{base}_out.csv', 'w') as f:\n                clean_writer = agate.csv.writer(f, **self.writer_kwargs)\n\n                checker = RowChecker(reader)\n                clean_writer.writerow(checker.column_names)\n\n                for row in checker.checked_rows():\n                    clean_writer.writerow(row)\n\n            if checker.errors:\n                error_filename = f'{base}_err.csv'\n\n                with open(error_filename, 'w') as f:\n                    error_writer = agate.csv.writer(f, **self.writer_kwargs)\n\n                    error_header = ['line_number', 'msg']\n                    error_header.extend(checker.column_names)\n                    error_writer.writerow(error_header)\n\n                    error_count = len(checker.errors)\n\n                    for e in checker.errors:\n                        error_writer.writerow(self._format_error_row(e))\n\n                self.output_file.write('%i error%s logged to %s\\n' % (\n                    error_count, '' if error_count == 1 else 's', error_filename))\n            else:\n                self.output_file.write('No errors.\\n')\n\n            if checker.joins:\n                self.output_file.write('%i rows were joined/reduced to %i rows after eliminating expected internal '\n                                       'line breaks.\\n' % (checker.rows_joined, checker.joins))",
+                    "func_fullName": "csvkit.utilities.csvclean.CSVClean.main(self)"
+                },
+                {
+                    "func_id": 128,
+                    "func_name": "main",
+                    "func_desc": "Main function of the AGate command .",
+                    "func_file": "csvjoin",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        if isatty(sys.stdin) and self.args.input_paths == ['-']:\n            self.argparser.error('You must provide an input file or piped data.')\n\n        self.input_files = []\n\n        for path in self.args.input_paths:\n            self.input_files.append(self._open_input_file(path))\n\n        if self.args.columns:\n            join_column_names = self._parse_join_column_names(self.args.columns)\n\n            if len(join_column_names) == 1:\n                join_column_names = join_column_names * len(self.input_files)\n\n            if len(join_column_names) != len(self.input_files):\n                self.argparser.error('The number of join column names must match the number of files, or be a single '\n                                     'column name that exists in all files.')\n\n        if (self.args.left_join or self.args.right_join or self.args.outer_join) and not self.args.columns:\n            self.argparser.error('You must provide join column names when performing an outer join.')\n\n        if self.args.left_join and self.args.right_join:\n            self.argparser.error('It is not valid to specify both a left and a right join.')\n\n        tables = []\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n        column_types = self.get_column_types()\n\n        for f in self.input_files:\n            tables.append(agate.Table.from_csv(\n                f,\n                skip_lines=self.args.skip_lines,\n                sniff_limit=sniff_limit,\n                column_types=column_types,\n                **self.reader_kwargs,\n            ))\n            f.close()\n\n        join_column_ids = []\n\n        if self.args.columns:\n            for i, table in enumerate(tables):\n                join_column_ids.append(match_column_identifier(table.column_names, join_column_names[i]))\n\n        jointab = tables[0]\n\n        if self.args.left_join:\n            # Left outer join\n            for i, table in enumerate(tables[1:]):\n                jointab = agate.Table.join(jointab, table, join_column_ids[0], join_column_ids[i + 1])\n        elif self.args.right_join:\n            # Right outer join\n            jointab = tables[-1]\n\n            remaining_tables = tables[:-1]\n            remaining_tables.reverse()\n\n            for i, table in enumerate(remaining_tables):\n                jointab = agate.Table.join(jointab, table, join_column_ids[-1], join_column_ids[-(i + 2)])\n        elif self.args.outer_join:\n            # Full outer join\n            for i, table in enumerate(tables[1:]):\n                jointab = agate.Table.join(jointab, table, join_column_ids[0], join_column_ids[i + 1], full_outer=True)\n        elif self.args.columns:\n            # Inner join\n            for i, table in enumerate(tables[1:]):\n                jointab = agate.Table.join(jointab, table, join_column_ids[0], join_column_ids[i + 1], inner=True)\n        else:\n            # Sequential join\n            for table in tables[1:]:\n                jointab = agate.Table.join(jointab, table, full_outer=True)\n\n        jointab.to_csv(self.output_file, **self.writer_kwargs)",
+                    "func_fullName": "csvkit.utilities.csvjoin.CSVJoin.main(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 29,
+                    "func_name": "_install_exception_handler",
+                    "func_desc": "Installs a replacement for sys . excepthook which handles pretty printing uncaught exceptions .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _install_exception_handler(self):\n        \"\"\"\n        Installs a replacement for sys.excepthook, which handles pretty-printing uncaught exceptions.\n        \"\"\"\n        def handler(t, value, traceback):\n            if self.args.verbose:\n                sys.__excepthook__(t, value, traceback)\n            else:\n                # Special case handling for Unicode errors, which behave very strangely\n                # when cast with unicode()\n                if t == UnicodeDecodeError:\n                    sys.stderr.write('Your file is not \"%s\" encoded. Please specify the correct encoding with the -e '\n                                     'flag or with the PYTHONIOENCODING environment variable. Use the -v flag to see '\n                                     'the complete error.\\n' % self.args.encoding)\n                else:\n                    sys.stderr.write(f'{t.__name__}: {str(value)}\\n')\n\n        sys.excepthook = handler",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._install_exception_handler(self)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "handler",
+                    "func_desc": "Catch exception and print error message .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def handler(t, value, traceback):\n            if self.args.verbose:\n                sys.__excepthook__(t, value, traceback)\n            else:\n                # Special case handling for Unicode errors, which behave very strangely\n                # when cast with unicode()\n                if t == UnicodeDecodeError:\n                    sys.stderr.write('Your file is not \"%s\" encoded. Please specify the correct encoding with the -e '\n                                     'flag or with the PYTHONIOENCODING environment variable. Use the -v flag to see '\n                                     'the complete error.\\n' % self.args.encoding)\n                else:\n                    sys.stderr.write(f'{t.__name__}: {str(value)}\\n')",
+                    "func_fullName": "csvkit.cli.CSVKitUtility._install_exception_handler.handler(t, value, traceback)"
+                },
+                {
+                    "func_id": 132,
+                    "func_name": "__unicode__",
+                    "func_desc": "Return the message as a unicode string .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __unicode__(self):\n        return self.msg",
+                    "func_fullName": "csvkit.exceptions.CustomException.__unicode__(self)"
+                },
+                {
+                    "func_id": 133,
+                    "func_name": "__str__",
+                    "func_desc": "Returns the message of the error .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __str__(self):\n        return self.msg",
+                    "func_fullName": "csvkit.exceptions.CustomException.__str__(self)"
+                },
+                {
+                    "func_id": 125,
+                    "func_name": "_format_error_row",
+                    "func_desc": "Formats a single error row for the log .",
+                    "func_file": "csvclean",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _format_error_row(self, error):\n        row = [error.line_number, error.msg]\n        row.extend(error.row)\n\n        return row",
+                    "func_fullName": "csvkit.utilities.csvclean.CSVClean._format_error_row(self, error)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 37,
+                    "func_name": "default_str_decimal",
+                    "func_desc": "Default string representation of a object .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def default_str_decimal(obj):\n    if isinstance(obj, (datetime.date, datetime.datetime)):\n        return obj.isoformat()\n    if isinstance(obj, decimal.Decimal):\n        return str(obj)\n    raise TypeError(f'{repr(obj)} is not JSON serializable')",
+                    "func_fullName": "csvkit.cli.default_str_decimal(obj)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "default_float_decimal",
+                    "func_desc": "Default float_decimal function for nanoseconds .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def default_float_decimal(obj):\n    if isinstance(obj, decimal.Decimal):\n        return float(obj)\n    return default_str_decimal(obj)",
+                    "func_fullName": "csvkit.cli.default_float_decimal(obj)"
+                },
+                {
+                    "func_id": 113,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for Accuracy .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def __init__(self):\n                self.min_lon = None\n                self.min_lat = None\n                self.max_lon = None\n                self.max_lat = None",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.__init__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 40,
+                    "func_name": "match_column_identifier",
+                    "func_desc": "Determines what column a single column id matches in a series of column names .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def match_column_identifier(column_names, c, column_offset=1):\n    \"\"\"\n    Determine what column a single column id (name or index) matches in a series of column names.\n    Note that integer values are *always* treated as positional identifiers. If you happen to have\n    column names which are also integers, you must specify them using a positional index.\n    \"\"\"\n    if isinstance(c, str) and not c.isdigit() and c in column_names:\n        return column_names.index(c)\n\n    try:\n        c = int(c) - column_offset\n    # Fail out if neither a column name nor an integer\n    except ValueError:\n        raise ColumnIdentifierError(\"Column '%s' is invalid. It is neither an integer nor a column name. \"\n                                    \"Column names are: %s\" % (c, repr(column_names)[1:-1]))\n\n    # Fail out if index is 0-based\n    if c < 0:\n        raise ColumnIdentifierError(\"Column %i is invalid. Columns are 1-based.\" % (c + column_offset))\n\n    # Fail out if index is out of range\n    if c >= len(column_names):\n        raise ColumnIdentifierError(\"Column %i is invalid. The last column is '%s' at index %i.\" % (\n            c + column_offset, column_names[-1], len(column_names) - 1 + column_offset))\n\n    return c",
+                    "func_fullName": "csvkit.cli.match_column_identifier(column_names, c, column_offset)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "parse_column_identifiers",
+                    "func_desc": "Parse a comma - separated list of column indices AND or names into a list of integer indices .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_column_identifiers(ids, column_names, column_offset=1, excluded_columns=None):\n    \"\"\"\n    Parse a comma-separated list of column indices AND/OR names into a list of integer indices.\n    Ranges of integers can be specified with two integers separated by a '-' or ':' character.\n    Ranges of non-integers (e.g. column names) are not supported.\n    Note: Column indices are 1-based.\n    \"\"\"\n    if not column_names:\n        return []\n\n    if not ids and not excluded_columns:\n        return range(len(column_names))\n\n    if ids:\n        columns = []\n\n        for c in ids.split(','):\n            try:\n                columns.append(match_column_identifier(column_names, c, column_offset))\n            except ColumnIdentifierError:\n                if ':' in c:\n                    a, b = c.split(':', 1)\n                elif '-' in c:\n                    a, b = c.split('-', 1)\n                else:\n                    raise\n\n                try:\n                    a = int(a) if a else 1\n                    b = int(b) + 1 if b else len(column_names) + 1\n                except ValueError:\n                    raise ColumnIdentifierError(\n                        \"Invalid range %s. Ranges must be two integers separated by a - or : character.\")\n\n                for x in range(a, b):\n                    columns.append(match_column_identifier(column_names, x, column_offset))\n    else:\n        columns = range(len(column_names))\n\n    excludes = []\n\n    if excluded_columns:\n        for c in excluded_columns.split(','):\n            try:\n                excludes.append(match_column_identifier(column_names, c, column_offset))\n            except ColumnIdentifierError:\n                if ':' in c:\n                    a, b = c.split(':', 1)\n                elif '-' in c:\n                    a, b = c.split('-', 1)\n                else:\n                    raise\n\n                try:\n                    a = int(a) if a else 1\n                    b = int(b) + 1 if b else len(column_names)\n                except ValueError:\n                    raise ColumnIdentifierError(\n                        \"Invalid range %s. Ranges must be two integers separated by a - or : character.\")\n\n                for x in range(a, b):\n                    excludes.append(match_column_identifier(column_names, x, column_offset))\n\n    return [c for c in columns if c not in excludes]",
+                    "func_fullName": "csvkit.cli.parse_column_identifiers(ids, column_names, column_offset, excluded_columns)"
+                },
+                {
+                    "func_id": 109,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a Point object .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __init__(self, args, column_names):\n            self.args = args\n            self.column_names = column_names\n\n            self.lat_column = match_column_identifier(column_names, self.args.lat, self.args.zero_based)\n\n            self.lon_column = match_column_identifier(column_names, self.args.lon, self.args.zero_based)\n\n            if self.args.type:\n                self.type_column = match_column_identifier(column_names, self.args.type, self.args.zero_based)\n            else:\n                self.type_column = None\n\n            if self.args.geometry:\n                self.geometry_column = match_column_identifier(column_names, self.args.geometry, self.args.zero_based)\n            else:\n                self.geometry_column = None\n\n            if self.args.key:\n                self.id_column = match_column_identifier(column_names, self.args.key, self.args.zero_based)\n            else:\n                self.id_column = None",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.__init__(self, args, column_names)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 45,
+                    "func_name": "__next__",
+                    "func_desc": "This method returns the next element in the SEO .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __next__(self):\n        if self.column_names and not self.returned_header:\n            self.returned_header = True\n            return self.column_names\n\n        while True:\n            row = next(self.reader)\n\n            if self.test_row(row):\n                return row\n\n        raise StopIteration()",
+                    "func_fullName": "csvkit.grep.FilteringCSVReader.__next__(self)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "test_row",
+                    "func_desc": "Test a row of words .",
+                    "func_file": "grep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def test_row(self, row):\n        for idx, test in self.patterns.items():\n            try:\n                value = row[idx]\n            except IndexError:\n                value = ''\n            result = test(value)\n            if self.any_match:\n                if result:\n                    return not self.inverse  # True\n            else:\n                if not result:\n                    return self.inverse  # False\n\n        if self.any_match:\n            return self.inverse  # False\n        return not self.inverse  # True",
+                    "func_fullName": "csvkit.grep.FilteringCSVReader.test_row(self, row)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "_skip_lines",
+                    "func_desc": "Reads the next N lines from the file .",
+                    "func_file": "csvstack",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _skip_lines(f, args):\n    if isinstance(args.skip_lines, int):\n        skip_lines = args.skip_lines\n        while skip_lines > 0:\n            f.readline()\n            skip_lines -= 1\n    else:\n        raise ValueError('skip_lines argument must be an int')\n\n    return skip_lines",
+                    "func_fullName": "csvkit.utilities.csvstack._skip_lines(f, args)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 136,
+                    "func_name": "length",
+                    "func_desc": "Returns the length of the SETTINGS .",
+                    "func_file": "exceptions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def length(self):\n        return len(self.row)",
+                    "func_fullName": "csvkit.exceptions.LengthMismatchError.length(self)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "__next__",
+                    "func_desc": "Generate next header from file .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __next__(self):\n        if self.header:\n            self.header = False\n            return self.parser.headers\n\n        return self.parser.parse(next(self.file))",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthReader.__next__(self)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "parse",
+                    "func_desc": "Parse a single line of a\nSequence from a string .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def parse(self, line):\n        values = []\n\n        for field in self.fields:\n            values.append(line[field.start:field.start + field.length].strip())\n\n        return values",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthRowParser.parse(self, line)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "parse_dict",
+                    "func_desc": "Convenience method returns a dict from a line of text .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def parse_dict(self, line):\n        \"\"\"\n        Convenience method returns a dict. Equivalent to\n        ``dict(zip(self.headers,self.parse(line)))``.\n        \"\"\"\n        return dict(zip(self.headers, self.parse(line)))",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthRowParser.parse_dict(self, line)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "headers",
+                    "func_desc": "Returns a list of header names for the given record .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def headers(self):\n        return [field.name for field in self.fields]",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthRowParser.headers(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 4,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the header and header parser .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, f, schema, encoding=None):\n        if encoding is not None:\n            f = iterdecode(f, encoding)\n\n        self.file = f\n        self.parser = FixedWidthRowParser(schema)\n        self.header = True",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthReader.__init__(self, f, schema, encoding)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "__init__",
+                    "func_desc": "A list of FixedWidthFields\nCOOKIE objects .",
+                    "func_file": "fixed",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, schema):\n        self.fields = []  # A list of FixedWidthFields\n\n        schema_reader = agate.csv.reader(schema)\n        schema_decoder = SchemaDecoder(next(schema_reader))\n\n        for i, row in enumerate(schema_reader):\n            try:\n                self.fields.append(schema_decoder(row))\n            except Exception as e:\n                raise ValueError(\"Error reading schema at line %i: %s\" % (i + 2, e))",
+                    "func_fullName": "csvkit.convert.fixed.FixedWidthRowParser.__init__(self, schema)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 17,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 52,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the arguments for the command line interface .",
+                    "func_file": "csvstack",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            metavar='FILE', nargs='*', dest='input_paths', default=['-'],\n            help='The CSV file(s) to operate on. If omitted, will accept input as piped data via STDIN.')\n        self.argparser.add_argument(\n            '-g', '--groups', dest='groups',\n            help='A comma-separated list of values to add as \"grouping factors\", one per CSV being stacked. These are '\n                 'added to the output as a new column. You may specify a name for the new column using the -n flag.')\n        self.argparser.add_argument(\n            '-n', '--group-name', dest='group_name',\n            help='A name for the grouping column, e.g. \"year\". Only used when also specifying -g.')\n        self.argparser.add_argument(\n            '--filenames', dest='group_by_filenames', action='store_true',\n            help='Use the filename of each input file as its grouping value. When specified, -g will be ignored.')",
+                    "func_fullName": "csvkit.utilities.csvstack.CSVStack.add_arguments(self)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds arguments related to the sequence of flags to the argparse object .",
+                    "func_file": "csvformat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-E', '--skip-header', dest='skip_header', action='store_true',\n            help='Do not output a header row.')\n        self.argparser.add_argument(\n            '-D', '--out-delimiter', dest='out_delimiter',\n            help='Delimiting character of the output CSV file.')\n        self.argparser.add_argument(\n            '-T', '--out-tabs', dest='out_tabs', action='store_true',\n            help='Specify that the output CSV file is delimited with tabs. Overrides \"-D\".')\n        self.argparser.add_argument(\n            '-Q', '--out-quotechar', dest='out_quotechar',\n            help='Character used to quote strings in the output CSV file.')\n        self.argparser.add_argument(\n            '-U', '--out-quoting', dest='out_quoting', type=int, choices=[0, 1, 2, 3],\n            help='Quoting style used in the output CSV file. 0 = Quote Minimal, 1 = Quote All, '\n                 '2 = Quote Non-numeric, 3 = Quote None.')\n        self.argparser.add_argument(\n            '-B', '--out-no-doublequote', dest='out_doublequote', action='store_false',\n            help='Whether or not double quotes are doubled in the output CSV file.')\n        self.argparser.add_argument(\n            '-P', '--out-escapechar', dest='out_escapechar',\n            help='Character used to escape the delimiter in the output CSV file if --quoting 3 (\"Quote None\") is '\n                 'specified and to escape the QUOTECHAR if --out-no-doublequote is specified.')\n        self.argparser.add_argument(\n            '-M', '--out-lineterminator', dest='out_lineterminator',\n            help='Character used to terminate lines in the output CSV file.')",
+                    "func_fullName": "csvkit.utilities.csvformat.CSVFormat.add_arguments(self)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "add_arguments",
+                    "func_desc": "Add the arguments to the argparse object .",
+                    "func_file": "csvpy",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument('--dict', dest='as_dict', action='store_true',\n                                    help='Load the CSV file into a DictReader.')\n        self.argparser.add_argument('--agate', dest='as_agate', action='store_true',\n                                    help='Load the CSV file into an agate table.')",
+                    "func_fullName": "csvkit.utilities.csvpy.CSVPy.add_arguments(self)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the arguments for the command line utility .",
+                    "func_file": "csvgrep",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-n', '--names', dest='names_only', action='store_true',\n            help='Display column names and indices from the input CSV and exit.')\n        self.argparser.add_argument(\n            '-c', '--columns', dest='columns',\n            help='A comma-separated list of column indices, names or ranges to be searched, e.g. \"1,id,3-5\".')\n        self.argparser.add_argument(\n            '-m', '--match', dest=\"pattern\", action='store',\n            help='A string to search for.')\n        self.argparser.add_argument(\n            '-r', '--regex', dest='regex', action='store',\n            help='A regular expression to match.')\n        self.argparser.add_argument(\n            '-f', '--file', dest='matchfile', type=FileType('r'), action='store',\n            help='A path to a file. For each row, if any line in the file (stripped of line separators) is an exact '\n                 'match of the cell value, the row matches.')\n        self.argparser.add_argument(\n            '-i', '--invert-match', dest='inverse', action='store_true',\n            help='Select non-matching rows, instead of matching rows.')\n        self.argparser.add_argument(\n            '-a', '--any-match', dest='any_match', action='store_true',\n            help='Select rows in which any column matches, instead of all columns.')",
+                    "func_fullName": "csvkit.utilities.csvgrep.CSVGrep.add_arguments(self)"
+                },
+                {
+                    "func_id": 66,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the specified arguments to the command line parser .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '--csv', dest='csv_output', action='store_true',\n            help='Output results as a CSV table, rather than plain text.')\n        self.argparser.add_argument(\n            '--json', dest='json_output', action='store_true',\n            help='Output results as JSON text, rather than plain text.')\n        self.argparser.add_argument(\n            '-i', '--indent', dest='indent', type=int,\n            help='Indent the output JSON this many spaces. Disabled by default.')\n        self.argparser.add_argument(\n            '-n', '--names', dest='names_only', action='store_true',\n            help='Display column names and indices from the input CSV and exit.')\n        self.argparser.add_argument(\n            '-c', '--columns', dest='columns',\n            help='A comma-separated list of column indices, names or ranges to be examined, e.g. \"1,id,3-5\". '\n                 'Defaults to all columns.')\n        self.argparser.add_argument(\n            '--type', dest='type_only', action='store_true',\n            help='Only output data type.')\n        self.argparser.add_argument(\n            '--nulls', dest='nulls_only', action='store_true',\n            help='Only output whether columns contains nulls.')\n        self.argparser.add_argument(\n            '--non-nulls', dest='nonnulls_only', action='store_true',\n            help='Only output counts of non-null values.')\n        self.argparser.add_argument(\n            '--unique', dest='unique_only', action='store_true',\n            help='Only output counts of unique values.')\n        self.argparser.add_argument(\n            '--min', dest='min_only', action='store_true',\n            help='Only output smallest values.')\n        self.argparser.add_argument(\n            '--max', dest='max_only', action='store_true',\n            help='Only output largest values.')\n        self.argparser.add_argument(\n            '--sum', dest='sum_only', action='store_true',\n            help='Only output sums.')\n        self.argparser.add_argument(\n            '--mean', dest='mean_only', action='store_true',\n            help='Only output means.')\n        self.argparser.add_argument(\n            '--median', dest='median_only', action='store_true',\n            help='Only output medians.')\n        self.argparser.add_argument(\n            '--stdev', dest='stdev_only', action='store_true',\n            help='Only output standard deviations.')\n        self.argparser.add_argument(\n            '--len', dest='len_only', action='store_true',\n            help='Only output the length of the longest values.')\n        self.argparser.add_argument(\n            '--max-precision', dest='maxprecision_only', action='store_true',\n            help='Only output the most decimal places.')\n        self.argparser.add_argument(\n            '--freq', dest='freq_only', action='store_true',\n            help='Only output lists of frequent values.')\n        self.argparser.add_argument(\n            '--freq-count', dest='freq_count', type=int,\n            help='The maximum number of frequent values to display.')\n        self.argparser.add_argument(\n            '--count', dest='count_only', action='store_true',\n            help='Only output total row count.')\n        self.argparser.add_argument(\n            '--decimal-format', dest='decimal_format', type=str, default='%.3f',\n            help='%%-format specification for printing decimal numbers. '\n                 'Defaults to locale-specific formatting with \"%%.3f\".')\n        self.argparser.add_argument(\n            '-G', '--no-grouping-separator', dest='no_grouping_separator', action='store_true',\n            help='Do not use grouping separators in decimal numbers.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference when parsing the input. Disable reformatting of values.')",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.add_arguments(self)"
+                },
+                {
+                    "func_id": 81,
+                    "func_name": "add_arguments",
+                    "func_desc": "Add command line options for the sequence command .",
+                    "func_file": "csvcut",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-n', '--names', dest='names_only', action='store_true',\n            help='Display column names and indices from the input CSV and exit.')\n        self.argparser.add_argument(\n            '-c', '--columns', dest='columns',\n            help='A comma-separated list of column indices, names or ranges to be extracted, e.g. \"1,id,3-5\". '\n                 'Defaults to all columns.')\n        self.argparser.add_argument(\n            '-C', '--not-columns', dest='not_columns',\n            help='A comma-separated list of column indices, names or ranges to be excluded, e.g. \"1,id,3-5\". '\n                 'Defaults to no columns.')\n        self.argparser.add_argument(\n            '-x', '--delete-empty-rows', dest='delete_empty', action='store_true',\n            help='After cutting, delete rows which are completely empty.')",
+                    "func_fullName": "csvkit.utilities.csvcut.CSVCut.add_arguments(self)"
+                },
+                {
+                    "func_id": 84,
+                    "func_name": "add_arguments",
+                    "func_desc": "Add arguments for the command line .",
+                    "func_file": "csvlook",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '--max-rows', dest='max_rows', type=int,\n            help='The maximum number of rows to display before truncating the data.')\n        self.argparser.add_argument(\n            '--max-columns', dest='max_columns', type=int,\n            help='The maximum number of columns to display before truncating the data.')\n        self.argparser.add_argument(\n            '--max-column-width', dest='max_column_width', type=int,\n            help='Truncate all columns to at most this width. The remainder will be replaced with ellipsis.')\n        self.argparser.add_argument(\n            '--max-precision', dest='max_precision', type=int,\n            help='The maximum number of decimal places to display. The remainder will be replaced with ellipsis.')\n        self.argparser.add_argument(\n            '--no-number-ellipsis', dest='no_number_ellipsis', action='store_true',\n            help='Disable the ellipsis if --max-precision is exceeded.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference when parsing the input. This disables the reformatting of values.')",
+                    "func_fullName": "csvkit.utilities.csvlook.CSVLook.add_arguments(self)"
+                },
+                {
+                    "func_id": 87,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds arguments related to the sequence of command - line arguments to the ArgParser object .",
+                    "func_file": "csvsql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            metavar='FILE', nargs='*', dest='input_paths', default=['-'],\n            help='The CSV file(s) to operate on. If omitted, will accept input as piped data via STDIN.')\n        self.argparser.add_argument(\n            '-i', '--dialect', dest='dialect', choices=DIALECTS,\n            help='Dialect of SQL to generate. Cannot be used with --db.')\n        self.argparser.add_argument(\n            '--db', dest='connection_string',\n            help='If present, a SQLAlchemy connection string to use to directly execute generated SQL on a database.')\n        self.argparser.add_argument(\n            '--query', dest='queries', action='append',\n            help='Execute one or more SQL queries delimited by \";\" and output the result of the last query as CSV. '\n                 'QUERY may be a filename. --query may be specified multiple times.')\n        self.argparser.add_argument(\n            '--insert', dest='insert', action='store_true',\n            help='Insert the data into the table. Requires --db.')\n        self.argparser.add_argument(\n            '--prefix', action='append', default=[],\n            help='Add an expression following the INSERT keyword, like OR IGNORE or OR REPLACE.')\n        self.argparser.add_argument(\n            '--before-insert', dest='before_insert',\n            help='Execute SQL before the INSERT command. Requires --insert.')\n        self.argparser.add_argument(\n            '--after-insert', dest='after_insert',\n            help='Execute SQL after the INSERT command. Requires --insert.')\n        self.argparser.add_argument(\n            '--tables', dest='table_names',\n            help='A comma-separated list of names of tables to be created. By default, the tables will be named after '\n                 'the filenames without extensions or \"stdin\".')\n        self.argparser.add_argument(\n            '--no-constraints', dest='no_constraints', action='store_true',\n            help='Generate a schema without length limits or null checks. Useful when sampling big tables.')\n        self.argparser.add_argument(\n            '--unique-constraint', dest='unique_constraint',\n            help='A column-separated list of names of columns to include in a UNIQUE constraint.')\n        self.argparser.add_argument(\n            '--no-create', dest='no_create', action='store_true',\n            help='Skip creating the table. Requires --insert.')\n        self.argparser.add_argument(\n            '--create-if-not-exists', dest='create_if_not_exists', action='store_true',\n            help='Create the table if it does not exist, otherwise keep going. Requires --insert.')\n        self.argparser.add_argument(\n            '--overwrite', dest='overwrite', action='store_true',\n            help='Drop the table if it already exists. Requires --insert. Cannot be used with --no-create.')\n        self.argparser.add_argument(\n            '--db-schema', dest='db_schema',\n            help='Optional name of database schema to create table(s) in.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference when parsing the input.')\n        self.argparser.add_argument(\n            '--chunk-size', dest='chunk_size', type=int,\n            help='Chunk size for batch insert into the table. Requires --insert.')",
+                    "func_fullName": "csvkit.utilities.csvsql.CSVSQL.add_arguments(self)"
+                },
+                {
+                    "func_id": 91,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the arguments for the command line .",
+                    "func_file": "csvsort",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-n', '--names', dest='names_only', action='store_true',\n            help='Display column names and indices from the input CSV and exit.')\n        self.argparser.add_argument(\n            '-c', '--columns', dest='columns',\n            help='A comma-separated list of column indices, names or ranges to sort by, e.g. \"1,id,3-5\". '\n                 'Defaults to all columns.')\n        self.argparser.add_argument(\n            '-r', '--reverse', dest='reverse', action='store_true',\n            help='Sort in descending order.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference when parsing the input.')",
+                    "func_fullName": "csvkit.utilities.csvsort.CSVSort.add_arguments(self)"
+                },
+                {
+                    "func_id": 94,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds all the arguments specified in the command line to the argument parser .",
+                    "func_file": "in2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            metavar='FILE', nargs='?', dest='input_path',\n            help='The CSV file to operate on. If omitted, will accept input as piped data via STDIN.')\n        self.argparser.add_argument(\n            '-f', '--format', dest='filetype', choices=SUPPORTED_FORMATS,\n            help='The format of the input file. If not specified will be inferred from the file type.')\n        self.argparser.add_argument(\n            '-s', '--schema', dest='schema',\n            help='Specify a CSV-formatted schema file for converting fixed-width files. See web documentation.')\n        self.argparser.add_argument(\n            '-k', '--key', dest='key',\n            help='Specify a top-level key to look within for a list of objects to be converted when processing JSON.')\n        self.argparser.add_argument(\n            '-n', '--names', dest='names_only', action='store_true',\n            help='Display sheet names from the input Excel file.')\n        self.argparser.add_argument(\n            '--sheet', dest='sheet',\n            help='The name of the Excel sheet to operate on.')\n        self.argparser.add_argument(\n            '--write-sheets', dest='write_sheets',\n            help='The names of the Excel sheets to write to files, or \"-\" to write all sheets.')\n        self.argparser.add_argument(\n            '--use-sheet-names', dest='use_sheet_names', action='store_true',\n            help='Use the sheet names as file names when --write-sheets is set.')\n        self.argparser.add_argument(\n            '--encoding-xls', dest='encoding_xls',\n            help='Specify the encoding of the input XLS file.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference (and --locale, --date-format, --datetime-format) when parsing CSV input.')",
+                    "func_fullName": "csvkit.utilities.in2csv.In2CSV.add_arguments(self)"
+                },
+                {
+                    "func_id": 99,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds all the arguments specified in the sequence of sequence sequence sequence .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-i', '--indent', dest='indent', type=int,\n            help='Indent the output JSON this many spaces. Disabled by default.')\n        self.argparser.add_argument(\n            '-k', '--key', dest='key',\n            help='Output JSON as an object keyed by a given column, KEY, rather than as an array. All column values '\n                 'must be unique. If --lat and --lon are specified, this column is used as the GeoJSON Feature ID.')\n        self.argparser.add_argument(\n            '--lat', dest='lat',\n            help='A column index or name containing a latitude. Output will be GeoJSON instead of JSON. '\n                 'Requires --lon.')\n        self.argparser.add_argument(\n            '--lon', dest='lon',\n            help='A column index or name containing a longitude. Output will be GeoJSON instead of JSON. '\n                 'Requires --lat.')\n        self.argparser.add_argument(\n            '--type', dest='type',\n            help='A column index or name containing a GeoJSON type. Output will be GeoJSON instead of JSON. '\n                 'Requires --lat and --lon.')\n        self.argparser.add_argument(\n            '--geometry', dest='geometry',\n            help='A column index or name containing a GeoJSON geometry. Output will be GeoJSON instead of JSON. '\n                 'Requires --lat and --lon.')\n        self.argparser.add_argument(\n            '--crs', dest='crs',\n            help='A coordinate reference system string to be included with GeoJSON output. Requires --lat and --lon.')\n        self.argparser.add_argument(\n            '--no-bbox', dest='no_bbox', action='store_true',\n            help='Disable the calculation of a bounding box.')\n        self.argparser.add_argument(\n            '--stream', dest='streamOutput', action='store_true',\n            help='Output JSON as a stream of newline-separated objects, rather than an as an array.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference (and --locale, --date-format, --datetime-format) when parsing CSV input.')",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.add_arguments(self)"
+                },
+                {
+                    "func_id": 120,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds all the arguments specified in the sequence of flags to the ArgumentParser .",
+                    "func_file": "sql2csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '--db', dest='connection_string', default='sqlite://',\n            help='An sqlalchemy connection string to connect to a database.')\n        self.argparser.add_argument(\n            metavar='FILE', nargs='?', dest='input_path',\n            help='The file to use as SQL query. If FILE and --query are omitted, the query is piped data via STDIN.')\n        self.argparser.add_argument(\n            '--query',\n            help=\"The SQL query to execute. Overrides FILE and STDIN.\")\n        self.argparser.add_argument(\n            '-e', '--encoding', dest='encoding', default='utf-8',\n            help='Specify the encoding of the input query file.')\n        self.argparser.add_argument(\n            '-H', '--no-header-row', dest='no_header_row', action='store_true',\n            help='Do not output column names.')\n\n        self.argparser.set_defaults(\n            delimiter=None,\n            doublequote=None,\n            escapechar=None,\n            encoding='utf-8',\n            field_size_limit=None,\n            quotechar=None,\n            quoting=None,\n            skipinitialspace=None,\n            tabs=None,\n        )",
+                    "func_fullName": "csvkit.utilities.sql2csv.SQL2CSV.add_arguments(self)"
+                },
+                {
+                    "func_id": 123,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the arguments for the command line interface .",
+                    "func_file": "csvclean",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            '-n', '--dry-run', dest='dryrun', action='store_true',\n            help='Do not create output files. Information about what would have been done will be printed to STDERR.')",
+                    "func_fullName": "csvkit.utilities.csvclean.CSVClean.add_arguments(self)"
+                },
+                {
+                    "func_id": 127,
+                    "func_name": "add_arguments",
+                    "func_desc": "Adds the specified arguments to the command line parser .",
+                    "func_file": "csvjoin",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_arguments(self):\n        self.argparser.add_argument(\n            metavar='FILE', nargs='*', dest='input_paths', default=['-'],\n            help='The CSV files to operate on. If only one is specified, it will be copied to STDOUT.')\n        self.argparser.add_argument(\n            '-c', '--columns', dest='columns',\n            help='The column name(s) on which to join. Should be either one name (or index) or a comma-separated list '\n                 'with one name (or index) per file, in the same order in which the files were specified. If not '\n                 'specified, the two files will be joined sequentially without matching.')\n        self.argparser.add_argument(\n            '--outer', dest='outer_join', action='store_true',\n            help='Perform a full outer join, rather than the default inner join.')\n        self.argparser.add_argument(\n            '--left', dest='left_join', action='store_true',\n            help='Perform a left outer join, rather than the default inner join. If more than two files are provided '\n                 'this will be executed as a sequence of left outer joins, starting at the left.')\n        self.argparser.add_argument(\n            '--right', dest='right_join', action='store_true',\n            help='Perform a right outer join, rather than the default inner join. If more than two files are provided '\n                 'this will be executed as a sequence of right outer joins, starting at the right.')\n        self.argparser.add_argument(\n            '-y', '--snifflimit', dest='sniff_limit', type=int, default=1024,\n            help='Limit CSV dialect sniffing to the specified number of bytes. '\n                 'Specify \"0\" to disable sniffing entirely, or \"-1\" to sniff the entire file.')\n        self.argparser.add_argument(\n            '-I', '--no-inference', dest='no_inference', action='store_true',\n            help='Disable type inference when parsing CSV input.')",
+                    "func_fullName": "csvkit.utilities.csvjoin.CSVJoin.add_arguments(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 18,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 56,
+                    "func_name": "_extract_csv_writer_kwargs",
+                    "func_desc": "Extract keyword arguments for CSV writer .",
+                    "func_file": "csvformat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _extract_csv_writer_kwargs(self):\n        kwargs = {}\n\n        if self.args.line_numbers:\n            kwargs['line_numbers'] = True\n\n        if self.args.out_tabs:\n            kwargs['delimiter'] = '\\t'\n        elif self.args.out_delimiter:\n            kwargs['delimiter'] = self.args.out_delimiter\n\n        for arg in ('quotechar', 'quoting', 'doublequote', 'escapechar', 'lineterminator'):\n            value = getattr(self.args, f'out_{arg}')\n            if value is not None:\n                kwargs[arg] = value\n\n        return kwargs",
+                    "func_fullName": "csvkit.utilities.csvformat.CSVFormat._extract_csv_writer_kwargs(self)"
+                },
+                {
+                    "func_id": 129,
+                    "func_name": "_parse_join_column_names",
+                    "func_desc": "Parse a list of join columns .",
+                    "func_file": "csvjoin",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_join_column_names(self, join_string):\n        \"\"\"\n        Parse a list of join columns.\n        \"\"\"\n        return list(map(str.strip, join_string.split(',')))",
+                    "func_fullName": "csvkit.utilities.csvjoin.CSVJoin._parse_join_column_names(self, join_string)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 19,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 68,
+                    "func_name": "is_finite_decimal",
+                    "func_desc": "Checks if the given value is a finite decimal .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_finite_decimal(self, value):\n        return isinstance(value, Decimal) and value.is_finite()",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.is_finite_decimal(self, value)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "_calculate_stat",
+                    "func_desc": "Calculate statistics for a single column .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _calculate_stat(self, table, column_id, op_name, op_data, **kwargs):\n        getter = globals().get(f'get_{op_name}')\n\n        with warnings.catch_warnings():\n            warnings.simplefilter('ignore', agate.NullCalculationWarning)\n\n            try:\n                if getter:\n                    return getter(table, column_id, **kwargs)\n\n                op = op_data['aggregation']\n                v = table.aggregate(op(column_id))\n\n                if self.is_finite_decimal(v) and not self.args.json_output:\n                    return format_decimal(v, self.args.decimal_format, self.args.no_grouping_separator)\n\n                return v\n            except Exception:\n                pass",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat._calculate_stat(self, table, column_id, op_name, op_data, kwargs)"
+                },
+                {
+                    "func_id": 70,
+                    "func_name": "print_one",
+                    "func_desc": "Print data for a single statistic .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def print_one(self, table, column_id, op_name, label=True, **kwargs):\n        \"\"\"\n        Print data for a single statistic.\n        \"\"\"\n        column_name = table.column_names[column_id]\n\n        stat = self._calculate_stat(table, column_id, op_name, OPERATIONS[op_name], **kwargs)\n\n        # Formatting\n        if op_name == 'freq':\n            stat = ', '.join([f\"\\\"{str(row['value'])}\\\": {row['count']}\" for row in stat])\n            stat = '{ %s }' % stat\n\n        if label:\n            self.output_file.write('%3i. %s: %s\\n' % (column_id + 1, column_name, stat))\n        else:\n            self.output_file.write(f'{stat}\\n')",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.print_one(self, table, column_id, op_name, label, kwargs)"
+                },
+                {
+                    "func_id": 71,
+                    "func_name": "calculate_stats",
+                    "func_desc": "Calculate statistics for all valid operations .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def calculate_stats(self, table, column_id, **kwargs):\n        \"\"\"\n        Calculate stats for all valid operations.\n        \"\"\"\n        return {\n            op_name: self._calculate_stat(table, column_id, op_name, op_data, **kwargs)\n            for op_name, op_data in OPERATIONS.items()\n        }",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.calculate_stats(self, table, column_id, kwargs)"
+                },
+                {
+                    "func_id": 72,
+                    "func_name": "print_stats",
+                    "func_desc": "Print data for all statistics .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def print_stats(self, table, column_ids, stats):\n        \"\"\"\n        Print data for all statistics.\n        \"\"\"\n        label_column_width = max(len(op_data['label']) for op_data in OPERATIONS.values())\n\n        for column_id in column_ids:\n            column_name = table.column_names[column_id]\n            column = table.columns[column_id]\n            column_stats = stats[column_id]\n\n            self.output_file.write('%3i. \"%s\"\\n\\n' % (column_id + 1, column_name))\n\n            for op_name, op_data in OPERATIONS.items():\n                if column_stats[op_name] is None:\n                    continue\n\n                label = '{label:{label_column_width}}'.format(**{\n                    'label_column_width': label_column_width,\n                    'label': op_data['label'],\n                })\n\n                if op_name == 'freq':\n                    for i, row in enumerate(column_stats['freq']):\n                        if i == 0:\n                            self.output_file.write(f'\\t{label} ')\n                        else:\n                            self.output_file.write('\\t{label:{label_column_width}} '.format(**{\n                                'label_column_width': label_column_width,\n                                'label': '',\n                            }))\n\n                        if isinstance(column.data_type, agate.Number):\n                            v = row['value']\n\n                            if self.is_finite_decimal(v):\n                                v = format_decimal(v, self.args.decimal_format, self.args.no_grouping_separator)\n                        else:\n                            v = str(row['value'])\n\n                        self.output_file.write(f\"{v} ({row['count']}x)\\n\")\n\n                    continue\n\n                v = column_stats[op_name]\n\n                if op_name == 'nulls' and v:\n                    v = f'{v} (excluded from calculations)'\n                elif op_name == 'len':\n                    v = f'{v} characters'\n\n                self.output_file.write(f'\\t{label} {v}\\n')\n\n            self.output_file.write('\\n')\n\n        self.output_file.write(f'Row count: {len(table.rows)}\\n')",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.print_stats(self, table, column_ids, stats)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "format_decimal",
+                    "func_desc": "Format a decimal value using the given format string .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def format_decimal(d, f='%.3f', no_grouping_separator=False):\n    return locale.format_string(f, d, grouping=not no_grouping_separator).rstrip('0').rstrip('.')",
+                    "func_fullName": "csvkit.utilities.csvstat.format_decimal(d, f, no_grouping_separator)"
+                },
+                {
+                    "func_id": 77,
+                    "func_name": "get_type",
+                    "func_desc": "Return the data type of a column .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_type(table, column_id, **kwargs):\n    return f'{table.columns[column_id].data_type.__class__.__name__}'",
+                    "func_fullName": "csvkit.utilities.csvstat.get_type(table, column_id, kwargs)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "get_unique",
+                    "func_desc": "Get the number of unique values in a column .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_unique(table, column_id, **kwargs):\n    return len(table.columns[column_id].values_distinct())",
+                    "func_fullName": "csvkit.utilities.csvstat.get_unique(table, column_id, kwargs)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "get_freq",
+                    "func_desc": "Returns a list of tuples of the most common frequency of the given column_id in the given table .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_freq(table, column_id, freq_count=5, **kwargs):\n    values = table.columns[column_id].values()\n    return [\n        {'value': r[0], 'count': r[1]}\n        for r in Counter(values).most_common(freq_count)\n    ]",
+                    "func_fullName": "csvkit.utilities.csvstat.get_freq(table, column_id, freq_count, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 20,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 73,
+                    "func_name": "print_csv",
+                    "func_desc": "Print data for all statistics as a CSV table .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def print_csv(self, table, column_ids, stats):\n        \"\"\"\n        Print data for all statistics as a CSV table.\n        \"\"\"\n        header = ['column_id', 'column_name'] + list(OPERATIONS)\n\n        writer = agate.csv.DictWriter(self.output_file, fieldnames=header)\n        writer.writeheader()\n\n        for row in self._rows(table, column_ids, stats):\n            if 'freq' in row:\n                row['freq'] = ', '.join([str(row['value']) for row in row['freq']])\n            writer.writerow(row)",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.print_csv(self, table, column_ids, stats)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "print_json",
+                    "func_desc": "Print data for all statistics as a JSON text .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def print_json(self, table, column_ids, stats):\n        \"\"\"\n        Print data for all statistics as a JSON text.\n        \"\"\"\n        data = list(self._rows(table, column_ids, stats))\n\n        json.dump(data, self.output_file, default=default_float_decimal, ensure_ascii=False, indent=self.args.indent)",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat.print_json(self, table, column_ids, stats)"
+                },
+                {
+                    "func_id": 75,
+                    "func_name": "_rows",
+                    "func_desc": "Generator for rows of the table .",
+                    "func_file": "csvstat",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _rows(self, table, column_ids, stats):\n        for column_id in column_ids:\n            column_name = table.column_names[column_id]\n            column_stats = stats[column_id]\n\n            output_row = {'column_id': column_id + 1, 'column_name': column_name}\n            for op_name, _op_data in OPERATIONS.items():\n                if column_stats[op_name] is not None:\n                    output_row[op_name] = column_stats[op_name]\n\n            yield output_row",
+                    "func_fullName": "csvkit.utilities.csvstat.CSVStat._rows(self, table, column_ids, stats)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 21,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 100,
+                    "func_name": "main",
+                    "func_desc": "This function is called when the user presses the enter button .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def main(self):\n        \"\"\"\n        Convert CSV to JSON.\n        \"\"\"\n        if self.args.lat and not self.args.lon:\n            self.argparser.error('--lon is required whenever --lat is specified.')\n        if self.args.lon and not self.args.lat:\n            self.argparser.error('--lat is required whenever --lon is specified.')\n\n        if self.args.crs and not self.args.lat:\n            self.argparser.error('--crs is only allowed when --lat and --lon are also specified.')\n        if self.args.type and not self.args.lat:\n            self.argparser.error('--type is only allowed when --lat and --lon are also specified.')\n        if self.args.geometry and not self.args.lat:\n            self.argparser.error('--geometry is only allowed when --lat and --lon are also specified.')\n\n        if self.args.key and self.args.streamOutput and not (self.args.lat and self.args.lon):\n            self.argparser.error('--key is only allowed with --stream when --lat and --lon are also specified.')\n\n        self.json_kwargs = {\n            'indent': self.args.indent,\n        }\n\n        if self.can_stream():\n            if self.additional_input_expected():\n                sys.stderr.write('No input file or piped data provided. Waiting for standard input:\\n')\n\n            if self.is_geo():\n                self.streaming_output_ndgeojson()\n            else:\n                self.streaming_output_ndjson()\n\n        else:\n            if self.additional_input_expected():\n                self.argparser.error('You must provide an input file or piped data.')\n\n            if self.is_geo():\n                self.output_geojson()\n            else:\n                self.output_json()",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.main(self)"
+                },
+                {
+                    "func_id": 101,
+                    "func_name": "dump_json",
+                    "func_desc": "Dump a list of dicts to a JSON file .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def dump_json(self, data, newline=False):\n        json.dump(data, self.output_file, default=default_str_decimal, ensure_ascii=False, **self.json_kwargs)\n        if newline:\n            self.output_file.write(\"\\n\")",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.dump_json(self, data, newline)"
+                },
+                {
+                    "func_id": 102,
+                    "func_name": "can_stream",
+                    "func_desc": "Determine if the user can stream a single warning .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def can_stream(self):\n        return (\n            self.args.streamOutput\n            and self.args.no_inference\n            and self.args.sniff_limit == 0\n            and not self.args.skip_lines\n        )",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.can_stream(self)"
+                },
+                {
+                    "func_id": 103,
+                    "func_name": "is_geo",
+                    "func_desc": "Checks if the command is a geo .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_geo(self):\n        return self.args.lat and self.args.lon",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.is_geo(self)"
+                },
+                {
+                    "func_id": 104,
+                    "func_name": "read_csv_to_table",
+                    "func_desc": "Reads a CSV file and returns a table .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def read_csv_to_table(self):\n        sniff_limit = self.args.sniff_limit if self.args.sniff_limit != -1 else None\n        return agate.Table.from_csv(\n            self.input_file,\n            skip_lines=self.args.skip_lines,\n            sniff_limit=sniff_limit,\n            column_types=self.get_column_types(),\n            **self.reader_kwargs,\n        )",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.read_csv_to_table(self)"
+                },
+                {
+                    "func_id": 105,
+                    "func_name": "output_json",
+                    "func_desc": "Generate JSON file from CSV file .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def output_json(self):\n        self.read_csv_to_table().to_json(\n            self.output_file,\n            key=self.args.key,\n            newline=self.args.streamOutput,\n            indent=self.args.indent,\n        )",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.output_json(self)"
+                },
+                {
+                    "func_id": 106,
+                    "func_name": "output_geojson",
+                    "func_desc": "Output a GeoJSON file .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def output_geojson(self):\n        table = self.read_csv_to_table()\n        geojson_generator = self.GeoJsonGenerator(self.args, table.column_names)\n\n        if self.args.streamOutput:\n            for row in table.rows:\n                self.dump_json(geojson_generator.feature_for_row(row), newline=True)\n        else:\n            self.dump_json(geojson_generator.generate_feature_collection(table))",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.output_geojson(self)"
+                },
+                {
+                    "func_id": 107,
+                    "func_name": "streaming_output_ndjson",
+                    "func_desc": "Streaming output of nDjson file .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def streaming_output_ndjson(self):\n        rows = agate.csv.reader(self.input_file, **self.reader_kwargs)\n        column_names = next(rows)\n\n        for row in rows:\n            data = OrderedDict()\n            for i, column in enumerate(column_names):\n                try:\n                    data[column] = row[i]\n                except IndexError:\n                    data[column] = None\n            self.dump_json(data, newline=True)",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.streaming_output_ndjson(self)"
+                },
+                {
+                    "func_id": 108,
+                    "func_name": "streaming_output_ndgeojson",
+                    "func_desc": "Streaming output of n - dimensional geojson .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def streaming_output_ndgeojson(self):\n        rows = agate.csv.reader(self.input_file, **self.reader_kwargs)\n        column_names = next(rows)\n        geojson_generator = self.GeoJsonGenerator(self.args, column_names)\n\n        for row in rows:\n            self.dump_json(geojson_generator.feature_for_row(row), newline=True)",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.streaming_output_ndgeojson(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 22,
+            "feature_desc": "gamma=0.1126; k=22; a=0.25; combined=0.668; stability(ARI)=0.892; sep=0.284",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 115,
+                    "func_name": "add_feature",
+                    "func_desc": "Adds a feature to the sequence .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def add_feature(self, feature):\n                if 'geometry' in feature and 'coordinates' in feature['geometry']:\n                    self.update_coordinates(feature['geometry']['coordinates'])",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.add_feature(self, feature)"
+                },
+                {
+                    "func_id": 116,
+                    "func_name": "update_lat",
+                    "func_desc": "Update lat .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def update_lat(self, lat):\n                if self.min_lat is None or lat < self.min_lat:\n                    self.min_lat = lat\n                if self.max_lat is None or lat > self.max_lat:\n                    self.max_lat = lat",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.update_lat(self, lat)"
+                },
+                {
+                    "func_id": 117,
+                    "func_name": "update_lon",
+                    "func_desc": "Update lon .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def update_lon(self, lon):\n                if self.min_lon is None or lon < self.min_lon:\n                    self.min_lon = lon\n                if self.max_lon is None or lon > self.max_lon:\n                    self.max_lon = lon",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.update_lon(self, lon)"
+                },
+                {
+                    "func_id": 118,
+                    "func_name": "update_coordinates",
+                    "func_desc": "Updates the coordinates of the sequence .",
+                    "func_file": "csvjson",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def update_coordinates(self, coordinates):\n                if len(coordinates) <= 3 and isinstance(coordinates[0], (float, int)):\n                    self.update_lon(coordinates[0])\n                    self.update_lat(coordinates[1])\n                else:\n                    for coordinate in coordinates:\n                        self.update_coordinates(coordinate)",
+                    "func_fullName": "csvkit.utilities.csvjson.CSVJSON.GeoJsonGenerator.GeoJsonBounds.update_coordinates(self, coordinates)"
+                }
+            ]
+        }
+    ]
+}

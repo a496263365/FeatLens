@@ -1,0 +1,742 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "extract_exec_path",
+                    "func_desc": "Parse a line of strace output and returns the file being executed .",
+                    "func_file": "input_parsing",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def extract_exec_path(line):\n    \"\"\"Parse a line of strace output and returns the file being executed.\"\"\"\n    line = strip_pid_prefix(line)\n    for method in exec_methods:\n        prefix = method + '(\"'\n        if line.startswith(prefix):\n            line = line[len(prefix):]\n            parts = line.split('\", ')\n            if len(parts) > 1:\n                return parts[0]\n    return None",
+                    "func_fullName": "exodus_bundler.input_parsing.extract_exec_path(line)"
+                },
+                {
+                    "func_id": 1,
+                    "func_name": "extract_open_path",
+                    "func_desc": "Parse a line of strace output and return the file being opened .",
+                    "func_file": "input_parsing",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def extract_open_path(line):\n    \"\"\"Parse a line of strace output and returns the file being opened.\"\"\"\n    line = strip_pid_prefix(line)\n    for prefix in ['openat(AT_FDCWD, \"', 'open(\"']:\n        if line.startswith(prefix):\n            parts = line[len(prefix):].split('\", ')\n            if len(parts) != 2:\n                continue\n            if 'ENOENT' in parts[1]:\n                continue\n            if 'O_RDONLY' not in parts[1]:\n                continue\n            if 'O_DIRECTORY' in parts[1]:\n                continue\n            return parts[0]\n    return None",
+                    "func_fullName": "exodus_bundler.input_parsing.extract_open_path(line)"
+                },
+                {
+                    "func_id": 2,
+                    "func_name": "extract_stat_path",
+                    "func_desc": "Parse a line of strace output and return the file that stat was called on .",
+                    "func_file": "input_parsing",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def extract_stat_path(line):\n    \"\"\"Parse a line of strace output and return the file that stat was called on.\"\"\"\n    line = strip_pid_prefix(line)\n    prefix = 'stat(\"'\n    if line.startswith(prefix):\n        parts = line[len(prefix):].split('\", ')\n        if len(parts) == 2 and 'ENOENT' not in parts[1]:\n            return parts[0]\n    return None",
+                    "func_fullName": "exodus_bundler.input_parsing.extract_stat_path(line)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "extract_paths",
+                    "func_desc": "Parses paths from a piped input .",
+                    "func_file": "input_parsing",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def extract_paths(content, existing_only=True):\n    \"\"\"Parses paths from a piped input.\n\n    Args:\n        content (str): The raw input, can be either a list of files,\n            or the output of the strace command.\n        existing_only (bool, optional): Requires that files actually exist and aren't directories.\n    Returns:\n        A list of paths.\n    \"\"\"\n    lines = [line.strip() for line in content.splitlines() if len(line.strip())]\n    if not len(lines):\n        return lines\n\n    # The strace output will start with the exec call of its argument.\n    strace_mode = extract_exec_path(lines[0]) is not None\n    if not strace_mode:\n        return lines\n\n    # Extract files from `open()`, `openat()`, and `exec()` calls.\n    paths = set()\n    for line in lines:\n        path = extract_exec_path(line) or extract_open_path(line) or extract_stat_path(line)\n        if path:\n            blacklisted = any(path.startswith(directory) for directory in blacklisted_directories)\n            if not blacklisted:\n                if not existing_only:\n                    paths.add(path)\n                    continue\n                if os.path.exists(path) and os.access(path, os.R_OK) and not os.path.isdir(path):\n                    paths.add(path)\n\n    return list(paths)",
+                    "func_fullName": "exodus_bundler.input_parsing.extract_paths(content, existing_only)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "strip_pid_prefix",
+                    "func_desc": "Strips out the pid XXX prefix if present .",
+                    "func_file": "input_parsing",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def strip_pid_prefix(line):\n    \"\"\"Strips out the `[pid XXX] ` prefix if present.\"\"\"\n    match = re.match(r'\\[pid\\s+\\d+\\]\\s*', line)\n    if match:\n        return line[len(match.group()):]\n    return line",
+                    "func_fullName": "exodus_bundler.input_parsing.strip_pid_prefix(line)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 5,
+                    "func_name": "find_executable",
+                    "func_desc": "Finds an executable in the system .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def find_executable(binary_name, skip_original_for_testing=False):\n    # This won't be set on Alpine Linux, but it's required for the `find_executable()` calls.\n    if 'PATH' not in os.environ:\n        os.environ['PATH'] = '/bin/:/usr/bin/'\n    executable = find_executable_original(binary_name)\n    if executable and not skip_original_for_testing:\n        return executable\n    # Try to find it within the same bundle if it's not actually in the PATH.\n    directory = parent_directory\n    while True:\n        directory, basename = os.path.split(directory)\n        if not len(basename):\n            break\n        # The bundle directory.\n        if re.match('[A-Fa-f0-9]{64}', basename):\n            for bin_directory in os.environ['PATH'].split(':'):\n                if os.path.isabs(bin_directory):\n                    bin_directory = os.path.relpath(bin_directory, '/')\n                candidate_executable = os.path.join(directory, basename,\n                                                    bin_directory, binary_name)\n                if os.path.exists(candidate_executable):\n                    return candidate_executable",
+                    "func_fullName": "exodus_bundler.launchers.find_executable(binary_name, skip_original_for_testing)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "compile",
+                    "func_desc": "Compile a C code into a sequence of C objects .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def compile(code):\n    try:\n        return compile_musl(code)\n    except CompilerNotFoundError:\n        try:\n            return compile_diet(code)\n        except CompilerNotFoundError:\n            raise CompilerNotFoundError('No suiteable C compiler was found.')",
+                    "func_fullName": "exodus_bundler.launchers.compile(code)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "compile_diet",
+                    "func_desc": "Compile the given code into a DIMACS language .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def compile_diet(code):\n    diet = find_executable('diet')\n    gcc = find_executable('gcc')\n    if diet is None or gcc is None:\n        raise CompilerNotFoundError('The diet compiler was not found.')\n    return compile_helper(code, [diet, 'gcc'])",
+                    "func_fullName": "exodus_bundler.launchers.compile_diet(code)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "compile_helper",
+                    "func_desc": "This function compiles the given code into a file with the given arguments .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def compile_helper(code, initial_args):\n    f, input_filename = tempfile.mkstemp(prefix='exodus-bundle-', suffix='.c')\n    os.close(f)\n    f, output_filename = tempfile.mkstemp(prefix='exodus-bundle-')\n    os.close(f)\n    try:\n        with open(input_filename, 'w') as input_file:\n            input_file.write(code)\n\n        args = initial_args + ['-static', '-O3', input_filename, '-o', output_filename]\n        process = Popen(args, stdout=PIPE, stderr=PIPE)\n        stdout, stderr = process.communicate()\n        assert process.returncode == 0, \\\n            'There was an error compiling: %s' % stderr.decode('utf-8')\n\n        with open(output_filename, 'rb') as output_file:\n            return output_file.read()\n    finally:\n        os.remove(input_filename)\n        os.remove(output_filename)",
+                    "func_fullName": "exodus_bundler.launchers.compile_helper(code, initial_args)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "compile_musl",
+                    "func_desc": "Compile the given code using the musl compiler .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def compile_musl(code):\n    musl = find_executable('musl-gcc')\n    if musl is None:\n        raise CompilerNotFoundError('The musl compiler was not found.')\n    return compile_helper(code, [musl])",
+                    "func_fullName": "exodus_bundler.launchers.compile_musl(code)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "construct_binary_launcher",
+                    "func_desc": "Construct a launcher for the given linker .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def construct_binary_launcher(linker, library_path, executable, full_linker=True):\n    linker_dirname, linker_basename = os.path.split(linker)\n    full_linker = '1' if full_linker else '0'\n    code = render_template_file('launcher.c', linker_basename=linker_basename,\n                                linker_dirname=linker_dirname, library_path=library_path,\n                                executable=executable, full_linker=full_linker)\n    return compile(code)",
+                    "func_fullName": "exodus_bundler.launchers.construct_binary_launcher(linker, library_path, executable, full_linker)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 10,
+                    "func_name": "construct_bash_launcher",
+                    "func_desc": "Construct a bash launcher file .",
+                    "func_file": "launchers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def construct_bash_launcher(linker, library_path, executable, full_linker=True):\n    linker_dirname, linker_basename = os.path.split(linker)\n    full_linker = 'true' if full_linker else 'false'\n    return render_template_file('launcher.sh', linker_basename=linker_basename,\n                                linker_dirname=linker_dirname, library_path=library_path,\n                                executable=executable, full_linker=full_linker)",
+                    "func_fullName": "exodus_bundler.launchers.construct_bash_launcher(linker, library_path, executable, full_linker)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "render_template",
+                    "func_desc": "Renders a template string with the given context .",
+                    "func_file": "templating",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def render_template(string, **context):\n    for key, value in context.items():\n        string = string.replace('{{%s}}' % key, value)\n    return string",
+                    "func_fullName": "exodus_bundler.templating.render_template(string, context)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "render_template_file",
+                    "func_desc": "Renders a template file .",
+                    "func_file": "templating",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def render_template_file(filename, **context):\n    if not os.path.isabs(filename):\n        filename = os.path.join(template_directory, filename)\n    with open(filename, 'r') as f:\n        return render_template(f.read(), **context)",
+                    "func_fullName": "exodus_bundler.templating.render_template_file(filename, context)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "create_bundle",
+                    "func_desc": "Create a full bundle .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def create_bundle(executables, output, tarball=False, rename=[], chroot=None, add=[],\n                  no_symlink=[], shell_launchers=False, detect=False):\n    \"\"\"Handles the creation of the full bundle.\"\"\"\n    # Initialize these ahead of time so they're always available for error handling.\n    output_filename, output_file, root_directory = None, None, None\n    try:\n\n        # Create a temporary unpackaged bundle for the executables.\n        root_directory = create_unpackaged_bundle(\n            executables, rename=rename, chroot=chroot, add=add, no_symlink=no_symlink,\n            shell_launchers=shell_launchers, detect=detect,\n        )\n\n        # Populate the filename template.\n        output_filename = render_template(output,\n            executables=('-'.join(os.path.basename(executable) for executable in executables)),\n            extension=('tgz' if tarball else 'sh'),\n        )\n\n        # Store a gzipped tarball of the bundle in memory.\n        tar_stream = io.BytesIO()\n        with tarfile.open(fileobj=tar_stream, mode='w:gz') as tar:\n            tar.add(root_directory, arcname='exodus')\n\n        # Configure the appropriate output mechanism.\n        if output_filename == '-':\n            output_file = getattr(sys.stdout, 'buffer', sys.stdout)\n        else:\n            output_file = open(output_filename, 'wb')\n\n        # Construct the installation script and write it out.\n        if not tarball:\n            if output_filename == '-':\n                base64_encoded_tarball = base64.b64encode(tar_stream.getvalue()).decode('utf-8')\n                script_content = render_template_file('install-bundle-noninteractive.sh',\n                    base64_encoded_tarball=base64_encoded_tarball)\n                output_file.write(script_content.encode('utf-8'))\n            else:\n                output_file.write(render_template_file('install-bundle.sh').encode('utf-8'))\n                output_file.write(tar_stream.getvalue())\n        else:\n            # Or just write out the tarball.\n            output_file.write(tar_stream.getvalue())\n\n        # Write out the success message.\n        logger.info('Successfully created \"%s\".' % output_filename)\n        return True\n    except:  # noqa: E722\n        raise\n    finally:\n        if root_directory:\n            shutil.rmtree(root_directory)\n        if output_file and output_filename:\n            output_file.close()\n            if not tarball and output_filename not in ['-', '/dev/null']:\n                st = os.stat(output_filename)\n                os.chmod(output_filename, st.st_mode | stat.S_IEXEC)",
+                    "func_fullName": "exodus_bundler.bundling.create_bundle(executables, output, tarball, rename, chroot, add, no_symlink, shell_launchers, detect)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 12,
+                    "func_name": "parse_args",
+                    "func_desc": "Parses command line arguments and returns a dictionary of arguments .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_args(args=None, namespace=None):\n    \"\"\"Constructs an argument parser and parses the arguments. The default behavior is\n    to parse the arguments from `sys.argv`. A dictionary is returned rather than the\n    typical namespace produced by `argparse`.\"\"\"\n    formatter = argparse.ArgumentDefaultsHelpFormatter\n    parser = argparse.ArgumentParser(formatter_class=formatter, description=(\n        'Bundle ELF binary executables with all of their runtime dependencies '\n        'so that they can be relocated to other systems with incompatible system '\n        'libraries.'\n    ))\n\n    parser.add_argument('executables', metavar='EXECUTABLE', nargs='+', help=(\n        'One or more ELF executables to include in the exodus bundle.'\n    ))\n\n    parser.add_argument('-c', '--chroot', metavar='CHROOT_PATH',\n        default=None,\n        help=(\n            'A directory that will be treated as the root during linking. Useful for testing and '\n            'bundling extracted packages that won\\t run without a chroot.'\n        ),\n    )\n\n    parser.add_argument('-a', '--add', '--additional-file', metavar='DEPENDENCY', action='append',\n        default=[],\n        help=(\n            'Specifies an additional file to include in the bundle, useful for adding '\n            'programatically loaded libraries and other non-library dependencies. '\n            'The argument can be used more than once to include multiple files, and '\n            'directories will be included recursively.'\n        ),\n    )\n\n    parser.add_argument('-d', '--detect', action='store_true', help=(\n        'Attempt to autodetect direct dependencies using the system package manager. '\n        'Operating system support is limited.'\n    ))\n\n    parser.add_argument('--no-symlink', metavar='FILE', action='append',\n        default=[],\n        help=(\n            'Signifies that a file must not be symlinked to the deduplicated data directory. This '\n            'is useful if a file looks for other resources based on paths relative its own '\n            'location. This is enabled by default for executables.'\n        ),\n    )\n\n    parser.add_argument('-o', '--output', metavar='OUTPUT_FILE',\n        default=None,\n        help=(\n            'The file where the bundle will be written out to. The extension depends on the '\n            'output type. The \"{{executables}}\" and \"{{extension}}\" template strings can be '\n            ' used in the provided filename. If omitted, the output will go to stdout when '\n            'it is being piped, or to \"./exodus-{{executables}}-bundle.{{extension}}\" otherwise.'\n        ),\n    )\n\n    parser.add_argument('-q', '--quiet', action='store_true', help=(\n        'Suppress warning messages.'\n    ))\n\n    parser.add_argument('-r', '--rename', metavar='NEW_NAME', nargs='?', action='append',\n        default=[], help=(\n            'Renames the binary executable(s) before packaging. The order of rename tags must '\n            'match the order of positional executable arguments.'\n        ),\n    )\n\n    parser.add_argument('--shell-launchers', action='store_true', help=(\n        'Force the use of shell launchers instead of attempting to compile statically linked ones.'\n    ))\n\n    parser.add_argument('-t', '--tarball', action='store_true', help=(\n        'Creates a tarball for manual extraction instead of an installation script. '\n        'Note that this will change the output extension from \".sh\" to \".tgz\".'\n    ))\n\n    parser.add_argument('-v', '--verbose', action='store_true', help=(\n        'Output additional informational messages.'\n    ))\n\n    return vars(parser.parse_args(args, namespace))",
+                    "func_fullName": "exodus_bundler.cli.parse_args(args, namespace)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "configure_logging",
+                    "func_desc": "Configure logging for the root logger .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def configure_logging(quiet, verbose, suppress_stdout=False):\n    # Set the level.\n    from exodus_bundler import root_logger\n    log_level = logging.WARN\n    if quiet and not verbose:\n        log_level = logging.ERROR\n    elif verbose and not quiet:\n        log_level = logging.INFO\n    root_logger.setLevel(log_level)\n\n    class StderrFilter(logging.Filter):\n        def filter(self, record):\n            return record.levelno in (logging.WARN, logging.ERROR)\n\n    stderr_handler = logging.StreamHandler(sys.stderr)\n    stderr_formatter = logging.Formatter('%(levelname)s: %(message)s')\n    stderr_handler.setFormatter(stderr_formatter)\n    stderr_handler.addFilter(StderrFilter())\n    root_logger.addHandler(stderr_handler)\n\n    # We won't even configure/add the stdout handler if this is specified.\n    if suppress_stdout:\n        return\n\n    class StdoutFilter(logging.Filter):\n        def filter(self, record):\n            return record.levelno in (logging.DEBUG, logging.INFO)\n\n    stdout_formatter = logging.Formatter('%(message)s')\n    stdout_handler = logging.StreamHandler(sys.stdout)\n    stdout_handler.setFormatter(stdout_formatter)\n    stdout_handler.addFilter(StdoutFilter())\n    root_logger.addHandler(stdout_handler)",
+                    "func_fullName": "exodus_bundler.cli.configure_logging(quiet, verbose, suppress_stdout)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "main",
+                    "func_desc": "Entry point for the main function of the bundle .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def main(args=None, namespace=None):\n    args = parse_args(args, namespace)\n\n    # Dynamically set the default output to stdout if it is being piped.\n    if args['output'] is None:\n        if sys.stdout.isatty():\n            args['output'] = './exodus-{{executables}}-bundle.{{extension}}'\n        else:\n            args['output'] = '-'\n\n    # Handle the CLI specific options here, removing them from `args` in the process.\n    quiet, verbose = args.pop('quiet'), args.pop('verbose')\n    suppress_stdout = args['output'] == '-'\n    configure_logging(quiet=quiet, verbose=verbose, suppress_stdout=suppress_stdout)\n\n    # Allow piping in additional files.\n    if not sys.stdin.isatty():\n        args['add'] += extract_paths(sys.stdin.read())\n\n    # Create the bundle with all of the arguments.\n    try:\n        create_bundle(**args)\n    except FatalError as fatal_error:\n        logger.error('Fatal error encountered, exiting.')\n        logger.error(fatal_error, exc_info=verbose)\n        sys.exit(1)",
+                    "func_fullName": "exodus_bundler.cli.main(args, namespace)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 15,
+                    "func_name": "filter",
+                    "func_desc": "Filter log records based on levelno .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def filter(self, record):\n            return record.levelno in (logging.WARN, logging.ERROR)",
+                    "func_fullName": "exodus_bundler.cli.configure_logging.StderrFilter.filter(self, record)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "filter",
+                    "func_desc": "Filter log records based on level .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def filter(self, record):\n            return record.levelno in (logging.DEBUG, logging.INFO)",
+                    "func_fullName": "exodus_bundler.cli.configure_logging.StdoutFilter.filter(self, record)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 19,
+                    "func_name": "bytes_to_int",
+                    "func_desc": "Simple helper function to convert bytes into integers .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def bytes_to_int(bytes, byteorder='big'):\n    \"\"\"Simple helper function to convert byte strings into integers.\"\"\"\n    endian = {'big': '>', 'little': '<'}[byteorder]\n    chars = struct.unpack(endian + ('B' * len(bytes)), bytes)\n    if byteorder == 'big':\n        chars = chars[::-1]\n    return sum(int(char) * 256 ** i for (i, char) in enumerate(chars))",
+                    "func_fullName": "exodus_bundler.bundling.bytes_to_int(bytes, byteorder)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the specified parameters .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, path, chroot=None, file_factory=None):\n        \"\"\"Constructs the `Elf` instance.\n\n        Args:\n            path (str): The full path to the ELF binary.\n            chroot (str, optional): If specified, all dependency and linker paths will be considered\n                relative to this directory (mainly useful for testing).\n            file_factory (function, optional): A function to use when creating new `File` instances.\n        \"\"\"\n        if not os.path.exists(path):\n            raise MissingFileError('The \"%s\" file was not found.' % path)\n        self.path = path\n        self.chroot = chroot\n        self.file_factory = file_factory or File\n\n        with open(path, 'rb') as f:\n            # Make sure that this is actually an ELF binary.\n            first_four_bytes = f.read(4)\n            if first_four_bytes != b'\\x7fELF':\n                raise InvalidElfBinaryError('The \"%s\" file is not a binary ELF file.' % path)\n\n            # Determine whether this is a 32-bit or 64-bit file.\n            format_byte = f.read(1)\n            self.bits = {b'\\x01': 32, b'\\x02': 64}.get(format_byte)\n            if not self.bits:\n                raise UnsupportedArchitectureError(\n                    ('The \"%s\" file does not appear to be either 32 or 64 bits. ' % path) +\n                    'Other architectures are not currently supported, but you can open an '\n                    'issue at https://github.com/intoli/exodus stating your use-case and '\n                    'support might get extended in the future.',\n                )\n\n            # Determine whether it's big or little endian and construct an integer parsing function.\n            endian_byte = f.read(1)\n            byteorder = {b'\\x01': 'little', b'\\x02': 'big'}[endian_byte]\n            assert byteorder == 'little', 'Big endian is not supported right now.'\n            if not byteorder:\n                raise UnsupportedArchitectureError(\n                    ('The \"%s\" file does not appear to be little endian, ' % path) +\n                    'and big endian binaries are not currently supported. You can open an '\n                    'issue at https://github.com/intoli/exodus stating your use-case and '\n                    'support might get extended in the future.',\n                )\n\n            def hex(bytes):\n                return bytes_to_int(bytes, byteorder=byteorder)\n\n            # Determine the type of the binary.\n            f.seek(hex(b'\\x10'))\n            e_type = hex(f.read(2))\n            self.type = {1: 'relocatable', 2: 'executable', 3: 'shared', 4: 'core'}[e_type]\n\n            # Find the program header offset.\n            e_phoff_start = {32: hex(b'\\x1c'), 64: hex(b'\\x20')}[self.bits]\n            e_phoff_length = {32: 4, 64: 8}[self.bits]\n            f.seek(e_phoff_start)\n            e_phoff = hex(f.read(e_phoff_length))\n\n            # Determine the size of a program header entry.\n            e_phentsize_start = {32: hex(b'\\x2a'), 64: hex(b'\\x36')}[self.bits]\n            f.seek(e_phentsize_start)\n            e_phentsize = hex(f.read(2))\n\n            # Determine the number of program header entries.\n            e_phnum_start = {32: hex(b'\\x2c'), 64: hex(b'\\x38')}[self.bits]\n            f.seek(e_phnum_start)\n            e_phnum = hex(f.read(2))\n\n            # Loop through each program header.\n            self.linker_file = None\n            for header_index in range(e_phnum):\n                header_start = e_phoff + header_index * e_phentsize\n                f.seek(header_start)\n                p_type = f.read(4)\n                # A p_type of \\x03 corresponds to a PT_INTERP header (e.g. the linker).\n                if len(p_type) == 0:\n                    break\n                if not p_type == b'\\x03\\x00\\x00\\x00':\n                    continue\n\n                # Determine the offset for the segment.\n                p_offset_start = header_start + {32: hex(b'\\04'), 64: hex(b'\\x08')}[self.bits]\n                p_offset_length = {32: 4, 64: 8}[self.bits]\n                f.seek(p_offset_start)\n                p_offset = hex(f.read(p_offset_length))\n\n                # Determine the size of the segment.\n                p_filesz_start = header_start + {32: hex(b'\\x10'), 64: hex(b'\\x20')}[self.bits]\n                p_filesz_length = {32: 4, 64: 8}[self.bits]\n                f.seek(p_filesz_start)\n                p_filesz = hex(f.read(p_filesz_length))\n\n                # Read in the segment.\n                f.seek(p_offset)\n                segment = f.read(p_filesz)\n                # It should be null-terminated (b'\\x00' in Python 2, 0 in Python 3).\n                assert segment[-1] in [b'\\x00', 0], 'The string should be null terminated.'\n                assert self.linker_file is None, 'More than one linker found.'\n                linker_path = segment[:-1].decode('ascii')\n                if chroot:\n                    linker_path = os.path.join(chroot, os.path.relpath(linker_path, '/'))\n                self.linker_file = self.file_factory(linker_path, chroot=self.chroot)",
+                    "func_fullName": "exodus_bundler.bundling.Elf.__init__(self, path, chroot, file_factory)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "hex",
+                    "func_desc": "Convert bytes to int .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def hex(bytes):\n                return bytes_to_int(bytes, byteorder=byteorder)",
+                    "func_fullName": "exodus_bundler.bundling.Elf.__init__.hex(bytes)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "create_unpackaged_bundle",
+                    "func_desc": "Create a temporary directory containing the unpackaged contents of a bundle .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def create_unpackaged_bundle(executables, rename=[], chroot=None, add=[], no_symlink=[],\n                             shell_launchers=False, detect=False):\n    \"\"\"Creates a temporary directory containing the unpackaged contents of the bundle.\"\"\"\n    from exodus_bundler.errors import DependencyDetectionError\n    from exodus_bundler.dependency_detection import detect_dependencies\n    bundle = Bundle(chroot=chroot, working_directory=True)\n    try:\n        # Sanitize the inputs.\n        assert len(executables), 'No executables were specified.'\n        assert len(executables) >= len(rename), \\\n            'More renamed options were included than executables.'\n        # Pad the rename's with `True` so that `entry_point` can be specified.\n        entry_points = rename + [True for i in range(len(executables) - len(rename))]\n\n        # Populate the bundle with main executable files and their dependencies.\n        for (executable, entry_point) in zip(executables, entry_points):\n            file = bundle.add_file(executable, entry_point=entry_point)\n\n            # We'll only auto-detect dependencies for these entry points as well.\n            # If we did this later, it would practically bring in the whole system...\n            if detect:\n                dependency_paths = detect_dependencies(file.path)\n                if not dependency_paths:\n                    raise DependencyDetectionError(\n                        ('Automatic dependency detection failed. Either \"%s\" ' % file.path) +\n                        'is not tracked by your package manager, or your operating system '\n                        'is not currently compatible with the `--detect` option. If not, please '\n                        \"create an issue at https://github.com/intoli/exodus and we'll try our \"\n                        ' to add support for it in the future.',\n                    )\n\n                for path in dependency_paths:\n                    bundle.add_file(path)\n\n        # Add \"additional files\" specified with the `--add` option.\n        for filename in add:\n            bundle.add_file(filename)\n\n        # Mark the required files as `no_symlink=True`.\n        for path in no_symlink:\n            path = resolve_file_path(path)\n            file = next(iter(file for file in bundle.files if file.path == path), None)\n            if file:\n                file.no_symlink = True\n\n        bundle.create_bundle(shell_launchers=shell_launchers)\n\n        return bundle.working_directory\n    except:  # noqa: E722\n        bundle.delete_working_directory()\n        raise",
+                    "func_fullName": "exodus_bundler.bundling.create_unpackaged_bundle(executables, rename, chroot, add, no_symlink, shell_launchers, detect)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "resolve_file_path",
+                    "func_desc": "Resolves a path to a file .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def resolve_file_path(path, search_environment_path=False):\n    \"\"\"Attempts to find a normalized path to a file.\n\n    If the file is not found, or if it is a directory, appropriate exceptions will be thrown.\n\n    Args:\n        path (str): Either a relative or absolute path to a file, or the name of an\n            executable if `search_environment_path` is `True`.\n        search_environment_path (bool): Whether PATH should be used to resolve the file.\n    \"\"\"\n    if search_environment_path:\n        path = resolve_binary(path)\n    if not os.path.exists(path):\n        raise MissingFileError('The \"%s\" file was not found.' % path)\n    if os.path.isdir(path):\n        raise UnexpectedDirectoryError('\"%s\" is a directory, not a file.' % path)\n    return os.path.normpath(os.path.abspath(path))",
+                    "func_fullName": "exodus_bundler.bundling.resolve_file_path(path, search_environment_path)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for the File class .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, path, entry_point=None, chroot=None, library=False, file_factory=None):\n        \"\"\"Constructor for the `File` class.\n\n        Note:\n            A `MissingFileError` will be thrown if a matching file cannot be found.\n\n        Args:\n            path (str): Can be either an absolute path, relative path, or a binary name in `PATH`.\n            entry_point (string, optional): The name of the bundle entry point for an executable.\n                If `True`, the executable's basename will be used.\n            chroot (str, optional): If specified, all dependency and linker paths will be considered\n                relative to this directory (mainly useful for testing).\n            file_factory (function, optional): A function to use when creating new `File` instances.\n        \"\"\"\n        # Find the full path to the file.\n        self.path = resolve_file_path(path, search_environment_path=(entry_point is not None))\n\n        # Set the entry point for the file.\n        if entry_point is True:\n            self.entry_point = os.path.basename(self.path).replace(os.sep, '')\n        else:\n            self.entry_point = entry_point or None\n\n        # Parse an `Elf` object from the file.\n        try:\n            self.elf = Elf(path, chroot=chroot, file_factory=file_factory)\n        except InvalidElfBinaryError:\n            self.elf = None\n\n        self.chroot = chroot\n        self.file_factory = file_factory or File\n        self.library = library\n        self.no_symlink = self.entry_point and not self.requires_launcher",
+                    "func_fullName": "exodus_bundler.bundling.File.__init__(self, path, entry_point, chroot, library, file_factory)"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "copy",
+                    "func_desc": "Copies the file to a location based on its destination property .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def copy(self, working_directory):\n        \"\"\"Copies the file to a location based on its `destination` property.\n\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n        Returns:\n            str: The normalized and absolute destination path.\n        \"\"\"\n        full_destination = os.path.join(working_directory, self.destination)\n        full_destination = os.path.normpath(os.path.abspath(full_destination))\n\n        # The filenames are based on content hashes, so there's no need to copy it twice.\n        if os.path.exists(full_destination):\n            return full_destination\n\n        parent_directory = os.path.dirname(full_destination)\n        if not os.path.exists(parent_directory):\n            os.makedirs(parent_directory)\n\n        shutil.copy(self.path, full_destination)\n\n        return full_destination",
+                    "func_fullName": "exodus_bundler.bundling.File.copy(self, working_directory)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "create_entry_point",
+                    "func_desc": "Creates a symlink in bin directory to the executable or its launcher .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def create_entry_point(self, working_directory, bundle_root):\n        \"\"\"Creates a symlink in `bin/` to the executable or its launcher.\n\n        Note:\n            The destination must already exist.\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n        \"\"\"\n        source_path = os.path.join(bundle_root, self.source)\n        bin_directory = os.path.join(working_directory, 'bin')\n        if not os.path.exists(bin_directory):\n            os.makedirs(bin_directory)\n        entry_point_path = os.path.join(bin_directory, self.entry_point)\n        relative_destination_path = os.path.relpath(source_path, bin_directory)\n        os.symlink(relative_destination_path, entry_point_path)",
+                    "func_fullName": "exodus_bundler.bundling.File.create_entry_point(self, working_directory, bundle_root)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "create_launcher",
+                    "func_desc": "Creates a launcher at the specified location .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def create_launcher(self, working_directory, bundle_root, linker_basename, symlink_basename,\n                        shell_launcher=False):\n        \"\"\"Creates a launcher at `source` for `destination`.\n\n        Note:\n            If an `entry_point` has been specified, it will also be created.\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n            linker_basename (str): The basename of the linker to place in the same directory.\n            symlink_basename (str): The basename of the symlink to the actual executable.\n            shell_launcher (bool, optional): Forces the use of shell script launcher instead of\n                attempting to compile first using musl or diet c.\n        Returns:\n            str: The normalized and absolute path to the launcher.\n        \"\"\"\n        destination_path = os.path.join(working_directory, self.destination)\n        source_path = os.path.join(bundle_root, self.source)\n\n        # Create the symlink.\n        source_parent = os.path.dirname(source_path)\n        if not os.path.exists(source_parent):\n            os.makedirs(source_parent)\n        relative_destination_path = os.path.relpath(destination_path, source_parent)\n        symlink_path = os.path.join(source_parent, symlink_basename)\n        os.symlink(relative_destination_path, symlink_path)\n        executable = os.path.join('.', symlink_basename)\n\n        # Copy over the linker.\n        linker_path = os.path.join(source_parent, linker_basename)\n        if not os.path.exists(linker_path):\n            shutil.copy(self.elf.linker_file.path, linker_path)\n        else:\n            assert filecmp.cmp(self.elf.linker_file.path, linker_path), \\\n                'The \"%s\" linker file already exists and has differing contents.' % linker_path\n        linker = os.path.join('.', linker_basename)\n\n        # Construct the library path\n        original_file_parent = os.path.dirname(self.path)\n        library_paths = os.environ.get('LD_LIBRARY_PATH', '').split(':')\n        library_paths += ['/lib64', '/usr/lib64', '/lib', '/usr/lib', '/lib32', '/usr/lib32']\n        for dependency in self.elf.dependencies:\n            library_paths.append(os.path.dirname(dependency.path))\n        relative_library_paths = []\n        for directory in library_paths:\n            if not len(directory):\n                continue\n\n            # Get the actual absolute path for the library directory.\n            directory = os.path.normpath(os.path.abspath(directory))\n            if self.chroot:\n                directory = os.path.join(self.chroot, os.path.relpath(directory, '/'))\n\n            # Convert it into a path relative to the launcher/source.\n            relative_library_path = os.path.relpath(directory, original_file_parent)\n            if relative_library_path not in relative_library_paths:\n                relative_library_paths.append(relative_library_path)\n        library_path = ':'.join(relative_library_paths)\n\n        # Determine whether this is a \"full\" linker (*e.g.* GNU linker).\n        with open(self.elf.linker_file.path, 'rb') as f:\n            linker_content = f.read()\n            full_linker = (linker_content.find(b'inhibit-rpath') > -1)\n\n        # Try a c launcher first and fallback.\n        try:\n            if shell_launcher:\n                raise CompilerNotFoundError()\n\n            launcher_content = construct_binary_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'wb') as f:\n                f.write(launcher_content)\n        except CompilerNotFoundError:\n            if not shell_launcher:\n                logger.warning((\n                    'Installing either the musl or diet C libraries will result in more efficient '\n                    'launchers (currently using bash fallbacks instead).'\n                ))\n            launcher_content = construct_bash_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'w') as f:\n                f.write(launcher_content)\n        shutil.copymode(self.path, source_path)\n\n        return os.path.normpath(os.path.abspath(source_path))",
+                    "func_fullName": "exodus_bundler.bundling.File.create_launcher(self, working_directory, bundle_root, linker_basename, symlink_basename, shell_launcher)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "symlink",
+                    "func_desc": "Creates a relative symlink from the source to the destination .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def symlink(self, working_directory, bundle_root):\n        \"\"\"Creates a relative symlink from the `source` to the `destination`.\n\n        Args:\n            working_directory (str): The root that `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n        Returns:\n            str: The normalized and absolute path to the symlink.\n        \"\"\"\n        destination_path = os.path.join(working_directory, self.destination)\n        source_path = os.path.join(bundle_root, self.source)\n\n        source_parent = os.path.dirname(source_path)\n        if not os.path.exists(source_parent):\n            os.makedirs(source_parent)\n        relative_destination_path = os.path.relpath(destination_path, source_parent)\n        if os.path.exists(source_path):\n            assert os.path.islink(source_path)\n            assert os.path.realpath(source_path) == relative_destination_path\n        else:\n            os.symlink(relative_destination_path, source_path)\n\n        return os.path.normpath(os.path.abspath(source_path))",
+                    "func_fullName": "exodus_bundler.bundling.File.symlink(self, working_directory, bundle_root)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "destination",
+                    "func_desc": "Returns the relative path to the destination of the actual file contents .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def destination(self):\n        \"\"\"str: The relative path for the destination of the actual file contents.\"\"\"\n        return os.path.join('.', 'data', self.hash)",
+                    "func_fullName": "exodus_bundler.bundling.File.destination(self)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "executable",
+                    "func_desc": "True if the executable of the current binary is executable .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def executable(self):\n        return os.access(self.path, os.X_OK)",
+                    "func_fullName": "exodus_bundler.bundling.File.executable(self)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "elf",
+                    "func_desc": "Determines whether a file is a file that is an ELF binary .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def elf(self):\n        \"\"\"bool: Determines whether a file is a file is an ELF binary.\"\"\"\n        return detect_elf_binary(self.path)",
+                    "func_fullName": "exodus_bundler.bundling.File.elf(self)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "requires_launcher",
+                    "func_desc": "True if launcher is necessary for this file .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def requires_launcher(self):\n        \"\"\"bool: Whether a launcher is necessary for this file.\"\"\"\n        # This is unfortunately a heuristic approach because many executables are compiled\n        # as shared libraries, and many mostly-libraries are executable (*e.g.* glibc).\n\n        # The easy ones.\n        if self.library or not self.elf or not self.elf.linker_file or not self.executable:\n            return False\n        if self.elf.type == 'executable':\n            return True\n        if self.entry_point:\n            return True\n\n        # These will hopefully do more good than harm.\n        bin_directories = ['/bin/', '/bin32/', '/bin64/']\n        lib_directories = ['/lib/', '/lib32/', '/lib64/']\n        in_bin_directory = any(directory in self.path for directory in bin_directories)\n        in_lib_directory = any(directory in self.path for directory in lib_directories)\n        if in_bin_directory and not in_lib_directory:\n            return True\n        if in_lib_directory and not in_bin_directory:\n            return False\n\n        # Most libraries will include `.so` in the filename.\n        return re.search(r'\\.so(?:\\.|$)', self.path)",
+                    "func_fullName": "exodus_bundler.bundling.File.requires_launcher(self)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "source",
+                    "func_desc": "Returns the relative path for the source of the actual file contents .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def source(self):\n        \"\"\"str: The relative path for the source of the actual file contents.\"\"\"\n        return os.path.relpath(self.path, '/')",
+                    "func_fullName": "exodus_bundler.bundling.File.source(self)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "add_file",
+                    "func_desc": "Adds an additional file to the bundle .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_file(self, path, entry_point=None):\n        \"\"\"Adds an additional file to the bundle.\n\n        Note:\n            All of the file's dependencies will additionally be pulled into the bundle if the file\n            corresponds to a an ELF binary. This is true regardless of whether or not an entry point\n            is specified for the binary.\n\n        Args:\n            path (str): Can be either an absolute path, relative path, or a binary name in `PATH`.\n                Directories will be included recursively for non-entry point dependencies.\n            entry_point (string, optional): The name of the bundle entry point for an executable.\n                If `True`, the executable's basename will be used.\n        Returns:\n            The `File` that was added, or `None` if it was a directory that was added recursively.\n        \"\"\"\n        try:\n            file = self.file_factory(path, entry_point=entry_point, chroot=self.chroot)\n        except UnexpectedDirectoryError:\n            assert entry_point is None, \"Directories can't have entry points.\"\n            for root, directories, files in os.walk(path):\n                for file in files:\n                    file_path = os.path.join(root, file)\n                    self.add_file(file_path)\n            return\n\n        self.files.add(file)\n        if file.elf:\n            if file.elf.linker_file:\n                self.linker_files.add(file.elf.linker_file)\n                self.files |= file.elf.dependencies\n            else:\n                # Manually set the linker if there isn't one in the program header,\n                # and we've only seen one in all of the files that have been added.\n                if len(self.linker_files) == 1:\n                    [file.elf.linker_file] = self.linker_files\n                    self.files |= file.elf.dependencies\n                    # We definitely don't want a launcher for this file, so clear the linker.\n                    file.elf.linker_file = None\n                else:\n                    logger.warning((\n                        'An ELF binary without a suitable linker candidate was encountered. '\n                        'Either no linker was found or there are multiple conflicting linkers.'\n                    ))\n\n        return file",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.add_file(self, path, entry_point)"
+                },
+                {
+                    "func_id": 52,
+                    "func_name": "create_bundle",
+                    "func_desc": "Creates a new bundle in the working_directory .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def create_bundle(self, shell_launchers=False):\n        \"\"\"Creates the unpackaged bundle in `working_directory`.\n\n        Args:\n            shell_launchers (bool, optional): Forces the use of shell script launchers instead of\n                attempting to compile first using musl or diet c.\n        \"\"\"\n        file_paths = set()\n        files_needing_launchers = defaultdict(set)\n        for file in self.files:\n            # Store the file path to avoid collisions later.\n            file_path = os.path.join(self.bundle_root, file.source)\n            file_paths.add(file_path)\n\n            # Create a symlink in `./bin/` if an entry point is specified.\n            if file.entry_point:\n                file.create_entry_point(self.working_directory, self.bundle_root)\n\n            if file.no_symlink:\n                # We'll need to copy the actual file into the bundle subdirectory in this\n                # case so that it can locate resources using paths relative to the executable.\n                parent_directory = os.path.dirname(file_path)\n                if not os.path.exists(parent_directory):\n                    os.makedirs(parent_directory)\n                shutil.copy(file.path, file_path)\n                continue\n\n            # Copy over the actual file.\n            file.copy(self.working_directory)\n\n            if file.requires_launcher:\n                # These are kind of complicated, we'll just store the requirements for now.\n                directory_and_linker = (os.path.dirname(file_path), file.elf.linker_file)\n                files_needing_launchers[directory_and_linker].add(file)\n            else:\n                file.symlink(working_directory=self.working_directory, bundle_root=self.bundle_root)\n\n        # Now we need to write out one unique copy of each linker in each directory where it's\n        # required. This is necessary so that `readlink(\"/proc/self/exe\")` will return the correct\n        # directory when programs use that to construct relative paths to resources.\n        for ((directory, linker), executable_files) in files_needing_launchers.items():\n            # First, we'll find a unique name for the linker in this directory and write it out.\n            desired_linker_path = os.path.join(directory, 'linker-%s' % linker.hash)\n            linker_path = desired_linker_path\n            iteration = 2\n            while linker_path in file_paths:\n                linker_path = '%s-%d' % (desired_linker_path, iteration)\n                iteration += 1\n            file_paths.add(linker_path)\n            linker_dirname, linker_basename = os.path.split(linker_path)\n            if not os.path.exists(linker_dirname):\n                os.makedirs(linker_dirname)\n            shutil.copy(linker.path, linker_path)\n\n            # Now we need to construct a launcher for each executable that depends on this linker.\n            for file in executable_files:\n                # We'll again attempt to find a unique available name, this time for the symlink\n                # to the executable.\n                file_basename = file.entry_point or os.path.basename(file.path)\n                desired_symlink_path = os.path.join(directory, '%s-x' % file_basename)\n                symlink_path = desired_symlink_path\n                iteration = 2\n                while symlink_path in file_paths:\n                    symlink_path = '%s-%d' % (desired_symlink_path, iteration)\n                    iteration += 1\n                file_paths.add(symlink_path)\n                symlink_basename = os.path.basename(symlink_path)\n                file.create_launcher(self.working_directory, self.bundle_root,\n                                     linker_basename, symlink_basename,\n                                     shell_launcher=shell_launchers)",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.create_bundle(self, shell_launchers)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "delete_working_directory",
+                    "func_desc": "Recursively deletes the working directory .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def delete_working_directory(self):\n        \"\"\"Recursively deletes the working directory.\"\"\"\n        shutil.rmtree(self.working_directory)\n        self.working_directory = None",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.delete_working_directory(self)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "file_factory",
+                    "func_desc": "This method is used to create a new File or updates a File from the list of files in the bundle .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def file_factory(self, path, entry_point=None, chroot=None, library=False, file_factory=None):\n        \"\"\"Either creates a new `File`, or updates and returns one from `files`.\n\n        This method can be used in place of `File.__init__()` when it is known that the `File`\n        is going to end up being added to the `Bundle.files` set. The construction of a `File` is\n        quite expensive due to the ELF parsing, so this allows avoiding the construction of `File`\n        objects when an equivalent ones are already present in the set. Additionally, this allows\n        for intelligent merging of properties between `File` objects. For example, a `File` with\n        an entry point should always preserve that entry point, even if the file also gets added\n        using `--add` or some other method without one.\n\n        See the `File.__init__()` method for documentation of the arguments, they're identical.\n        \"\"\"\n        # Attempt to find an existing file with the same normalized path in `self.files`.\n        path = resolve_file_path(path, search_environment_path=entry_point is not None)\n        file = next((file for file in self.files if file.path == path), None)\n        if file is not None:\n            assert entry_point == file.entry_point or not entry_point or not file.entry_point, \\\n                \"The entry point property should always persist, but can't conflict.\"\n            file.entry_point = file.entry_point or entry_point\n            assert chroot == file.chroot, 'The chroot must match.'\n            file.library = file.library or library\n            assert not file.entry_point or not file.library, \\\n                \"A file can't be both an entry point and a library.\"\n            return file\n\n        return File(path, entry_point, chroot, library, file_factory)",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.file_factory(self, path, entry_point, chroot, library, file_factory)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 22,
+                    "func_name": "detect_elf_binary",
+                    "func_desc": "Returns True if a file has an ELF header .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def detect_elf_binary(filename):\n    \"\"\"Returns `True` if a file has an ELF header.\"\"\"\n    if not os.path.exists(filename):\n        raise MissingFileError('The \"%s\" file was not found.' % filename)\n\n    with open(filename, 'rb') as f:\n        first_four_bytes = f.read(4)\n\n    return first_four_bytes == b'\\x7fELF'",
+                    "func_fullName": "exodus_bundler.bundling.detect_elf_binary(filename)"
+                },
+                {
+                    "func_id": 24,
+                    "func_name": "resolve_binary",
+                    "func_desc": "Attempts to find the absolute path to the binary .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def resolve_binary(binary):\n    \"\"\"Attempts to find the absolute path to the binary.\"\"\"\n    absolute_binary_path = os.path.normpath(os.path.abspath(binary))\n    if not os.path.exists(absolute_binary_path):\n        for path in os.getenv('PATH', '/bin/:/usr/bin/').split(os.pathsep):\n            absolute_binary_path = os.path.normpath(os.path.abspath(os.path.join(path, binary)))\n            if os.path.exists(absolute_binary_path):\n                break\n        else:\n            raise MissingFileError('The \"%s\" binary could not be found in $PATH.' % binary)\n    return absolute_binary_path",
+                    "func_fullName": "exodus_bundler.bundling.resolve_binary(binary)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "run_ldd",
+                    "func_desc": "Runs ldd and gets the combined stdout and stderr output as a list of lines .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def run_ldd(ldd, binary):\n    \"\"\"Runs `ldd` and gets the combined stdout/stderr output as a list of lines.\"\"\"\n    if not detect_elf_binary(resolve_binary(binary)):\n        raise InvalidElfBinaryError('The \"%s\" file is not a binary ELF file.' % binary)\n\n    process = Popen([ldd, binary], stdout=PIPE, stderr=PIPE)\n    stdout, stderr = process.communicate()\n    return stdout.decode('utf-8').split('\\n') + stderr.decode('utf-8').split('\\n')",
+                    "func_fullName": "exodus_bundler.bundling.run_ldd(ldd, binary)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "__eq__",
+                    "func_desc": "Check if two Elf objects are equal .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __eq__(self, other):\n        return isinstance(other, Elf) and self.path == self.path",
+                    "func_fullName": "exodus_bundler.bundling.Elf.__eq__(self, other)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 23,
+                    "func_name": "parse_dependencies_from_ldd_output",
+                    "func_desc": "Takes the output of ldd and parses the dependencies .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_dependencies_from_ldd_output(content):\n    \"\"\"Takes the output of `ldd` as a string or list of lines and parses the dependencies.\"\"\"\n    if type(content) == str:\n        content = content.split('\\n')\n\n    dependencies = []\n    for line in content:\n        # This first one is a special case of invoking the linker as `ldd`.\n        if re.search(r'^\\s*(/.*?)\\s*=>\\s*ldd\\s*\\(', line):\n            # We'll exclude this because it's the hardcoded INTERP path, and it would be\n            # impossible to get the full path from this command output.\n            continue\n        match = re.search(r'=>\\s*(/.*?)\\s*\\(', line)\n        match = match or re.search(r'\\s*(/.*?)\\s*\\(', line)\n        if match:\n            dependencies.append(match.group(1))\n\n    return dependencies",
+                    "func_fullName": "exodus_bundler.bundling.parse_dependencies_from_ldd_output(content)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "find_direct_dependencies",
+                    "func_desc": "Runs the specified linker and returns a set of the dependencies as File instances .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def find_direct_dependencies(self, linker_file=None):\n        \"\"\"Runs the specified linker and returns a set of the dependencies as `File` instances.\"\"\"\n        linker_file = linker_file or self.linker_file\n        if not linker_file:\n            return set()\n        linker_path = linker_file.path\n        environment = {}\n        environment.update(os.environ)\n        environment['LD_TRACE_LOADED_OBJECTS'] = '1'\n        extra_ldd_arguments = []\n        if self.chroot:\n            ld_library_path = '/lib64:/usr/lib64:/lib/:/usr/lib:/lib32/:/usr/lib32/:'\n            ld_library_path += environment.get('LD_LIBRARY_PATH', '')\n            directories = []\n            for directory in ld_library_path.split(':'):\n                if os.path.isabs(directory):\n                    directory = os.path.join(self.chroot, os.path.relpath(directory, '/'))\n                directories.append(directory)\n            ld_library_path = ':'.join(directories)\n            environment['LD_LIBRARY_PATH'] = ld_library_path\n            # We only need to avoid including system dependencies if there's a chroot set.\n            extra_ldd_arguments += ['--inhibit-cache', '--inhibit-rpath', '']\n\n        process = Popen(['ldd'] + extra_ldd_arguments + [self.path],\n                        executable=linker_path, stdout=PIPE, stderr=PIPE, env=environment)\n        stdout, stderr = process.communicate()\n        combined_output = stdout.decode('utf-8').split('\\n') + stderr.decode('utf-8').split('\\n')\n        # Note that we're explicitly adding the linker because when we invoke it as `ldd` we can't\n        # extract the real path from the trace output. Even if it were here twice, it would be\n        # deduplicated though the use of a set.\n        filenames = parse_dependencies_from_ldd_output(combined_output) + [linker_path]\n        return set(self.file_factory(filename, chroot=self.chroot, library=True)\n                   for filename in filenames)",
+                    "func_fullName": "exodus_bundler.bundling.Elf.find_direct_dependencies(self, linker_file)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "dependencies",
+                    "func_desc": "Run s the files linker iteratively and returns a set of all library dependencies .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def dependencies(self):\n        \"\"\"Run's the files' linker iteratively and returns a set of all library dependencies.\"\"\"\n        all_dependencies = set()\n        unprocessed_dependencies = set(self.direct_dependencies)\n        while len(unprocessed_dependencies):\n            all_dependencies |= unprocessed_dependencies\n            new_dependencies = set()\n            for dependency in unprocessed_dependencies:\n                if dependency.elf:\n                    new_dependencies |= set(\n                        dependency.elf.find_direct_dependencies(self.linker_file))\n            unprocessed_dependencies = new_dependencies - all_dependencies\n        return all_dependencies",
+                    "func_fullName": "exodus_bundler.bundling.Elf.dependencies(self)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "direct_dependencies",
+                    "func_desc": "Runs the file s linker and returns a set of the dependencies as File instances .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def direct_dependencies(self):\n        \"\"\"Runs the file's linker and returns a set of the dependencies as `File` instances.\"\"\"\n        return self.find_direct_dependencies()",
+                    "func_fullName": "exodus_bundler.bundling.Elf.direct_dependencies(self)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "find_dependencies",
+                    "func_desc": "Finds a list of all of the files contained with the package containing a file .",
+                    "func_file": "dependency_detection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def find_dependencies(self, path):\n        \"\"\"Finds a list of all of the files contained with the package containing a file.\"\"\"\n        owner = self.find_owner(path)\n        if not owner:\n            return None\n\n        args = self.list_command + [owner]\n        process = subprocess.Popen(args, stdout=subprocess.PIPE)\n        stdout, stderr = process.communicate()\n        dependencies = []\n        for line in stdout.decode('utf-8').split('\\n'):\n            match = re.search(self.list_regex, line.strip())\n            if match:\n                dependency_path = match.groups()[0]\n                if os.path.exists(dependency_path) and not os.path.isdir(dependency_path):\n                    dependencies.append(dependency_path)\n\n        return dependencies",
+                    "func_fullName": "exodus_bundler.dependency_detection.PackageManager.find_dependencies(self, path)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "find_owner",
+                    "func_desc": "Finds the package that owns the specified file path .",
+                    "func_file": "dependency_detection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def find_owner(self, path):\n        \"\"\"Finds the package that owns the specified file path.\"\"\"\n        if not self.cache_exists or not self.commands_exist:\n            return None\n        args = self.owner_command + [path]\n        env = os.environ.copy()\n        env['LC_ALL'] = 'C'\n        process = subprocess.Popen(args, stdout=subprocess.PIPE, env=env)\n        stdout, stderr = process.communicate()\n        output = stdout.decode('utf-8').strip()\n        match = re.search(self.owner_regex, output)\n        if match:\n            return match.groups()[0].strip()",
+                    "func_fullName": "exodus_bundler.dependency_detection.PackageManager.find_owner(self, path)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "cache_exists",
+                    "func_desc": "Whether or not the expected package cache directory exists .",
+                    "func_file": "dependency_detection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def cache_exists(self):\n        \"\"\"Whether or not the expected package cache directory exists.\"\"\"\n        return os.path.exists(self.cache_directory) and os.path.isdir(self.cache_directory)",
+                    "func_fullName": "exodus_bundler.dependency_detection.PackageManager.cache_exists(self)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "commands_exist",
+                    "func_desc": "Whether or not the list and owner package manager commands can be resolved .",
+                    "func_file": "dependency_detection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def commands_exist(self):\n        \"\"\"Whether or not the list and owner package manager commands can be resolved.\"\"\"\n        commands = {self.list_command[0], self.owner_command[0]}\n        return all(find_executable(command) is not None for command in commands)",
+                    "func_fullName": "exodus_bundler.dependency_detection.PackageManager.commands_exist(self)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "detect_dependencies",
+                    "func_desc": "Detects the dependencies of a package .",
+                    "func_file": "dependency_detection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def detect_dependencies(path):\n    # We'll go through the supported systems one by one.\n    for package_manager in package_managers:\n        dependencies = package_manager.find_dependencies(path)\n        if dependencies:\n            return dependencies\n\n    return None",
+                    "func_fullName": "exodus_bundler.dependency_detection.detect_dependencies(path)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 27,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for a new NonceSession .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, function):\n        self.__doc__ = getattr(function, '__doc__')\n        self.function = function",
+                    "func_fullName": "exodus_bundler.bundling.stored_property.__init__(self, function)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "__hash__",
+                    "func_desc": "Defines a hash for the object so it can be used in sets .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __hash__(self):\n        \"\"\"Defines a hash for the object so it can be used in sets.\"\"\"\n        return hash(self.path)",
+                    "func_fullName": "exodus_bundler.bundling.Elf.__hash__(self)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for the Bundle class .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, working_directory=None, chroot=None):\n        \"\"\"Constructor for the `Bundle` class.\n\n        Args:\n            working_directory (string, optional): The location where the bundle will be created on\n                disk. A temporary directory will be constructed if specified as `True`. If left as\n                `None`, some methods and properties will raise errors.\n            chroot (str, optional): If specified, all absolute paths will be treated as being\n                relative to this root (mainly useful for testing).\n        \"\"\"\n        self.working_directory = working_directory\n        if working_directory is True:\n            self.working_directory = tempfile.mkdtemp(prefix='exodus-bundle-')\n            # The permissions on the `mkdtemp()` directory will be extremely restricted by default,\n            # so we'll modify them to to reflect the current umask.\n            umask = os.umask(0)\n            os.umask(umask)\n            os.chmod(self.working_directory, 0o777 & ~umask)\n        self.chroot = chroot\n        self.files = set()\n        self.linker_files = set()",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.__init__(self, working_directory, chroot)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 28,
+                    "func_name": "__get__",
+                    "func_desc": "Get the object .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __get__(self, instance, type):\n        result = instance.__dict__[self.function.__name__] = self.function(instance)\n        return result",
+                    "func_fullName": "exodus_bundler.bundling.stored_property.__get__(self, instance, type)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "__repr__",
+                    "func_desc": "Returns a string representation of the current SETTINGS .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return '<Elf(path=\"%s\")>' % self.path",
+                    "func_fullName": "exodus_bundler.bundling.Elf.__repr__(self)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "bundle_root",
+                    "func_desc": "Returns the root directory of the bundle where the original file structure is mirrored .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def bundle_root(self):\n        \"\"\"str: The root directory of the bundle where the original file structure is mirrored.\"\"\"\n        path = os.path.join(self.working_directory, 'bundles', self.hash)\n        return os.path.normpath(os.path.abspath(path))",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.bundle_root(self)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "hash",
+                    "func_desc": "Computes a hash based on the current contents of the bundle .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def hash(self):\n        \"\"\"str: Computes a hash based on the current contents of the bundle.\"\"\"\n        file_hashes = sorted(file.hash for file in self.files)\n        combined_hashes = '\\n'.join(file_hashes).encode('utf-8')\n        return hashlib.sha256(combined_hashes).hexdigest()",
+                    "func_fullName": "exodus_bundler.bundling.Bundle.hash(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1363; k=12; a=0.25; combined=0.441; stability(ARI)=0.819; sep=0.314",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 37,
+                    "func_name": "__eq__",
+                    "func_desc": "Checks if two File objects are equal .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __eq__(self, other):\n        return isinstance(other, File) and self.path == self.path and \\\n            self.entry_point == self.entry_point",
+                    "func_fullName": "exodus_bundler.bundling.File.__eq__(self, other)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "__hash__",
+                    "func_desc": "Computes a hash for the instance unique up to the file path and entry point .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __hash__(self):\n        \"\"\"Computes a hash for the instance unique up to the file path and entry point.\"\"\"\n        return hash((self.path, self.entry_point))",
+                    "func_fullName": "exodus_bundler.bundling.File.__hash__(self)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "__repr__",
+                    "func_desc": "Returns a string representation of the file .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return '<File(path=\"%s\")>' % self.path",
+                    "func_fullName": "exodus_bundler.bundling.File.__repr__(self)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "hash",
+                    "func_desc": "Computes a hash based on the file content useful for file deduplication .",
+                    "func_file": "bundling",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def hash(self):\n        \"\"\"str: Computes a hash based on the file content, useful for file deduplication.\"\"\"\n        with open(self.path, 'rb') as f:\n            return hashlib.sha256(f.read()).hexdigest()",
+                    "func_fullName": "exodus_bundler.bundling.File.hash(self)"
+                }
+            ]
+        }
+    ]
+}

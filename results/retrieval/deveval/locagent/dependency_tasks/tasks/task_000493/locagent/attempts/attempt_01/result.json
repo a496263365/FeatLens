@@ -1,0 +1,129 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 493,
+  "namespace": "sumy.summarizers.reduction.ReductionSummarizer._to_words_set",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4422,
+      "input_estimate_after": 4422,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify reusable dependencies for implementing the `_to_words_set` method in the ReductionSummarizer class. The method needs to convert a sentence to a set of normalized words with stop words removed.\n\nHere are the key reusable dependencies:\n\n```\nsumy/summarizers/_summarizer.py\nline: -1\nclass: AbstractSummarizer\nfunction: normalize_word\n\nsumy/summarizers/reduction.py\nline: 16\nline: 24\nvariable: _stop_words\nfunction: stop_words.setter\n\nsumy/summarizers/_summarizer.py\nline: 27\nclass: AbstractSummarizer\nfunction: stem_word\n\nsumy/summarizers/reduction.py\nline: 30\nfunction: ReductionSummarizer.rate_sentences\n\nsumy/summarizers/reduction.py\nline: 45\nfunction: ReductionSummarizer._rate_sentences_edge\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/_summarizer.py",
+      "sumy/summarizers/reduction.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/_summarizer.py",
+        "name": "AbstractSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers._summarizer.AbstractSummarizer",
+        "start": 17,
+        "end": 53,
+        "code": "class AbstractSummarizer(object):\n    def __init__(self, stemmer=null_stemmer):\n        if not callable(stemmer):\n            raise ValueError(\"Stemmer has to be a callable object\")\n\n        self._stemmer = stemmer\n\n    def __call__(self, document, sentences_count):\n        raise NotImplementedError(\"This method should be overriden in subclass\")\n\n    def stem_word(self, word):\n        return self._stemmer(self.normalize_word(word))\n\n    @staticmethod\n    def normalize_word(word):\n        return to_unicode(word).lower()\n\n    @staticmethod\n    def _get_best_sentences(sentences, count, rating, *args, **kwargs):\n        rate = rating\n        if isinstance(rating, dict):\n            assert not args and not kwargs\n            rate = lambda s: rating[s]\n\n        infos = (SentenceInfo(s, o, rate(s, *args, **kwargs))\n            for o, s in enumerate(sentences))\n\n        # sort sentences by rating in descending order\n        infos = sorted(infos, key=attrgetter(\"rating\"), reverse=True)\n        # get `count` first best rated sentences\n        if not callable(count):\n            count = ItemsCount(count)\n        infos = count(infos)\n        # sort sentences by their order in document\n        infos = sorted(infos, key=attrgetter(\"order\"))\n\n        return tuple(i.sentence for i in infos)"
+      },
+      {
+        "file": "sumy/summarizers/reduction.py",
+        "name": "ReductionSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.reduction.ReductionSummarizer",
+        "start": 13,
+        "end": 56,
+        "code": "class ReductionSummarizer(AbstractSummarizer):\n    \"\"\"Source: https://github.com/adamfabish/Reduction\"\"\"\n\n    _stop_words = frozenset()\n\n    @property\n    def stop_words(self):\n        return self._stop_words\n\n    @stop_words.setter\n    def stop_words(self, words):\n        self._stop_words = frozenset(map(self.normalize_word, words))\n\n    def __call__(self, document, sentences_count):\n        ratings = self.rate_sentences(document)\n        return self._get_best_sentences(document.sentences, sentences_count, ratings)\n\n    def rate_sentences(self, document):\n        sentences_words = [(s, self._to_words_set(s)) for s in document.sentences]\n        ratings = defaultdict(float)\n\n        for (sentence1, words1), (sentence2, words2) in combinations(sentences_words, 2):\n            rank = self._rate_sentences_edge(words1, words2)\n            ratings[sentence1] += rank\n            ratings[sentence2] += rank\n\n        return ratings\n\n    def _to_words_set(self, sentence):\n        pass\n\n\n    def _rate_sentences_edge(self, words1, words2):\n        rank = 0\n        for w1 in words1:\n            for w2 in words2:\n                rank += int(w1 == w2)\n\n        if rank == 0:\n            return 0.0\n\n        assert len(words1) > 0 and len(words2) > 0\n        norm = math.log(len(words1)) + math.log(len(words2))\n        return 0.0 if norm == 0.0 else rank / norm"
+      },
+      {
+        "file": "sumy/summarizers/reduction.py",
+        "name": "ReductionSummarizer.stop_words",
+        "kind": "function",
+        "symbol": "sumy.summarizers.reduction.ReductionSummarizer.stop_words",
+        "start": 23,
+        "end": 24,
+        "code": "    def stop_words(self, words):\n        self._stop_words = frozenset(map(self.normalize_word, words))"
+      },
+      {
+        "file": "sumy/summarizers/_summarizer.py",
+        "name": "AbstractSummarizer.stem_word",
+        "kind": "function",
+        "symbol": "sumy.summarizers._summarizer.AbstractSummarizer.stem_word",
+        "start": 27,
+        "end": 28,
+        "code": "    def stem_word(self, word):\n        return self._stemmer(self.normalize_word(word))"
+      },
+      {
+        "file": "sumy/summarizers/reduction.py",
+        "name": "ReductionSummarizer.rate_sentences",
+        "kind": "function",
+        "symbol": "sumy.summarizers.reduction.ReductionSummarizer.rate_sentences",
+        "start": 30,
+        "end": 39,
+        "code": "    def rate_sentences(self, document):\n        sentences_words = [(s, self._to_words_set(s)) for s in document.sentences]\n        ratings = defaultdict(float)\n\n        for (sentence1, words1), (sentence2, words2) in combinations(sentences_words, 2):\n            rank = self._rate_sentences_edge(words1, words2)\n            ratings[sentence1] += rank\n            ratings[sentence2] += rank\n\n        return ratings"
+      },
+      {
+        "file": "sumy/summarizers/reduction.py",
+        "name": "ReductionSummarizer._rate_sentences_edge",
+        "kind": "function",
+        "symbol": "sumy.summarizers.reduction.ReductionSummarizer._rate_sentences_edge",
+        "start": 45,
+        "end": 56,
+        "code": "    def _rate_sentences_edge(self, words1, words2):\n        rank = 0\n        for w1 in words1:\n            for w2 in words2:\n                rank += int(w1 == w2)\n\n        if rank == 0:\n            return 0.0\n\n        assert len(words1) > 0 and len(words2) > 0\n        norm = math.log(len(words1)) + math.log(len(words2))\n        return 0.0 if norm == 0.0 else rank / norm"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/_summarizer.py:line: -1",
+      "sumy/summarizers/_summarizer.py:function: normalize_word",
+      "sumy/summarizers/reduction.py:variable: _stop_words",
+      "sumy/summarizers/reduction.py:function: stop_words.setter",
+      "sumy/summarizers/_summarizer.py:function: stem_word"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "sumy.summarizers._summarizer.AbstractSummarizer.stem_word"
+    ],
+    "exact_hit_dependencies": [
+      "sumy.summarizers._summarizer.AbstractSummarizer.stem_word"
+    ],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 5,
+    "returned_code_chars": 3632
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18157,
+    "completion_tokens": 483,
+    "total_tokens": 18640,
+    "seconds": 50.20513939857483,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 51.20227026939392,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

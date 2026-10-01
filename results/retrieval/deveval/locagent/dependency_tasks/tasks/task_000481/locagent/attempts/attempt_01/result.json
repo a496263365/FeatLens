@@ -1,0 +1,108 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 481,
+  "namespace": "sumy.evaluation.rouge._recon_lcs",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9299,
+      "input_estimate_after": 9299,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I need to identify reusable dependencies for implementing the `_recon_lcs` function in `sumy/evaluation/rouge.py`. The function needs to reconstruct the LCS from a DP table created by the `_lcs` function.\n\nFrom the code analysis, I can see:\n\n1. The `_lcs` function (lines 57-78) creates and returns a DP table as a dictionary with tuple keys `(i, j)` representing LCS lengths.\n2. The `_get_index_of_lcs` function (lines 38-40) returns the dimensions `(len(x), len(y))`.\n3. The `_len_lcs` function (lines 42-54) uses both `_lcs` and `_get_index_of_lcs` to compute just the length.\n4. The `_recon_lcs` function is called in `_union_lcs` (line 245) which expects it to return the LCS sequence.\n\nThe key reusable dependencies are the existing LCS infrastructure functions that `_recon_lcs` should leverage.\n\n```\nsumy/evaluation/rouge.py\nline: 57\nfunction: _lcs\n\nsumy/evaluation/rouge.py\nline: 38\nfunction: _get_index_of_lcs\n\nsumy/evaluation/rouge.py\nline: 42\nfunction: _len_lcs\n\nsumy/evaluation/rouge.py\nline: 240\nline: III\nfunction: _union_lcs\n\nsumy/evaluation/rouge.py\nline: 68\nline: 77\nvariable: table\n```",
+  "final_locations": {
+    "files": [
+      "sumy/evaluation/rouge.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/evaluation/rouge.py",
+        "name": "_lcs",
+        "kind": "function",
+        "symbol": "sumy.evaluation.rouge._lcs",
+        "start": 57,
+        "end": 78,
+        "code": "def _lcs(x, y):\n    \"\"\"\n    Computes the length of the longest common subsequence (lcs) between two\n    strings. The implementation below uses a DP programming algorithm and runs\n    in O(nm) time where n = len(x) and m = len(y).\n    Source: http://www.algorithmist.com/index.php/Longest_Common_Subsequence\n\n    :param x: collection of words\n    :param y: collection of words\n    :returns table: dictionary of coord and len lcs\n    \"\"\"\n    n, m = _get_index_of_lcs(x, y)\n    table = dict()\n    for i in range(n + 1):\n        for j in range(m + 1):\n            if i == 0 or j == 0:\n                table[i, j] = 0\n            elif x[i - 1] == y[j - 1]:\n                table[i, j] = table[i - 1, j - 1] + 1\n            else:\n                table[i, j] = max(table[i - 1, j], table[i, j - 1])\n    return table"
+      },
+      {
+        "file": "sumy/evaluation/rouge.py",
+        "name": "_get_index_of_lcs",
+        "kind": "function",
+        "symbol": "sumy.evaluation.rouge._get_index_of_lcs",
+        "start": 38,
+        "end": 39,
+        "code": "def _get_index_of_lcs(x, y):\n    return len(x), len(y)"
+      },
+      {
+        "file": "sumy/evaluation/rouge.py",
+        "name": "_len_lcs",
+        "kind": "function",
+        "symbol": "sumy.evaluation.rouge._len_lcs",
+        "start": 42,
+        "end": 54,
+        "code": "def _len_lcs(x, y):\n    \"\"\"\n    Returns the length of the Longest Common Subsequence between sequences x\n    and y.\n    Source: http://www.algorithmist.com/index.php/Longest_Common_Subsequence\n\n    :param x: sequence of words\n    :param y: sequence of words\n    :returns integer: Length of LCS between x and y\n    \"\"\"\n    table = _lcs(x, y)\n    n, m = _get_index_of_lcs(x, y)\n    return table[n, m]"
+      },
+      {
+        "file": "sumy/evaluation/rouge.py",
+        "name": "_union_lcs",
+        "kind": "function",
+        "symbol": "sumy.evaluation.rouge._union_lcs",
+        "start": 220,
+        "end": 251,
+        "code": "def _union_lcs(evaluated_sentences, reference_sentence):\n    \"\"\"\n    Returns LCS_u(r_i, C) which is the LCS score of the union longest common subsequence\n    between reference sentence ri and candidate summary C. For example, if\n    r_i= w1 w2 w3 w4 w5, and C contains two sentences: c1 = w1 w2 w6 w7 w8 and\n    c2 = w1 w3 w8 w9 w5, then the longest common subsequence of r_i and c1 is\n    “w1 w2” and the longest common subsequence of r_i and c2 is “w1 w3 w5”. The\n    union longest common subsequence of r_i, c1, and c2 is “w1 w2 w3 w5” and\n    LCS_u(r_i, C) = 4/5.\n\n    :param evaluated_sentences:\n        The sentences that have been picked by the summarizer\n    :param reference_sentence:\n        One of the sentences in the reference summaries\n    :returns float: LCS_u(r_i, C)\n    :raises ValueError: raises exception if a param has len <= 0\n    \"\"\"\n    if len(evaluated_sentences) <= 0:\n        raise (ValueError(\"Collections must contain at least 1 sentence.\"))\n\n    lcs_union = set()\n    reference_words = _split_into_words([reference_sentence])\n    combined_lcs_length = 0\n    for eval_s in evaluated_sentences:\n        evaluated_words = _split_into_words([eval_s])\n        lcs = set(_recon_lcs(reference_words, evaluated_words))\n        combined_lcs_length += len(lcs)\n        lcs_union = lcs_union.union(lcs)\n\n    union_lcs_count = len(lcs_union)\n    union_lcs_value = union_lcs_count / combined_lcs_length\n    return union_lcs_value"
+      }
+    ],
+    "unresolved": [
+      "sumy/evaluation/rouge.py:variable: table"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "sumy.evaluation.rouge._get_index_of_lcs",
+      "sumy.evaluation.rouge._lcs"
+    ],
+    "exact_hit_dependencies": [
+      "sumy.evaluation.rouge._get_index_of_lcs",
+      "sumy.evaluation.rouge._lcs"
+    ],
+    "returned_entities": 4,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 2706
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26304,
+    "completion_tokens": 792,
+    "total_tokens": 27096,
+    "seconds": 51.49648714065552,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 56.70106363296509,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,1370 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "fetch",
+                    "func_desc": "Download a document from a URL save it locally if cache enabled",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def fetch(url, http, cache=False, force_download=False, wsdl_basedir='', headers={}):\n    \"\"\"Download a document from a URL, save it locally if cache enabled\"\"\"\n\n    # check / append a valid schema if not given:\n    url_scheme, netloc, path, query, fragment = urlsplit(url)\n    if not url_scheme in ('http', 'https', 'file'):\n        for scheme in ('http', 'https', 'file'):\n            try:\n                path = os.path.normpath(os.path.join(wsdl_basedir, url))\n                if not url.startswith(\"/\") and scheme in ('http', 'https'):\n                    tmp_url = \"%s://%s\" % (scheme, path)\n                else:\n                    tmp_url = \"%s:%s\" % (scheme, path)\n                log.debug('Scheme not found, trying %s' % scheme)\n                return fetch(tmp_url, http, cache, force_download, wsdl_basedir, headers)\n            except Exception as e:\n                log.error(e)\n        raise RuntimeError('No scheme given for url: %s' % url)\n\n    # make md5 hash of the url for caching...\n    filename = '%s.xml' % hashlib.md5(url.encode('utf8')).hexdigest()\n    if isinstance(cache, basestring):\n        filename = os.path.join(cache, filename)\n    if cache and os.path.exists(filename) and not force_download:\n        log.info('Reading file %s' % filename)\n        f = open(filename, 'r')\n        xml = f.read()\n        f.close()\n    else:\n        if url_scheme == 'file':\n            log.info('Fetching url %s using urllib2' % url)\n            f = urllib2.urlopen(url)\n            xml = f.read()\n        else:\n            log.info('GET %s using %s' % (url, http._wrapper_version))\n            response, xml = http.request(url, 'GET', None, headers)\n        if cache:\n            log.info('Writing file %s' % filename)\n            if not os.path.isdir(cache):\n                os.makedirs(cache)\n            f = open(filename, 'w')\n            f.write(xml)\n            f.close()\n    return xml",
+                    "func_fullName": "pysimplesoap.helpers.fetch(url, http, cache, force_download, wsdl_basedir, headers)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the attributes of the object .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, location=None, action=None, namespace=None,\n                 cert=None, exceptions=True, proxy=None, ns=None,\n                 soap_ns=None, wsdl=None, wsdl_basedir='', cache=False, cacert=None,\n                 sessions=False, soap_server=None, timeout=TIMEOUT,\n                 http_headers=None, trace=False,\n                 username=None, password=None,\n                 key_file=None, plugins=None,\n                 ):\n        \"\"\"\n        :param http_headers: Additional HTTP Headers; example: {'Host': 'ipsec.example.com'}\n        \"\"\"\n        self.certssl = cert\n        self.keyssl = key_file\n        self.location = location        # server location (url)\n        self.action = action            # SOAP base action\n        self.namespace = namespace      # message\n        self.exceptions = exceptions    # lanzar execpiones? (Soap Faults)\n        self.xml_request = self.xml_response = ''\n        self.http_headers = http_headers or {}\n        self.plugins = plugins or []\n        # extract the base directory / url for wsdl relative imports:\n        if wsdl and wsdl_basedir == '':\n            # parse the wsdl url, strip the scheme and filename\n            url_scheme, netloc, path, query, fragment = urlsplit(wsdl)\n            wsdl_basedir = os.path.dirname(netloc + path)\n\n        self.wsdl_basedir = wsdl_basedir\n\n        # shortcut to print all debugging info and sent / received xml messages\n        if trace:\n            if trace is True:\n                level = logging.DEBUG           # default logging level\n            else:\n                level = trace                   # use the provided level\n            logging.basicConfig(level=level)\n            log.setLevel(level)\n\n        if not soap_ns and not ns:\n            self.__soap_ns = 'soap'  # 1.1\n        elif not soap_ns and ns:\n            self.__soap_ns = 'soapenv'  # 1.2\n        else:\n            self.__soap_ns = soap_ns\n\n        # SOAP Server (special cases like oracle, jbossas6 or jetty)\n        self.__soap_server = soap_server\n\n        # SOAP Header support\n        self.__headers = {}         # general headers\n        self.__call_headers = None  # Struct to be marshalled for RPC Call\n\n        # check if the Certification Authority Cert is a string and store it\n        if cacert and cacert.startswith('-----BEGIN CERTIFICATE-----'):\n            fd, filename = tempfile.mkstemp()\n            f = os.fdopen(fd, 'w+b', -1)\n            log.debug(\"Saving CA certificate to %s\" % filename)\n            f.write(cacert)\n            cacert = filename\n            f.close()\n        self.cacert = cacert\n\n        # Create HTTP wrapper\n        Http = get_Http()\n        self.http = Http(timeout=timeout, cacert=cacert, proxy=proxy, sessions=sessions)\n        if username and password:\n            if hasattr(self.http, 'add_credentials'):\n                self.http.add_credentials(username, password)\n        if cert and key_file:\n            if hasattr(self.http, 'add_certificate'):\n                self.http.add_certificate(key=key_file, cert=cert, domain='')\n\n\n        # namespace prefix, None to use xmlns attribute or False to not use it:\n        self.__ns = ns\n        if not ns:\n            self.__xml = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                    "func_fullName": "pysimplesoap.client.SoapClient.__init__(self, location, action, namespace, cert, exceptions, proxy, ns, soap_ns, wsdl, wsdl_basedir, cache, cacert, sessions, soap_server, timeout, http_headers, trace, username, password, key_file, plugins)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "wsdl_parse",
+                    "func_desc": "Parse Web Service Description v1 . 1",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl_parse(self, url, cache=False):\n        \"\"\"Parse Web Service Description v1.1\"\"\"\n\n        log.debug('Parsing wsdl url: %s' % url)\n        # Try to load a previously parsed wsdl:\n        force_download = False\n        if cache:\n            # make md5 hash of the url for caching...\n            filename_pkl = '%s.pkl' % hashlib.md5(url).hexdigest()\n            if isinstance(cache, basestring):\n                filename_pkl = os.path.join(cache, filename_pkl)\n            if os.path.exists(filename_pkl):\n                log.debug('Unpickle file %s' % (filename_pkl, ))\n                f = open(filename_pkl, 'r')\n                pkl = pickle.load(f)\n                f.close()\n                # sanity check:\n                if pkl['version'][:-1] != __version__.split(' ')[0][:-1] or pkl['url'] != url:\n                    warnings.warn('version or url mismatch! discarding cached wsdl', RuntimeWarning)\n                    log.debug('Version: %s %s' % (pkl['version'], __version__))\n                    log.debug('URL: %s %s' % (pkl['url'], url))\n                    force_download = True\n                else:\n                    self.namespace = pkl['namespace']\n                    self.documentation = pkl['documentation']\n                    return pkl['services']\n\n        # always return an unicode object:\n        REVERSE_TYPE_MAP['string'] = str\n\n        wsdl = self._url_to_xml_tree(url, cache, force_download)\n        services = self._xml_tree_to_services(wsdl, cache, force_download)\n\n        # dump the full service/port/operation map\n        #log.debug(pprint.pformat(services))\n\n        # Save parsed wsdl (cache)\n        if cache:\n            f = open(filename_pkl, \"wb\")\n            pkl = {\n                'version': __version__.split(' ')[0],\n                'url': url,\n                'namespace': self.namespace,\n                'documentation': self.documentation,\n                'services': services,\n            }\n            pickle.dump(pkl, f)\n            f.close()\n\n        return services",
+                    "func_fullName": "pysimplesoap.client.SoapClient.wsdl_parse(self, url, cache)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "close",
+                    "func_desc": "Finish the connection and remove temp files .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def close(self):\n        \"\"\"Finish the connection and remove temp files\"\"\"\n        self.http.close()\n        if self.cacert.startswith(tempfile.gettempdir()):\n            log.debug('removing %s' % self.cacert)\n            os.unlink(self.cacert)",
+                    "func_fullName": "pysimplesoap.client.SoapClient.close(self)"
+                },
+                {
+                    "func_id": 109,
+                    "func_name": "request",
+                    "func_desc": "Request a single HTTP request .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def request(self, url, method, body, headers):\n            c = pycurl.Curl()\n            c.setopt(pycurl.URL, url)\n            if 'proxy_host' in self.proxy:\n                c.setopt(pycurl.PROXY, self.proxy['proxy_host'])\n            if 'proxy_port' in self.proxy:\n                c.setopt(pycurl.PROXYPORT, self.proxy['proxy_port'])\n            if 'proxy_user' in self.proxy:\n                c.setopt(pycurl.PROXYUSERPWD, \"%(proxy_user)s:%(proxy_pass)s\" % self.proxy)\n            self.buf = StringIO()\n            c.setopt(pycurl.WRITEFUNCTION, self.buf.write)\n            #c.setopt(pycurl.READFUNCTION, self.read)\n            #self.body = StringIO(body)\n            #c.setopt(pycurl.HEADERFUNCTION, self.header)\n            if self.cacert:\n                c.setopt(c.CAINFO, self.cacert)\n            c.setopt(pycurl.SSL_VERIFYPEER, self.cacert and 1 or 0)\n            c.setopt(pycurl.SSL_VERIFYHOST, self.cacert and 2 or 0)\n            c.setopt(pycurl.CONNECTTIMEOUT, self.timeout / 6)\n            c.setopt(pycurl.TIMEOUT, self.timeout)\n            if method == 'POST':\n                c.setopt(pycurl.POST, 1)\n                c.setopt(pycurl.POSTFIELDS, body)\n            if headers:\n                hdrs = ['%s: %s' % (k, v) for k, v in headers.items()]\n                log.debug(hdrs)\n                c.setopt(pycurl.HTTPHEADER, hdrs)\n            c.perform()\n            c.close()\n            return {}, self.buf.getvalue()",
+                    "func_fullName": "pysimplesoap.transport.pycurlTransport.request(self, url, method, body, headers)"
+                },
+                {
+                    "func_id": 114,
+                    "func_name": "get_Http",
+                    "func_desc": "Return current transport class",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_Http():\n    \"\"\"Return current transport class\"\"\"\n    global Http\n    return Http",
+                    "func_fullName": "pysimplesoap.transport.get_Http()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "sort_dict",
+                    "func_desc": "Sort parameters of a dict .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def sort_dict(od, d):\n    \"\"\"Sort parameters (same order as xsd:sequence)\"\"\"\n    if isinstance(od, dict):\n        ret = Struct()\n        for k in od.keys():\n            v = d.get(k)\n            # don't append null tags!\n            if v is not None:\n                if isinstance(v, dict):\n                    v = sort_dict(od[k], v)\n                elif isinstance(v, list):\n                    v = [sort_dict(od[k][0], v1) for v1 in v]\n                ret[k] = v\n        if hasattr(od, 'namespaces'):\n            ret.namespaces.update(od.namespaces)\n            ret.references.update(od.references)\n            ret.qualified = od.qualified\n        return ret\n    else:\n        return d",
+                    "func_fullName": "pysimplesoap.helpers.sort_dict(od, d)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "wsdl_call",
+                    "func_desc": "This is a wrapper around the wsdl_call_with_args method .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl_call(self, method, *args, **kwargs):\n        \"\"\"Pre and post process SOAP call, input and output parameters using WSDL\"\"\"\n        return self.wsdl_call_with_args(method, args, kwargs)",
+                    "func_fullName": "pysimplesoap.client.SoapClient.wsdl_call(self, method, args, kwargs)"
+                },
+                {
+                    "func_id": 52,
+                    "func_name": "wsdl_call_with_args",
+                    "func_desc": "This function is a wrapper for the call method of the WSDL .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl_call_with_args(self, method, args, kwargs):\n        \"\"\"Pre and post process SOAP call, input and output parameters using WSDL\"\"\"\n        soap_uri = soap_namespaces[self.__soap_ns]\n        operation = self.get_operation(method)\n\n        # get i/o type declarations:\n        input = operation['input']\n        output = operation['output']\n        header = operation.get('header')\n        if 'action' in operation:\n            self.action = operation['action']\n\n        if 'namespace' in operation:\n            self.namespace = operation['namespace'] or ''\n            self.qualified = operation['qualified']\n\n        # construct header and parameters\n        if header:\n            self.__call_headers = sort_dict(header, self.__headers)\n        method, params = self.wsdl_call_get_params(method, input, args, kwargs)\n\n        # call remote procedure\n        response = self.call(method, *params)\n        # parse results:\n        resp = response('Body', ns=soap_uri).children().unmarshall(output)\n        return resp and list(resp.values())[0]  # pass Response tag children",
+                    "func_fullName": "pysimplesoap.client.SoapClient.wsdl_call_with_args(self, method, args, kwargs)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "wsdl_call_get_params",
+                    "func_desc": "This function builds params from input and args .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl_call_get_params(self, method, input, args, kwargs):\n        \"\"\"Build params from input and args/kwargs\"\"\"\n        params = inputname = inputargs = None\n        all_args = {}\n        if input:\n            inputname = list(input.keys())[0]\n            inputargs = input[inputname]\n\n        if input and args:\n            # convert positional parameters to named parameters:\n            d = {}\n            for idx, arg in enumerate(args):\n                key = list(inputargs.keys())[idx]\n                if isinstance(arg, dict):\n                    if key not in arg:\n                        raise KeyError('Unhandled key %s. use client.help(method)' % key)\n                    d[key] = arg[key]\n                else:\n                    d[key] = arg\n            all_args.update({inputname: d})\n\n        if input and (kwargs or all_args):\n            if kwargs:\n                all_args.update({inputname: kwargs})\n            valid, errors, warnings = self.wsdl_validate_params(input, all_args)\n            if not valid:\n                raise ValueError('Invalid Args Structure. Errors: %s' % errors)\n            # sort and filter parameters acording wsdl input structure\n            tree = sort_dict(input, all_args)\n            root = list(tree.values())[0]\n            params = []\n            # make a params tuple list suitable for self.call(method, *params)\n            for k, v in root.items():\n                # fix referenced namespaces as info is lost when calling call\n                root_ns = root.namespaces[k]\n                if not root.references[k] and isinstance(v, Struct):\n                    v.namespaces[None] = root_ns\n                params.append((k, v))\n            # TODO: check style and document attributes\n            if self.__soap_server in ('axis', ):\n                # use the operation name\n                method = method\n            else:\n                # use the message (element) name\n                method = inputname\n        #elif not input:\n            #TODO: no message! (see wsmtxca.dummy)\n        else:\n            params = kwargs and kwargs.items()\n\n        return (method, params)",
+                    "func_fullName": "pysimplesoap.client.SoapClient.wsdl_call_get_params(self, method, input, args, kwargs)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "wsdl_validate_params",
+                    "func_desc": "This function validates the arguments for the parameters structure .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl_validate_params(self, struct, value):\n        \"\"\"Validate the arguments (actual values) for the parameters structure.\n           Fail for any invalid arguments or type mismatches.\"\"\"\n        errors = []\n        warnings = []\n        valid = True\n\n        # Determine parameter type\n        if type(struct) == type(value):\n            typematch = True\n        if not isinstance(struct, dict) and isinstance(value, dict):\n            typematch = True    # struct can be a dict or derived (Struct)\n        else:\n            typematch = False\n\n        if struct == str:\n            struct = unicode        # fix for py2 vs py3 string handling\n\n        if not isinstance(struct, (list, dict, tuple)) and struct in TYPE_MAP.keys():\n            if not type(value) == struct  and value is not None:\n                try:\n                    struct(value)       # attempt to cast input to parameter type\n                except:\n                    valid = False\n                    errors.append('Type mismatch for argument value. parameter(%s): %s, value(%s): %s' % (type(struct), struct, type(value), value))\n\n        elif isinstance(struct, list) and len(struct) == 1 and not isinstance(value, list):\n            # parameter can have a dict in a list: [{}] indicating a list is allowed, but not needed if only one argument.\n            next_valid, next_errors, next_warnings = self.wsdl_validate_params(struct[0], value)\n            if not next_valid:\n                valid = False\n            errors.extend(next_errors)\n            warnings.extend(next_warnings)\n\n        # traverse tree\n        elif isinstance(struct, dict):\n            if struct and value:\n                for key in value:\n                    if key not in struct:\n                        valid = False\n                        errors.append('Argument key %s not in parameter. parameter: %s, args: %s' % (key, struct, value))\n                    else:\n                        next_valid, next_errors, next_warnings = self.wsdl_validate_params(struct[key], value[key])\n                        if not next_valid:\n                            valid = False\n                        errors.extend(next_errors)\n                        warnings.extend(next_warnings)\n                for key in struct:\n                    if key not in value:\n                        warnings.append('Parameter key %s not in args. parameter: %s, value: %s' % (key, struct, value))\n            elif struct and not value:\n                warnings.append('parameter keys not in args. parameter: %s, args: %s' % (struct, value))\n            elif not struct and value:\n                valid = False\n                errors.append('Args keys not in parameter. parameter: %s, args: %s' % (struct, value))\n            else:\n                pass\n        elif isinstance(struct, list):\n            struct_list_value = struct[0]\n            for item in value:\n                next_valid, next_errors, next_warnings = self.wsdl_validate_params(struct_list_value, item)\n                if not next_valid:\n                    valid = False\n                errors.extend(next_errors)\n                warnings.extend(next_warnings)\n        elif not typematch:\n            valid = False\n            errors.append('Type mismatch. parameter(%s): %s, value(%s): %s' % (type(struct), struct, type(value), value))\n\n        return (valid, errors, warnings)",
+                    "func_fullName": "pysimplesoap.client.SoapClient.wsdl_validate_params(self, struct, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "make_key",
+                    "func_desc": "Return a suitable key for elements .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_key(element_name, element_type, namespace):\n    \"\"\"Return a suitable key for elements\"\"\"\n    # only distinguish 'element' vs other types\n    if element_type in ('complexType', 'simpleType'):\n        eltype = 'complexType'\n    else:\n        eltype = element_type\n    if eltype not in ('element', 'complexType', 'simpleType'):\n        raise RuntimeError(\"Unknown element type %s = %s\" % (element_name, eltype))\n    return (element_name, eltype, namespace)",
+                    "func_fullName": "pysimplesoap.helpers.make_key(element_name, element_type, namespace)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "process_element",
+                    "func_desc": "Process an element and return a Struct object .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def process_element(elements, element_name, node, element_type, xsd_uri,\n                    dialect, namespace, qualified=None,\n                    soapenc_uri='http://schemas.xmlsoap.org/soap/encoding/',\n                    struct=None):\n    \"\"\"Parse and define simple element types as Struct objects\"\"\"\n\n    log.debug('Processing element %s %s' % (element_name, element_type))\n\n    # iterate over inner tags of the element definition:\n    for tag in node:\n\n        # sanity checks (skip superfluous xml tags, resolve aliases, etc.):\n        if tag.get_local_name() in ('annotation', 'documentation'):\n            continue\n        elif tag.get_local_name() in ('element', 'restriction', 'list'):\n            log.debug('%s has no children! %s' % (element_name, tag))\n            children = tag  # element \"alias\"?\n            alias = True\n        elif tag.children():\n            children = tag.children()\n            alias = False\n        else:\n            log.debug('%s has no children! %s' % (element_name, tag))\n            continue  # TODO: abstract?\n\n        # check if extending a previous processed element (\"extension\"):\n        new_struct = struct is None\n        if new_struct:\n            struct = Struct()\n            struct.namespaces[None] = namespace   # set the default namespace\n            struct.qualified = qualified\n\n        # iterate over the element's components (sub-elements):\n        for e in children:\n\n            # extract type information from xml attributes / children:\n            t = e['type']\n            if not t:\n                t = e['itemType']  # xs:list\n            if not t:\n                t = e['base']  # complexContent (extension)!\n            if not t:\n                t = e['ref']   # reference to another element\n            if not t:\n                # \"anonymous\" elements had no type attribute but children\n                if e['name'] and e.children():\n                    # create a type name to process the children\n                    t = \"%s_%s\" % (element_name, e['name'])\n                    c = e.children()\n                    et = c.get_local_name()\n                    c = c.children()\n                    process_element(elements, t, c, et, xsd_uri, dialect,\n                                    namespace, qualified)\n                else:\n                    t = 'anyType'  # no type given!\n\n            # extract namespace uri and type from xml attribute:\n            t = t.split(\":\")\n            if len(t) > 1:\n                ns, type_name = t\n            else:\n                ns, type_name = None, t[0]\n            uri = ns and e.get_namespace_uri(ns) or xsd_uri\n\n            # look for the conversion function (python type)\n            if uri in (xsd_uri, soapenc_uri) and type_name != 'Array':\n                # look for the type, None == any\n                fn = REVERSE_TYPE_MAP.get(type_name, None)\n                if tag.get_local_name() == 'list':\n                    # simple list type (values separated by spaces)\n                    fn = lambda s: [fn(v) for v in s.split(\" \")]\n            elif (uri == soapenc_uri and type_name == 'Array'):\n                # arrays of simple types (look at the attribute tags):\n                fn = []\n                for a in e.children():\n                    for k, v in a[:]:\n                        if k.endswith(\":arrayType\"):\n                            type_name = v\n                            fn_namespace = None\n                            if \":\" in type_name:\n                                fn_uri, type_name = type_name.split(\":\")\n                                fn_namespace = e.get_namespace_uri(fn_uri)\n                            if \"[]\" in type_name:\n                                type_name = type_name[:type_name.index(\"[]\")]\n                            # get the scalar conversion function (if any)\n                            fn_array = REVERSE_TYPE_MAP.get(type_name, None)\n                            if fn_array is None and type_name != \"anyType\" and fn_namespace:\n                                # get the complext element:\n                                ref_type = \"complexType\"\n                                key = make_key(type_name, ref_type, fn_namespace)\n                                fn_complex = elements.setdefault(key, Struct())\n                                # create an indirect struct {type_name: ...}:\n                                fn_array = Struct()\n                                fn_array[type_name] = fn_complex\n                                fn_array.namespaces[None] = fn_namespace   # set the default namespace\n                                fn_array.qualified = qualified\n                            fn.append(fn_array)\n            else:\n                # not a simple python type / conversion function not available\n                fn = None\n\n            if not fn:\n                # simple / complex type, postprocess later\n                if ns:\n                    fn_namespace = uri       # use the specified namespace\n                else:\n                    fn_namespace = namespace # use parent namespace (default)\n                for k, v in e[:]:\n                    if k.startswith(\"xmlns:\"):\n                        # get the namespace uri from the element\n                        fn_namespace = v\n                # create and store an empty python element (dict) filled later\n                if not e['ref']:\n                    ref_type = \"complexType\"\n                else:\n                    ref_type = \"element\"\n                key = make_key(type_name, ref_type, fn_namespace)\n                fn = elements.setdefault(key, Struct())\n\n            if e['maxOccurs'] == 'unbounded' or (uri == soapenc_uri and type_name == 'Array'):\n                # it's an array... TODO: compound arrays? and check ns uri!\n                if isinstance(fn, Struct):\n                    if len(children) > 1 or (dialect in ('jetty', )):\n                        # Jetty style support\n                        # {'ClassName': [{'attr1': val1, 'attr2': val2}]\n                        fn.array = True\n                    else:\n                        # .NET style support (backward compatibility)\n                        # [{'ClassName': {'attr1': val1, 'attr2': val2}]\n                        struct.array = True\n                else:\n                    if len(children) > 1 or dialect in ('jetty',):\n                        # Jetty style support\n                        # scalar array support {'attr1': [val1]}\n                        fn = [fn]\n                    else:\n                        # Jetty.NET style support (backward compatibility)\n                        # scalar array support [{'attr1': val1}]\n                        struct.array = True\n\n            # store the sub-element python type (function) in the element dict\n            if (e['name'] is not None and not alias) or e['ref']:\n                e_name = e['name'] or type_name  # for refs, use the type name\n                struct[e_name] = fn\n                struct.references[e_name] = e['ref']\n                struct.namespaces[e_name] = namespace  # set the element namespace\n            else:\n                log.debug('complexContent/simpleType/element %s = %s' % (element_name, type_name))\n                # use None to point this is a complex element reference\n                struct.refers_to = fn\n            if e is not None and e.get_local_name() == 'extension' and e.children():\n                # extend base element (if ComplexContent only!):\n                if isinstance(fn, Struct) and fn.refers_to:\n                    base_struct = fn.refers_to\n                else:\n                    # TODO: check if this actually works for SimpleContent\n                    base_struct = None\n                # extend base element:\n                process_element(elements, element_name, e.children(),\n                                element_type, xsd_uri, dialect, namespace,\n                                qualified, struct=base_struct)\n\n        # add the processed element to the main dictionary (if not extension):\n        if new_struct:\n            key = make_key(element_name, element_type, namespace)\n            elements.setdefault(key, Struct()).update(struct)",
+                    "func_fullName": "pysimplesoap.helpers.process_element(elements, element_name, node, element_type, xsd_uri, dialect, namespace, qualified, soapenc_uri, struct)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "postprocess_element",
+                    "func_desc": "Post - process elements after their definition .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def postprocess_element(elements, processed):\n    \"\"\"Fix unresolved references\"\"\"\n    # (elements referenced before its definition, thanks .net)\n    # avoid already processed elements:\n    if elements in processed:\n        return\n    processed.append(elements)\n\n    for k, v in elements.items():\n        if isinstance(v, Struct):\n            if v != elements:  # TODO: fix recursive elements\n                try:\n                    postprocess_element(v, processed)\n                except RuntimeError as e:  # maximum recursion depth exceeded\n                    warnings.warn(unicode(e), RuntimeWarning)\n            if v.refers_to:  # extension base?\n                if isinstance(v.refers_to, dict):\n                    for i, kk in enumerate(v.refers_to):\n                        # extend base -keep orginal order-\n                        if isinstance(v.refers_to, Struct):\n                            elements[k].insert(kk, v.refers_to[kk], i)\n                            # update namespace (avoid ArrayOfKeyValueOfanyTypeanyType)\n                            if isinstance(v.refers_to, Struct) and v.refers_to.namespaces and kk:\n                                elements[k].namespaces[kk] = v.refers_to.namespaces[kk]\n                                elements[k].references[kk] = v.refers_to.references[kk]\n                    # clean the reference:\n                    v.refers_to = None\n                else:  # \"alias\", just replace\n                    ##log.debug('Replacing %s = %s' % (k, v.refers_to))\n                    elements[k] = v.refers_to\n            if v.array:\n                elements[k] = [v]  # convert arrays to python lists\n        if isinstance(v, list):\n            for n in v:  # recurse list\n                if isinstance(n, (Struct, list)):\n                    #if n != elements:  # TODO: fix recursive elements\n                    postprocess_element(n, processed)",
+                    "func_fullName": "pysimplesoap.helpers.postprocess_element(elements, processed)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "get_message",
+                    "func_desc": "get a specific message from a dict of messages .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_message(messages, message_name, part_name, parameter_order=None):\n    if part_name:\n        # get the specific part of the message:\n        return messages.get((message_name, part_name))\n    else:\n        # get the first part for the specified message:\n        parts = {}\n        for (message_name_key, part_name_key), message in messages.items():\n            if message_name_key == message_name:\n                parts[part_name_key] = message\n        if len(parts)>1:\n            # merge (sorted by parameter_order for rpc style)\n            new_msg = None\n            for part_name_key in parameter_order:\n                part = parts.get(part_name_key)\n                if not part:\n                    log.error('Part %s not found for %s' % (part_name_key, message_name))\n                elif not new_msg:\n                    new_msg = part.copy()\n                else:\n                    new_msg[message_name].update(part[message_name])\n            return new_msg\n        elif parts:\n            return list(parts.values())[0]\n            #return parts.values()[0]",
+                    "func_fullName": "pysimplesoap.helpers.get_message(messages, message_name, part_name, parameter_order)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "preprocess_schema",
+                    "func_desc": "Preprocess a schema by finding all elements and complex types .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def preprocess_schema(schema, imported_schemas, elements, xsd_uri, dialect,\n                      http, cache, force_download, wsdl_basedir,\n                      global_namespaces=None, qualified=False):\n    \"\"\"Find schema elements and complex types\"\"\"\n\n    from .simplexml import SimpleXMLElement    # here to avoid recursive imports\n\n    # analyze the namespaces used in this schema\n    local_namespaces = {}\n    for k, v in schema[:]:\n        if k.startswith(\"xmlns\"):\n            local_namespaces[get_local_name(k)] = v\n        if k == 'targetNamespace':\n            # URI namespace reference for this schema\n            if v == \"urn:DefaultNamespace\":\n                v = global_namespaces[None]\n            local_namespaces[None] = v\n        if k == 'elementFormDefault':\n            qualified = (v == \"qualified\")\n    # add schema namespaces to the global namespace dict = {URI: ns prefix}\n    for ns in local_namespaces.values():\n        if ns not in global_namespaces:\n            global_namespaces[ns] = 'ns%s' % len(global_namespaces)\n\n    for element in schema.children() or []:\n        if element.get_local_name() in ('import', 'include',):\n            schema_namespace = element['namespace']\n            schema_location = element['schemaLocation']\n            if schema_location is None:\n                log.debug('Schema location not provided for %s!' % schema_namespace)\n                continue\n            if schema_location in imported_schemas:\n                log.debug('Schema %s already imported!' % schema_location)\n                continue\n            imported_schemas[schema_location] = schema_namespace\n            log.debug('Importing schema %s from %s' % (schema_namespace, schema_location))\n            # Open uri and read xml:\n            xml = fetch(schema_location, http, cache, force_download, wsdl_basedir)\n\n            # recalculate base path for relative schema locations\n            path = os.path.normpath(os.path.join(wsdl_basedir, schema_location))\n            path = os.path.dirname(path)\n\n            # Parse imported XML schema (recursively):\n            imported_schema = SimpleXMLElement(xml, namespace=xsd_uri)\n            preprocess_schema(imported_schema, imported_schemas, elements,\n                              xsd_uri, dialect, http, cache, force_download,\n                              path, global_namespaces, qualified)\n\n        element_type = element.get_local_name()\n        if element_type in ('element', 'complexType', \"simpleType\"):\n            namespace = local_namespaces[None]          # get targetNamespace\n            element_ns = global_namespaces[ns]          # get the prefix\n            element_name = element['name']\n            log.debug(\"Parsing Element %s: %s\" % (element_type, element_name))\n            if element.get_local_name() == 'complexType':\n                children = element.children()\n            elif element.get_local_name() == 'simpleType':\n                children = element('restriction', ns=xsd_uri, error=False)\n                if not children:\n                    children = element.children()       # xs:list\n            elif element.get_local_name() == 'element' and element['type']:\n                children = element\n            else:\n                children = element.children()\n                if children:\n                    children = children.children()\n                elif element.get_local_name() == 'element':\n                    children = element\n            if children:\n                process_element(elements, element_name, children, element_type,\n                                xsd_uri, dialect, namespace, qualified)",
+                    "func_fullName": "pysimplesoap.helpers.preprocess_schema(schema, imported_schemas, elements, xsd_uri, dialect, http, cache, force_download, wsdl_basedir, global_namespaces, qualified)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "insert",
+                    "func_desc": "Inserts a new key - value pair into the dict .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def insert(self, key, value, index=0):\n        if key not in self.__keys:\n            self.__keys.insert(index, key)\n        dict.__setitem__(self, key, value)",
+                    "func_fullName": "pysimplesoap.helpers.Struct.insert(self, key, value, index)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "update",
+                    "func_desc": "Update the attributes of this object with the attributes of the other object .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def update(self, other):\n        for k, v in other.items():\n            self[k] = v\n        # do not change if we are an array but the other is not:\n        if isinstance(other, Struct) and not self.array:\n            self.array = other.array\n        if isinstance(other, Struct):\n            # TODO: check replacing default ns is a regression\n            self.namespaces.update(other.namespaces)\n            self.references.update(other.references)\n            self.qualified = other.qualified\n            self.refers_to = other.refers_to",
+                    "func_fullName": "pysimplesoap.helpers.Struct.update(self, other)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "copy",
+                    "func_desc": "Make a duplicate",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def copy(self):\n        \"Make a duplicate\"\n        new = Struct()\n        new.update(self)\n        return new",
+                    "func_fullName": "pysimplesoap.helpers.Struct.copy(self)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "_xml_tree_to_services",
+                    "func_desc": "Create a dictionary of service_name message_name bindings and service_name from XML tree .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _xml_tree_to_services(self, wsdl, cache, force_download):\n        # detect soap prefix and uri (xmlns attributes of <definitions>)\n        xsd_ns = None\n        soap_uris = {}\n        for k, v in wsdl[:]:\n            if v in self.soap_ns_uris and k.startswith('xmlns:'):\n                soap_uris[get_local_name(k)] = v\n            if v == self.xsd_uri and k.startswith('xmlns:'):\n                xsd_ns = get_local_name(k)\n\n        elements = {}            # element: type def\n        messages = {}            # message: element\n        port_types = {}          # port_type_name: port_type\n        bindings = {}            # binding_name: binding\n        services = {}            # service_name: service\n\n        # check axis2 namespace at schema types attributes (europa.eu checkVat)\n        if \"http://xml.apache.org/xml-soap\" in dict(wsdl[:]).values():\n            # get the sub-namespace in the first schema element (see issue 8)\n            if wsdl('types', error=False):\n                schema = wsdl.types('schema', ns=self.xsd_uri)\n                attrs = dict(schema[:])\n                self.namespace = attrs.get('targetNamespace', self.namespace)\n            if not self.namespace or self.namespace == \"urn:DefaultNamespace\":\n                self.namespace = wsdl['targetNamespace'] or self.namespace\n\n        imported_schemas = {}\n        global_namespaces = {None: self.namespace}\n\n        # process current wsdl schema (if any, or many if imported):\n        for types in wsdl('types', error=False) or []:\n            # avoid issue if schema is not given in the main WSDL file\n            schemas = types('schema', ns=self.xsd_uri, error=False)\n            for schema in schemas or []:\n                preprocess_schema(schema, imported_schemas, elements, self.xsd_uri,\n                                  self.__soap_server, self.http, cache,\n                                  force_download, self.wsdl_basedir,\n                                  global_namespaces=global_namespaces)\n\n        # 2nd phase: alias, postdefined elements, extend bases, convert lists\n        postprocess_element(elements, [])\n\n        for message in wsdl.message:\n            for part in message('part', error=False) or []:\n                element = {}\n                element_name = part['element']\n                if not element_name:\n                    # some implementations (axis) uses type instead\n                    element_name = part['type']\n                type_ns = get_namespace_prefix(element_name)\n                type_uri = part.get_namespace_uri(type_ns)\n                part_name = part['name'] or None\n                if type_uri == self.xsd_uri:\n                    element_name = get_local_name(element_name)\n                    fn = REVERSE_TYPE_MAP.get(element_name, None)\n                    element = {part_name: fn}\n                    # emulate a true Element (complexType) for rpc style\n                    if (message['name'], part_name) not in messages:\n                        od = Struct()\n                        od.namespaces[None] = type_uri\n                        messages[(message['name'], part_name)] = {message['name']: od}\n                    else:\n                        od = messages[(message['name'], part_name)].values()[0]\n                    od.namespaces[part_name] = type_uri\n                    od.references[part_name] = False\n                    od.update(element)\n                else:\n                    element_name = get_local_name(element_name)\n                    fn = elements.get(make_key(element_name, 'element', type_uri))\n                    if not fn:\n                        # some axis servers uses complexType for part messages (rpc)\n                        fn = elements.get(make_key(element_name, 'complexType', type_uri))\n                        od = Struct()\n                        od[part_name] = fn\n                        od.namespaces[None] = type_uri\n                        od.namespaces[part_name] = type_uri\n                        od.references[part_name] = False\n                        element = {message['name']: od}\n                    else:\n                        element = {element_name: fn}\n                    messages[(message['name'], part_name)] = element\n\n        for port_type_node in wsdl.portType:\n            port_type_name = port_type_node['name']\n            port_type = port_types[port_type_name] = {}\n            operations = port_type['operations'] = {}\n\n            for operation_node in port_type_node.operation:\n                op_name = operation_node['name']\n                op = operations[op_name] = {}\n                op['style'] = operation_node['style']\n                op['parameter_order'] = (operation_node['parameterOrder'] or \"\").split(\" \")\n                op['documentation'] = unicode(operation_node('documentation', error=False)) or ''\n\n                if operation_node('input', error=False):\n                    op['input_msg'] = get_local_name(operation_node.input['message'])\n                    ns = get_namespace_prefix(operation_node.input['message'])\n                    op['namespace'] = operation_node.get_namespace_uri(ns)\n\n                if operation_node('output', error=False):\n                    op['output_msg'] = get_local_name(operation_node.output['message'])\n\n                #Get all fault message types this operation may return\n                fault_msgs = op['fault_msgs'] = {}\n                faults = operation_node('fault', error=False)\n                if faults is not None:\n                    for fault in operation_node('fault', error=False):\n                        fault_msgs[fault['name']] = get_local_name(fault['message'])\n\n        for binding_node in wsdl.binding:\n            port_type_name = get_local_name(binding_node['type'])\n            if port_type_name not in port_types:\n                # Invalid port type\n                continue\n            port_type = port_types[port_type_name]\n            binding_name = binding_node['name']\n            soap_binding = binding_node('binding', ns=list(soap_uris.values()), error=False)\n            transport = soap_binding and soap_binding['transport'] or None\n            style = soap_binding and soap_binding['style'] or None  # rpc\n\n            binding = bindings[binding_name] = {\n                'name': binding_name,\n                'operations': copy.deepcopy(port_type['operations']),\n                'port_type_name': port_type_name,\n                'transport': transport,\n                'style': style,\n            }\n\n            for operation_node in binding_node.operation:\n                op_name = operation_node['name']\n                op_op = operation_node('operation', ns=list(soap_uris.values()), error=False)\n                action = op_op and op_op['soapAction']\n\n                op = binding['operations'].setdefault(op_name, {})\n                op['name'] = op_name\n                op['style'] = op.get('style', style)\n                if action:\n                    op['action'] = action\n\n                # input and/or ouput can be not present!\n                input = operation_node('input', error=False)\n                body = input and input('body', ns=list(soap_uris.values()), error=False)\n                parts_input_body = body and body['parts'] or None\n\n                # parse optional header messages (some implementations use more than one!)\n                parts_input_headers = []\n                headers = input and input('header', ns=list(soap_uris.values()), error=False)\n                for header in headers or []:\n                    hdr = {'message': header['message'], 'part': header['part']}\n                    parts_input_headers.append(hdr)\n\n                if 'input_msg' in op:\n                    headers = {}    # base header message structure\n                    for input_header in parts_input_headers:\n                        header_msg = get_local_name(input_header.get('message'))\n                        header_part = get_local_name(input_header.get('part'))\n                        # warning: some implementations use a separate message!\n                        hdr = get_message(messages, header_msg or op['input_msg'], header_part)\n                        if hdr:\n                            headers.update(hdr)\n                        else:\n                            pass # not enought info to search the header message:\n                    op['input'] = get_message(messages, op['input_msg'], parts_input_body, op['parameter_order'])\n                    op['header'] = headers\n\n                    try:\n                        element = list(op['input'].values())[0]\n                        ns_uri = element.namespaces[None]\n                        qualified = element.qualified\n                    except (AttributeError, KeyError) as e:\n                        # TODO: fix if no parameters parsed or \"variants\"\n                        ns_uri = op['namespace']\n                        qualified = None\n                    if ns_uri:\n                        op['namespace'] = ns_uri\n                        op['qualified'] = qualified\n\n                    # Remove temporary property\n                    del op['input_msg']\n\n                else:\n                    op['input'] = None\n                    op['header'] = None\n\n                output = operation_node('output', error=False)\n                body = output and output('body', ns=list(soap_uris.values()), error=False)\n                parts_output_body = body and body['parts'] or None\n                if 'output_msg' in op:\n                    op['output'] = get_message(messages, op['output_msg'], parts_output_body)\n                    # Remove temporary property\n                    del op['output_msg']\n                else:\n                    op['output'] = None\n\n                if 'fault_msgs' in op:\n                    faults = op['faults'] = {}\n                    for name, msg in op['fault_msgs'].iteritems():\n                        msg_obj = get_message(messages, msg, parts_output_body)\n                        tag_name = msg_obj.keys()[0]\n                        faults[tag_name] = msg_obj\n\n                # useless? never used\n                parts_output_headers = []\n                headers = output and output('header', ns=list(soap_uris.values()), error=False)\n                for header in headers or []:\n                    hdr = {'message': header['message'], 'part': header['part']}\n                    parts_output_headers.append(hdr)\n\n\n\n\n        for service in wsdl(\"service\", error=False) or []:\n            service_name = service['name']\n            if not service_name:\n                continue  # empty service?\n\n            serv = services.setdefault(service_name, {})\n            ports = serv['ports'] = {}\n            serv['documentation'] = service['documentation'] or ''\n            for port in service.port:\n                binding_name = get_local_name(port['binding'])\n\n                if not binding_name in bindings:\n                    continue    # unknown binding\n\n                binding = ports[port['name']] = copy.deepcopy(bindings[binding_name])\n                address = port('address', ns=list(soap_uris.values()), error=False)\n                location = address and address['location'] or None\n                soap_uri = address and soap_uris.get(address.get_prefix())\n                soap_ver = soap_uri and self.soap_ns_uris.get(soap_uri)\n\n                binding.update({\n                    'location': location,\n                    'service_name': service_name,\n                    'soap_uri': soap_uri,\n                    'soap_ver': soap_ver,\n                })\n\n        # create an default service if none is given in the wsdl:\n        if not services:\n            services[''] = {'ports': {'': None}}\n\n        return services",
+                    "func_fullName": "pysimplesoap.client.SoapClient._xml_tree_to_services(self, wsdl, cache, force_download)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 7,
+                    "func_name": "datetime_u",
+                    "func_desc": "datetime_u - return datetime object from string .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def datetime_u(s):\n    fmt = \"%Y-%m-%dT%H:%M:%S\"\n    try:\n        return _strptime(s, fmt)\n    except ValueError:\n        try:\n            # strip utc offset\n            if s[-3] == \":\" and s[-6] in (' ', '-', '+'):\n                try:\n                    import iso8601\n                    return iso8601.parse_date(s)\n                except ImportError:\n                    pass\n\n                try:\n                    import isodate\n                    return isodate.parse_datetime(s)\n                except ImportError:\n                    pass\n\n                try:\n                    import dateutil.parser\n                    return dateutil.parser.parse(s)\n                except ImportError:\n                    pass\n\n                warnings.warn('removing unsupported UTC offset. Install `iso8601`, `isodate` or `python-dateutil` package to support it', RuntimeWarning)\n                s = s[:-6]\n            # parse microseconds\n            try:\n                return _strptime(s, fmt + \".%f\")\n            except:\n                return _strptime(s, fmt)\n        except ValueError:\n            # strip microseconds (not supported in this platform)\n            if \".\" in s:\n                warnings.warn('removing unsuppported microseconds', RuntimeWarning)\n                s = s[:s.index(\".\")]\n            return _strptime(s, fmt)",
+                    "func_fullName": "pysimplesoap.helpers.datetime_u(s)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "__iter__",
+                    "func_desc": "Iterate over all the keys in the SECRET_KEY_MAP .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __iter__(self):\n        return iter(self.__keys)",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__iter__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 8,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SEO language .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, py_type, xml_type):\n        self.py_type, self.xml_type = py_type, xml_type",
+                    "func_fullName": "pysimplesoap.helpers.Alias.__init__(self, py_type, xml_type)"
+                },
+                {
+                    "func_id": 101,
+                    "func_name": "write_c14n",
+                    "func_desc": "Generate the canonical version of the XML node",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def write_c14n(self, output=None, exclusive=True):\n        \"Generate the canonical version of the XML node\"\n        from . import c14n\n        xml = c14n.Canonicalize(self._element, output,\n                                unsuppressedPrefixes=[] if exclusive else None)\n        return xml",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.write_c14n(self, output, exclusive)"
+                },
+                {
+                    "func_id": 110,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SEO language .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, xml_response):\n        self.xml_response = xml_response",
+                    "func_fullName": "pysimplesoap.transport.DummyTransport.__init__(self, xml_response)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 9,
+                    "func_name": "__call__",
+                    "func_desc": "Convert the given value to a Python object .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __call__(self, value):\n        return self.py_type(value)",
+                    "func_fullName": "pysimplesoap.helpers.Alias.__call__(self, value)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "__setitem__",
+                    "func_desc": "Add a key - value pair to the dict .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __setitem__(self, key, value):\n        if key not in self.__keys:\n            self.__keys.append(key)\n        dict.__setitem__(self, key, value)",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__setitem__(self, key, value)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "__delitem__",
+                    "func_desc": "Remove an entry from the dict .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __delitem__(self, key):\n        if key in self.__keys:\n            self.__keys.remove(key)\n        dict.__delitem__(self, key)",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__delitem__(self, key)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 10,
+                    "func_name": "__repr__",
+                    "func_desc": "Return a string representation of the alias .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return \"<alias '%s' for '%s'>\" % (self.xml_type, self.py_type)",
+                    "func_fullName": "pysimplesoap.helpers.Alias.__repr__(self)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "__str__",
+                    "func_desc": "Returns a string representation of the object .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __str__(self):\n        return \"%s\" % dict.__str__(self)",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__str__(self)"
+                },
+                {
+                    "func_id": 21,
+                    "func_name": "__repr__",
+                    "func_desc": "Returns a string representation of the object .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        try:\n            s = \"{%s}\" % \", \".join(['%s: %s' % (repr(k), repr(v)) for k, v in self.items()])\n        except RuntimeError as e:  # maximum recursion depth exceeded\n            s = \"{%s}\" % \", \".join(['%s: %s' % (repr(k), unicode(e)) for k, v in self.items()])\n            warnings.warn(unicode(e), RuntimeWarning)\n        if self.array and False:\n            s = \"[%s]\" % s\n        return s",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__repr__(self)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "dummy",
+                    "func_desc": "Just return input",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def dummy(in0):\n        \"\"\"Just return input\"\"\"\n        return in0",
+                    "func_fullName": "pysimplesoap.server.dummy(in0)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "__unicode__",
+                    "func_desc": "Return a string representation of the exception .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __unicode__(self):\n        return '%s: %s' % (self.faultcode, self.faultstring)",
+                    "func_fullName": "pysimplesoap.client.SoapFault.__unicode__(self)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "__str__",
+                    "func_desc": "Returns a string representation of the class .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __str__(self):\n            return self.__unicode__().encode('ascii', 'ignore')",
+                    "func_fullName": "pysimplesoap.client.SoapFault.__str__(self)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "__repr__",
+                    "func_desc": "Returns a string representation of the object .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return \"SoapFault(faultcode = %s, faultstring %s, detail = %s)\" % (repr(self.faultcode),\n                                                                           repr(self.faultstring),\n                                                                           repr(self.detail))",
+                    "func_fullName": "pysimplesoap.client.SoapFault.__repr__(self)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "__getattr__",
+                    "func_desc": "Return a pseudo - method that can be called .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __getattr__(self, attr):\n        \"\"\"Return a pseudo-method that can be called\"\"\"\n        if not self.services:  # not using WSDL?\n            return lambda self=self, *args, **kwargs: self.call(attr, *args, **kwargs)\n        else:  # using WSDL:\n            return lambda *args, **kwargs: self.wsdl_call(attr, *args, **kwargs)",
+                    "func_fullName": "pysimplesoap.client.SoapClient.__getattr__(self, attr)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 11,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with all the attributes .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self):\n        self.__keys = []\n        self.array = False\n        self.namespaces = {}     # key: element, value: namespace URI\n        self.references = {}     # key: element, value: reference name\n        self.refers_to = None    # \"symbolic linked\" struct\n        self.qualified = None",
+                    "func_fullName": "pysimplesoap.helpers.Struct.__init__(self)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the given faultcode faultstring and detail .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, faultcode=None, faultstring=None, detail=None):\n        self.faultcode = faultcode or self.__class__.__name__\n        self.faultstring = faultstring or ''\n        self.detail = detail",
+                    "func_fullName": "pysimplesoap.server.SoapFault.__init__(self, faultcode, faultstring, detail)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the name documentation action location and namespace .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, documentation='', action='', location='',\n                 namespace=None, prefix=False,\n                 soap_uri=\"http://schemas.xmlsoap.org/soap/envelope/\",\n                 soap_ns='soap',\n                 namespaces={},\n                 pretty=False,\n                 debug=False,\n                 **kwargs):\n        \"\"\"\n        :param namespace: Target namespace; xmlns=targetNamespace\n        :param prefix: Prefix for target namespace; xmlns:prefix=targetNamespace\n        :param namespaces: Specify additional namespaces; example: {'external': 'http://external.mt.moboperator'}\n        :param pretty: Prettifies generated xmls\n        :param debug: Use to add tracebacks in generated xmls.\n\n        Multiple namespaces\n        ===================\n\n        It is possible to support multiple namespaces.\n        You need to specify additional namespaces by passing `namespace` parameter.\n\n        >>> dispatcher = SoapDispatcher(\n        ...    name = \"MTClientWS\",\n        ...    location = \"http://localhost:8008/ws/MTClientWS\",\n        ...    action = 'http://localhost:8008/ws/MTClientWS', # SOAPAction\n        ...    namespace = \"http://external.mt.moboperator\", prefix=\"external\",\n        ...    documentation = 'moboperator MTClientWS',\n        ...    namespaces = {\n        ...        'external': 'http://external.mt.moboperator',\n        ...        'model': 'http://model.common.mt.moboperator'\n        ...    },\n        ...    ns = True)\n\n        Now the registered method must return node names with namespaces' prefixes.\n\n        >>> def _multi_ns_func(self, serviceMsisdn):\n        ...    ret = {\n        ...        'external:activateSubscriptionsReturn': [\n        ...            {'model:code': '0'},\n        ...            {'model:description': 'desc'},\n        ...        ]}\n        ...    return ret\n\n        Our prefixes will be changed to those used by the client.\n        \"\"\"\n        self.methods = {}\n        self.name = name\n        self.documentation = documentation\n        self.action = action  # base SoapAction\n        self.location = location\n        self.namespace = namespace  # targetNamespace\n        self.prefix = prefix\n        self.soap_ns = soap_ns\n        self.soap_uri = soap_uri\n        self.namespaces = namespaces\n        self.pretty = pretty\n        self.debug = debug",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.__init__(self, name, documentation, action, location, namespace, prefix, soap_uri, soap_ns, namespaces, pretty, debug, kwargs)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the language language .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, dispatcher):\n        self.dispatcher = dispatcher",
+                    "func_fullName": "pysimplesoap.server.WSGISOAPHandler.__init__(self, dispatcher)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new exception object .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, faultcode, faultstring, detail=None):\n        self.faultcode = faultcode\n        self.faultstring = faultstring\n        self.detail = detail\n        RuntimeError.__init__(self, faultcode, faultstring, detail)",
+                    "func_fullName": "pysimplesoap.client.SoapFault.__init__(self, faultcode, faultstring, detail)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a Token object .",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, username=\"\", password=\"\"):\n        self.token = {\n            'wsse:UsernameToken': {\n                'wsse:Username': username,\n                'wsse:Password': password,\n                }\n            }",
+                    "func_fullName": "pysimplesoap.wsse.UsernameToken.__init__(self, username, password)"
+                },
+                {
+                    "func_id": 65,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object with the given parameters .",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, certificate=\"\", private_key=\"\", password=None, cacert=None):\n        # read the X509v3 certificate (PEM)\n        self.certificate = ''.join([line for line in open(certificate)\n                                         if not line.startswith(\"---\")])\n        self.private_key = private_key\n        self.password = password\n        self.cacert = cacert",
+                    "func_fullName": "pysimplesoap.wsse.BinaryTokenSignature.__init__(self, certificate, private_key, password, cacert)"
+                },
+                {
+                    "func_id": 105,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SessionContext",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __init__(self, timeout, proxy=None, cacert=None, sessions=False):",
+                    "func_fullName": "pysimplesoap.transport.Httplib2Transport.__init__(self, timeout, proxy, cacert, sessions)"
+                },
+                {
+                    "func_id": 108,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a SessionToken object .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __init__(self, timeout, proxy=None, cacert=None, sessions=False):\n            self.timeout = timeout\n            self.proxy = proxy or {}\n            self.cacert = cacert",
+                    "func_fullName": "pysimplesoap.transport.pycurlTransport.__init__(self, timeout, proxy, cacert, sessions)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 16,
+                    "func_name": "keys",
+                    "func_desc": "Returns a list of all keys in the dictionary .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def keys(self):\n        return self.__keys",
+                    "func_fullName": "pysimplesoap.helpers.Struct.keys(self)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "wsdl",
+                    "func_desc": "Generate Web Service Description v1 . 1",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def wsdl(self):\n        \"\"\"Generate Web Service Description v1.1\"\"\"\n        xml = \"\"\"<?xml version=\"1.0\"?>",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.wsdl(self)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "do_GET",
+                    "func_desc": "User viewable help information and wsdl",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_GET(self):\n        \"\"\"User viewable help information and wsdl\"\"\"\n        args = self.path[1:].split(\"?\")\n        if self.path != \"/\" and args[0] not in self.server.dispatcher.methods.keys():\n            self.send_error(404, \"Method not found: %s\" % args[0])\n        else:\n            if self.path == \"/\":\n                # return wsdl if no method supplied\n                response = self.server.dispatcher.wsdl()\n            else:\n                # return supplied method help (?request or ?response messages)\n                req, res, doc = self.server.dispatcher.help(args[0])\n                if len(args) == 1 or args[1] == \"request\":\n                    response = req\n                else:\n                    response = res\n            self.send_response(200)\n            self.send_header(\"Content-type\", \"text/xml\")\n            self.end_headers()\n            self.wfile.write(response)",
+                    "func_fullName": "pysimplesoap.server.SOAPHandler.do_GET(self)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "parse_element",
+                    "func_desc": "Parse an element of a sequence or sequence sequence .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def parse_element(name, values, array=False, complex=False):\n                if not complex:\n                    element = wsdl('wsdl:types')('xsd:schema').add_child('xsd:element')\n                    complex = element.add_child(\"xsd:complexType\")\n                else:\n                    complex = wsdl('wsdl:types')('xsd:schema').add_child('xsd:complexType')\n                    element = complex\n                element['name'] = name\n                if values:\n                    items = values\n                elif values is None:\n                    items = [('value', None)]\n                else:\n                    items = []\n                if not array and items:\n                    all = complex.add_child(\"xsd:all\")\n                elif items:\n                    all = complex.add_child(\"xsd:sequence\")\n                for k, v in items:\n                    e = all.add_child(\"xsd:element\")\n                    e['name'] = k\n                    if array:\n                        e[:] = {'minOccurs': \"0\", 'maxOccurs': \"unbounded\"}\n                    if v in TYPE_MAP.keys():\n                        t = 'xsd:%s' % TYPE_MAP[v]\n                    elif v is None:\n                        t = 'xsd:anyType'\n                    elif isinstance(v, list):\n                        n = \"ArrayOf%s%s\" % (name, k)\n                        l = []\n                        for d in v:\n                            l.extend(d.items())\n                        parse_element(n, l, array=True, complex=True)\n                        t = \"tns:%s\" % n\n                    elif isinstance(v, dict):\n                        n = \"%s%s\" % (name, k)\n                        parse_element(n, v.items(), complex=True)\n                        t = \"tns:%s\" % n\n                    else:\n                        raise TypeError(\"unknonw type v for marshalling\" % str(v))\n                    e.add_attribute('type', t)",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.wsdl.parse_element(name, values, array, complex)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 17,
+                    "func_name": "items",
+                    "func_desc": "Returns a list of tuples of all the keys and values in the language .",
+                    "func_file": "helpers",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def items(self):\n        return [(key, self[key]) for key in self.__keys]",
+                    "func_fullName": "pysimplesoap.helpers.Struct.items(self)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "list_methods",
+                    "func_desc": "Return a list of aregistered operations",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def list_methods(self):\n        \"\"\"Return a list of aregistered operations\"\"\"\n        return [(method, doc) for method, (function, returns, args, doc) in self.methods.items()]",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.list_methods(self)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "send",
+                    "func_desc": "Send SOAP request using HTTP .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def send(self, method, xml):\n        \"\"\"Send SOAP request using HTTP\"\"\"\n        if self.location == 'test': return\n        # location = '%s' % self.location #?op=%s\" % (self.location, method)\n        http_method = str('POST')\n        location = str(self.location)\n\n        if self.services:\n            soap_action = str(self.action)\n        else:\n            soap_action = str(self.action) + method\n\n        headers = {\n            'Content-type': 'text/xml; charset=\"UTF-8\"',\n            'Content-length': str(len(xml)),\n            'SOAPAction': '\"%s\"' % soap_action\n        }\n        headers.update(self.http_headers)\n        log.info(\"POST %s\" % location)\n        log.debug('\\n'.join([\"%s: %s\" % (k, v) for k, v in headers.items()]))\n        log.debug(xml)\n\n        if sys.version < '3':\n            # Ensure http_method, location and all headers are binary to prevent\n            # UnicodeError inside httplib.HTTPConnection._send_output.\n\n            # httplib in python3 do the same inside itself, don't need to convert it here\n            headers = dict((str(k), str(v)) for k, v in headers.items())\n\n        response, content = self.http.request(\n            location, http_method, body=xml, headers=headers)\n        self.response = response\n        self.content = content\n\n        log.debug('\\n'.join([\"%s: %s\" % (k, v) for k, v in response.items()]))\n        log.debug(content)\n        return content",
+                    "func_fullName": "pysimplesoap.client.SoapClient.send(self, method, xml)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "get_operation",
+                    "func_desc": "Get the operation for a given method in the WSDL .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_operation(self, method):\n        # try to find operation in wsdl file\n        soap_ver = self.__soap_ns.startswith('soap12') and 'soap12' or 'soap11'\n        if not self.service_port:\n            for service_name, service in self.services.items():\n                for port_name, port in [port for port in service['ports'].items()]:\n                    if port['soap_ver'] == soap_ver:\n                        self.service_port = service_name, port_name\n                        break\n                else:\n                    raise RuntimeError('Cannot determine service in WSDL: '\n                                       'SOAP version: %s' % soap_ver)\n        else:\n            port = self.services[self.service_port[0]]['ports'][self.service_port[1]]\n        if not self.location:\n            self.location = port['location']\n        operation = port['operations'].get(method)\n        if not operation:\n            raise RuntimeError('Operation %s not found in WSDL: '\n                               'Service/Port Type: %s' %\n                               (method, self.service_port))\n        return operation",
+                    "func_fullName": "pysimplesoap.client.SoapClient.get_operation(self, method)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "help",
+                    "func_desc": "Return operation documentation and invocation and returned value example",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def help(self, method):\n        \"\"\"Return operation documentation and invocation/returned value example\"\"\"\n        operation = self.get_operation(method)\n        input = operation.get('input')\n        input = input and input.values() and list(input.values())[0]\n        if isinstance(input, dict):\n            input = \", \".join(\"%s=%s\" % (k, repr(v)) for k, v in input.items())\n        elif isinstance(input, list):\n            input = repr(input)\n        output = operation.get('output')\n        if output:\n            output = list(operation['output'].values())[0]\n        headers = operation.get('headers') or None\n        return \"%s(%s)\\n -> %s:\\n\\n%s\\nHeaders: %s\" % (\n            method,\n            input or '',\n            output and output or '',\n            operation.get('documentation', ''),\n            headers,\n        )",
+                    "func_fullName": "pysimplesoap.client.SoapClient.help(self, method)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 24,
+                    "func_name": "_extra_namespaces",
+                    "func_desc": "Extends xml with extra namespaces .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _extra_namespaces(xml, ns):\n        \"\"\"Extends xml with extra namespaces.\n        :param ns: dict with namespaceUrl:prefix pairs\n        :param xml: XML node to modify\n        \"\"\"\n        if ns:\n            _tpl = 'xmlns:%s=\"%s\"'\n            _ns_str = \" \".join([_tpl % (prefix, uri) for uri, prefix in ns.items() if uri not in xml])\n            xml = xml.replace('/>', ' ' + _ns_str + '/>')\n        return xml",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher._extra_namespaces(xml, ns)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "response_element_name",
+                    "func_desc": "Returns the name of the response element .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def response_element_name(self, method):\n        return '%sResponse' % method",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.response_element_name(self, method)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "dispatch",
+                    "func_desc": "Receive and process SOAP call returns the xml",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def dispatch(self, xml, action=None, fault=None):\n        \"\"\"Receive and process SOAP call, returns the xml\"\"\"\n        # a dict can be sent in fault to expose it to the caller\n        # default values:\n        prefix = self.prefix\n        ret = None\n        if fault is None:\n            fault = {}\n        soap_ns, soap_uri = self.soap_ns, self.soap_uri\n        soap_fault_code = 'VersionMismatch'\n        name = None\n\n        # namespaces = [('model', 'http://model.common.mt.moboperator'), ('external', 'http://external.mt.moboperator')]\n        _ns_reversed = dict(((v, k) for k, v in self.namespaces.items()))  # Switch keys-values\n        # _ns_reversed = {'http://external.mt.moboperator': 'external', 'http://model.common.mt.moboperator': 'model'}\n\n        try:\n            request = SimpleXMLElement(xml, namespace=self.namespace)\n\n            # detect soap prefix and uri (xmlns attributes of Envelope)\n            for k, v in request[:]:\n                if v in (\"http://schemas.xmlsoap.org/soap/envelope/\",\n                         \"http://www.w3.org/2003/05/soap-env\",\n                         \"http://www.w3.org/2003/05/soap-envelope\",):\n                    soap_ns = request.attributes()[k].localName\n                    soap_uri = request.attributes()[k].value\n\n                # If the value from attributes on Envelope is in additional namespaces\n                elif v in self.namespaces.values():\n                    _ns = request.attributes()[k].localName\n                    _uri = request.attributes()[k].value\n                    _ns_reversed[_uri] = _ns  # update with received alias\n                    # Now we change 'external' and 'model' to the received forms i.e. 'ext' and 'mod'\n                # After that we know how the client has prefixed additional namespaces\n\n            ns = NS_RX.findall(xml)\n            for k, v in ns:\n                if v in self.namespaces.values():\n                    _ns_reversed[v] = k\n\n            soap_fault_code = 'Client'\n\n            # parse request message and get local method\n            method = request('Body', ns=soap_uri).children()(0)\n            if action:\n                # method name = action\n                name = action[len(self.action)+1:-1]\n                prefix = self.prefix\n            if not action or not name:\n                # method name = input message name\n                name = method.get_local_name()\n                prefix = method.get_prefix()\n\n            log.debug('dispatch method: %s', name)\n            function, returns_types, args_types, doc = self.methods[name]\n            log.debug('returns_types %s', returns_types)\n\n            # de-serialize parameters (if type definitions given)\n            if args_types:\n                args = method.children().unmarshall(args_types)\n            elif args_types is None:\n                args = {'request': method}  # send raw request\n            else:\n                args = {}  # no parameters\n\n            soap_fault_code = 'Server'\n            # execute function\n            ret = function(**args)\n            log.debug('dispathed method returns: %s', ret)\n\n        except SoapFault as e:\n            fault.update({\n                'faultcode': \"%s.%s\" % (soap_fault_code, e.faultcode),\n                'faultstring': e.faultstring,\n                'detail': e.detail\n            })\n\n        except Exception:  # This shouldn't be one huge try/except\n            import sys\n            etype, evalue, etb = sys.exc_info()\n            log.error(traceback.format_exc())\n            if self.debug:\n                detail = ''.join(traceback.format_exception(etype, evalue, etb))\n                detail += '\\n\\nXML REQUEST\\n\\n' + xml\n            else:\n                detail = None\n            fault.update({'faultcode': \"%s.%s\" % (soap_fault_code, etype.__name__),\n                     'faultstring': evalue,\n                     'detail': detail})\n\n        # build response message\n        if not prefix:\n            xml = \"\"\"<%(soap_ns)s:Envelope xmlns:%(soap_ns)s=\"%(soap_uri)s\"/>\"\"\"\n        else:\n            xml = \"\"\"<%(soap_ns)s:Envelope xmlns:%(soap_ns)s=\"%(soap_uri)s\"\n                       xmlns:%(prefix)s=\"%(namespace)s\"/>\"\"\"\n\n        xml %= {    # a %= {} is a shortcut for a = a % {}\n            'namespace': self.namespace,\n            'prefix': prefix,\n            'soap_ns': soap_ns,\n            'soap_uri': soap_uri\n        }\n\n        # Now we add extra namespaces\n        xml = SoapDispatcher._extra_namespaces(xml, _ns_reversed)\n\n        # Change our namespace alias to that given by the client.\n        # We put [('model', 'http://model.common.mt.moboperator'), ('external', 'http://external.mt.moboperator')]\n        # mix it with {'http://external.mt.moboperator': 'ext', 'http://model.common.mt.moboperator': 'mod'}\n        mapping = dict(((k, _ns_reversed[v]) for k, v in self.namespaces.items()))  # Switch keys-values and change value\n        # and get {'model': u'mod', 'external': u'ext'}\n\n        response = SimpleXMLElement(xml,\n                                    namespace=self.namespace,\n                                    namespaces_map=mapping,\n                                    prefix=prefix)\n\n        response['xmlns:xsi'] = \"http://www.w3.org/2001/XMLSchema-instance\"\n        response['xmlns:xsd'] = \"http://www.w3.org/2001/XMLSchema\"\n\n        body = response.add_child(\"%s:Body\" % soap_ns, ns=False)\n\n        if fault:\n            # generate a Soap Fault (with the python exception)\n            body.marshall(\"%s:Fault\" % soap_ns, fault, ns=False)\n        else:\n            # return normal value\n            res = body.add_child(self.response_element_name(name), ns=self.namespace)\n            if not prefix:\n                res['xmlns'] = self.namespace  # add target namespace\n\n            # serialize returned values (response) if type definition available\n            if returns_types:\n                # TODO: full sanity check of type structure (recursive)\n                complex_type = isinstance(ret, dict)\n                if complex_type:\n                    # check if type mapping correlates with return value\n                    types_ok = all([k in returns_types for k in ret.keys()])\n                    if not types_ok:\n                        warnings.warn(\"Return value doesn't match type structure: \"\n                                     \"%s vs %s\" % (str(returns_types), str(ret)))\n                if not complex_type or not types_ok:\n                    # backward compatibility for scalar and simple types\n                    res.marshall(list(returns_types.keys())[0], ret, )\n                else:\n                    # new style for complex classes\n                    for k, v in ret.items():\n                        res.marshall(k, v)\n            elif returns_types is None:\n                # merge xmlelement returned\n                res.import_node(ret)\n            elif returns_types == {}:\n                log.warning('Given returns_types is an empty dict.')\n\n        return response.as_xml(pretty=self.pretty)",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.dispatch(self, xml, action, fault)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "call",
+                    "func_desc": "Prepare xml request and make SOAP call returning a SimpleXMLElement .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def call(self, method, *args, **kwargs):\n        \"\"\"Prepare xml request and make SOAP call, returning a SimpleXMLElement.\n\n        If a keyword argument called \"headers\" is passed with a value of a\n        SimpleXMLElement object, then these headers will be inserted into the\n        request.\n        \"\"\"\n        #TODO: method != input_message\n        # Basic SOAP request:\n        soap_uri = soap_namespaces[self.__soap_ns]\n        xml = self.__xml % dict(method=method,              # method tag name\n                                namespace=self.namespace,   # method ns uri\n                                ns=self.__ns,               # method ns prefix\n                                soap_ns=self.__soap_ns,     # soap prefix & uri\n                                soap_uri=soap_uri)\n        request = SimpleXMLElement(xml, namespace=self.__ns and self.namespace,\n                                        prefix=self.__ns)\n\n        request_headers = kwargs.pop('headers', None)\n\n        # serialize parameters\n        if kwargs:\n            parameters = list(kwargs.items())\n        else:\n            parameters = args\n        if parameters and isinstance(parameters[0], SimpleXMLElement):\n            body = request('Body', ns=list(soap_namespaces.values()),)\n            # remove default body parameter (method name)\n            delattr(body, method)\n            # merge xmlelement parameter (\"raw\" - already marshalled)\n            body.import_node(parameters[0])\n        elif parameters:\n            # marshall parameters:\n            use_ns = None if (self.__soap_server == \"jetty\" or self.qualified is False) else True\n            for k, v in parameters:  # dict: tag=valor\n                if hasattr(v, \"namespaces\") and use_ns:\n                    ns = v.namespaces.get(None, True)\n                else:\n                    ns = use_ns\n                getattr(request, method).marshall(k, v, ns=ns)\n        elif self.__soap_server in ('jbossas6',):\n            # JBossAS-6 requires no empty method parameters!\n            delattr(request(\"Body\", ns=list(soap_namespaces.values()),), method)\n\n        # construct header and parameters (if not wsdl given) except wsse\n        if self.__headers and not self.services:\n            self.__call_headers = dict([(k, v) for k, v in self.__headers.items()\n                                        if not k.startswith('wsse:')])\n        # always extract WS Security header and send it (backward compatible)\n        if 'wsse:Security' in self.__headers and not self.plugins:\n            warnings.warn(\"Replace wsse:Security with UsernameToken plugin\",\n                          DeprecationWarning)\n            self.plugins.append(UsernameToken())\n\n        if self.__call_headers:\n            header = request('Header', ns=list(soap_namespaces.values()),)\n            for k, v in self.__call_headers.items():\n                ##if not self.__ns:\n                ##    header['xmlns']\n                if isinstance(v, SimpleXMLElement):\n                    # allows a SimpleXMLElement to be constructed and inserted\n                    # rather than a dictionary. marshall doesn't allow ns: prefixes\n                    # in dict key names\n                    header.import_node(v)\n                else:\n                    header.marshall(k, v, ns=self.__ns, add_children_ns=False)\n        if request_headers:\n            header = request('Header', ns=list(soap_namespaces.values()),)\n            for subheader in request_headers.children():\n                header.import_node(subheader)\n\n        # do pre-processing using plugins (i.e. WSSE signing)\n        for plugin in self.plugins:\n            plugin.preprocess(self, request, method, args, kwargs,\n                                    self.__headers, soap_uri)\n\n        self.xml_request = request.as_xml()\n        self.xml_response = self.send(method, self.xml_request)\n        response = SimpleXMLElement(self.xml_response, namespace=self.namespace,\n                                    jetty=self.__soap_server in ('jetty',))\n        if self.exceptions and response(\"Fault\", ns=list(soap_namespaces.values()), error=False):\n            detailXml = response(\"detail\", ns=list(soap_namespaces.values()), error=False)\n            detail = None\n\n            if detailXml and detailXml.children():\n                operation = self.get_operation(method)\n                fault = operation['faults'][detailXml.children()[0].get_name()]\n                detail = detailXml.children()[0].unmarshall(fault, strict=False)\n\n            raise SoapFault(unicode(response.faultcode),\n                            unicode(response.faultstring),\n                            detail)\n\n        # do post-processing using plugins (i.e. WSSE signature verification)\n        for plugin in self.plugins:\n            plugin.postprocess(self, response, method, args, kwargs,\n                                     self.__headers, soap_uri)\n\n        return response",
+                    "func_fullName": "pysimplesoap.client.SoapClient.call(self, method, args, kwargs)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "_url_to_xml_tree",
+                    "func_desc": "Parse a URL and return an XML tree .",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _url_to_xml_tree(self, url, cache, force_download):\n        # Open uri and read xml:\n        xml = fetch(url, self.http, cache, force_download, self.wsdl_basedir, self.http_headers)\n        # Parse WSDL XML:\n        wsdl = SimpleXMLElement(xml, namespace=self.wsdl_uri)\n\n        # Extract useful data:\n        self.namespace = \"\"\n        self.documentation = unicode(wsdl('documentation', error=False)) or ''\n\n        # some wsdl are splitted down in several files, join them:\n        imported_wsdls = {}\n        for element in wsdl.children() or []:\n            if element.get_local_name() in ('import'):\n                wsdl_namespace = element['namespace']\n                wsdl_location = element['location']\n                if wsdl_location is None:\n                    log.warning('WSDL location not provided for %s!' % wsdl_namespace)\n                    continue\n                if wsdl_location in imported_wsdls:\n                    log.warning('WSDL %s already imported!' % wsdl_location)\n                    continue\n                imported_wsdls[wsdl_location] = wsdl_namespace\n                log.debug('Importing wsdl %s from %s' % (wsdl_namespace, wsdl_location))\n                # Open uri and read xml:\n                xml = fetch(wsdl_location, self.http, cache, force_download, self.wsdl_basedir, self.http_headers)\n                # Parse imported XML schema (recursively):\n                imported_wsdl = SimpleXMLElement(xml, namespace=self.xsd_uri)\n                # merge the imported wsdl into the main document:\n                wsdl.import_node(imported_wsdl)\n                # warning: do not process schemas to avoid infinite recursion!\n\n        return wsdl",
+                    "func_fullName": "pysimplesoap.client.SoapClient._url_to_xml_tree(self, url, cache, force_download)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "as_xml",
+                    "func_desc": "Return the XML representation of the document .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def as_xml(self, filename=None, pretty=False):\n        \"\"\"Return the XML representation of the document\"\"\"\n        if not pretty:\n            return self.__document.toxml('UTF-8')\n        else:\n            return self.__document.toprettyxml(encoding='UTF-8')",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.as_xml(self, filename, pretty)"
+                },
+                {
+                    "func_id": 77,
+                    "func_name": "get_name",
+                    "func_desc": "Return the tag name of this node",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_name(self):\n        \"\"\"Return the tag name of this node\"\"\"\n        return self._element.tagName",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.get_name(self)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "get_local_name",
+                    "func_desc": "Return the tag local name of this node",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_local_name(self):\n        \"\"\"Return the tag local name (prefix:name) of this node\"\"\"\n        return self._element.localName",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.get_local_name(self)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "get_prefix",
+                    "func_desc": "Return the namespace prefix of this node",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_prefix(self):\n        \"\"\"Return the namespace prefix of this node\"\"\"\n        return self._element.prefix",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.get_prefix(self)"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "get_namespace_uri",
+                    "func_desc": "Return the namespace uri for a prefix",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_namespace_uri(self, ns):\n        \"\"\"Return the namespace uri for a prefix\"\"\"\n        element = self._element\n        while element is not None and element.attributes is not None:\n            try:\n                return element.attributes['xmlns:%s' % ns].value\n            except KeyError:\n                element = element.parentNode",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.get_namespace_uri(self, ns)"
+                },
+                {
+                    "func_id": 81,
+                    "func_name": "attributes",
+                    "func_desc": "Return a dict of attributes for this tag",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def attributes(self):\n        \"\"\"Return a dict of attributes for this tag\"\"\"\n        #TODO: use slice syntax [:]?\n        return self._element.attributes",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.attributes(self)"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "__getitem__",
+                    "func_desc": "Return xml tag attribute value or a slice of attributes",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __getitem__(self, item):\n        \"\"\"Return xml tag attribute value or a slice of attributes (iter)\"\"\"\n        ##log.debug('__getitem__(%s)', item)\n        if isinstance(item, basestring):\n            if self._element.hasAttribute(item):\n                return self._element.attributes[item].value\n        elif isinstance(item, slice):\n            # return a list with name:values\n            return list(self._element.attributes.items())[item]\n        else:\n            # return element by index (position)\n            element = self.__elements[item]\n            return SimpleXMLElement(\n                elements=[element],\n                document=self.__document,\n                namespace=self.__ns,\n                prefix=self.__prefix,\n                jetty=self.__jetty,\n                namespaces_map=self.__namespaces_map\n            )",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__getitem__(self, item)"
+                },
+                {
+                    "func_id": 90,
+                    "func_name": "children",
+                    "func_desc": "Return xml children tags element",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def children(self):\n        \"\"\"Return xml children tags element\"\"\"\n        elements = [__element for __element in self._element.childNodes\n                    if __element.nodeType == __element.ELEMENT_NODE]\n        if not elements:\n            return None\n            #raise IndexError(\"Tag %s has no children\" % self._element.tagName)\n        return SimpleXMLElement(\n            elements=elements,\n            document=self.__document,\n            namespace=self.__ns,\n            prefix=self.__prefix,\n            jetty=self.__jetty,\n            namespaces_map=self.__namespaces_map\n        )",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.children(self)"
+                },
+                {
+                    "func_id": 97,
+                    "func_name": "unmarshall",
+                    "func_desc": "Unmarshall the current object into a Python object .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def unmarshall(self, types, strict=True):\n        #import pdb; pdb.set_trace()\n\n        \"\"\"Convert to python values the current serialized xml element\"\"\"\n        # types is a dict of {tag name: convertion function}\n        # strict=False to use default type conversion if not specified\n        # example: types={'p': {'a': int,'b': int}, 'c': [{'d':str}]}\n        #   expected xml: <p><a>1</a><b>2</b></p><c><d>hola</d><d>chau</d>\n        #   returnde value: {'p': {'a':1,'b':2}, `'c':[{'d':'hola'},{'d':'chau'}]}\n        d = {}\n        for node in self():\n            name = str(node.get_local_name())\n            ref_name_type = None\n            # handle multirefs: href=\"#id0\"\n            if 'href' in node.attributes().keys():\n                href = node['href'][1:]\n                for ref_node in self(root=True)(\"multiRef\"):\n                    if ref_node['id'] == href:\n                        node = ref_node\n                        ref_name_type = ref_node['xsi:type'].split(\":\")[1]\n                        break\n\n            try:\n                if isinstance(types, dict):\n                    fn = types[name]\n                    # custom array only in the response (not defined in the WSDL):\n                    # <results soapenc:arrayType=\"xsd:string[199]>\n                    if any([k for k,v in node[:] if 'arrayType' in k]) and not isinstance(fn, list):\n                        fn = [fn]\n                else:\n                    fn = types\n            except (KeyError, ) as e:\n                xmlns = node['xmlns'] or node.get_namespace_uri(node.get_prefix())\n                if 'xsi:type' in node.attributes().keys():\n                    xsd_type = node['xsi:type'].split(\":\")[1]\n                    try:\n                        # get fn type from SOAP-ENC:arrayType=\"xsd:string[28]\"\n                        if xsd_type == 'Array':\n                            array_type = [k for k,v in node[:] if 'arrayType' in k][0]\n                            xsd_type = node[array_type].split(\":\")[1]\n                            if \"[\" in xsd_type:\n                                xsd_type = xsd_type[:xsd_type.index(\"[\")]\n                            fn = [REVERSE_TYPE_MAP[xsd_type]]\n                        else:\n                            fn = REVERSE_TYPE_MAP[xsd_type]\n                    except:\n                        fn = None  # ignore multirefs!\n                elif xmlns == \"http://www.w3.org/2001/XMLSchema\":\n                    # self-defined schema, return the SimpleXMLElement\n                    # TODO: parse to python types if <s:element ref=\"s:schema\"/>\n                    fn = None\n                elif None in types:\n                    # <s:any/>, return the SimpleXMLElement\n                    # TODO: check position of None if inside <s:sequence>\n                    fn = None\n                elif strict:\n                    raise TypeError(\"Tag: %s invalid (type not found)\" % (name,))\n                else:\n                    # if not strict, use default type conversion\n                    fn = str\n\n            if isinstance(fn, list):\n                # append to existing list (if any) - unnested dict arrays -\n                value = d.setdefault(name, [])\n                children = node.children()\n                # TODO: check if this was really needed (get first child only)\n                ##if len(fn[0]) == 1 and children:\n                ##    children = children()\n                if fn and not isinstance(fn[0], dict):\n                    # simple arrays []\n                    for child in (children or []):\n                        tmp_dict = child.unmarshall(fn[0], strict)\n                        value.extend(tmp_dict.values())\n                elif (self.__jetty and len(fn[0]) > 1):\n                    # Jetty array style support [{k, v}]\n                    for parent in node:\n                        tmp_dict = {}    # unmarshall each value & mix\n                        for child in (node.children() or []):\n                            tmp_dict.update(child.unmarshall(fn[0], strict))\n                        value.append(tmp_dict)\n                else:  # .Net / Java\n                    for child in (children or []):\n                        value.append(child.unmarshall(fn[0], strict))\n\n            elif isinstance(fn, tuple):\n                value = []\n                _d = {}\n                children = node.children()\n                as_dict = len(fn) == 1 and isinstance(fn[0], dict)\n\n                for child in (children and children() or []):  # Readability counts\n                    if as_dict:\n                        _d.update(child.unmarshall(fn[0], strict))  # Merging pairs\n                    else:\n                        value.append(child.unmarshall(fn[0], strict))\n                if as_dict:\n                    value.append(_d)\n\n                if name in d:\n                    _tmp = list(d[name])\n                    _tmp.extend(value)\n                    value = tuple(_tmp)\n                else:\n                    value = tuple(value)\n\n            elif isinstance(fn, dict):\n                ##if ref_name_type is not None:\n                ##    fn = fn[ref_name_type]\n                children = node.children()\n                value = children and children.unmarshall(fn, strict)\n            else:\n                if fn is None:  # xsd:anyType not unmarshalled\n                    value = node\n                elif unicode(node) or (fn == str and unicode(node) != ''):\n                    try:\n                        # get special deserialization function (if any)\n                        fn = TYPE_UNMARSHAL_FN.get(fn, fn)\n                        if fn == str:\n                            # always return an unicode object:\n                            # (avoid encoding errors in py<3!)\n                            value = unicode(node)\n                        else:\n                            value = fn(unicode(node))\n                    except (ValueError, TypeError) as e:\n                        raise ValueError(\"Tag: %s: %s\" % (name, e))\n                else:\n                    value = None\n            d[name] = value\n        return d",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.unmarshall(self, types, strict)"
+                },
+                {
+                    "func_id": 100,
+                    "func_name": "import_node",
+                    "func_desc": "Import a node from another node .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def import_node(self, other):\n        x = self.__document.importNode(other._element, True)  # deep copy\n        self._element.appendChild(x)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.import_node(self, other)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 25,
+                    "func_name": "register_function",
+                    "func_desc": "Register a function to be called by the API .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def register_function(self, name, fn, returns=None, args=None, doc=None):\n        self.methods[name] = fn, returns, args, doc or getattr(fn, \"__doc__\", \"\")",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.register_function(self, name, fn, returns, args, doc)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "__call__",
+                    "func_desc": "This is the main entry point for the middleware .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __call__(self, environ, start_response):\n        return self.handler(environ, start_response)",
+                    "func_fullName": "pysimplesoap.server.WSGISOAPHandler.__call__(self, environ, start_response)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "handler",
+                    "func_desc": "This function is the main entry point for the application . It is called by the application to handle the request .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handler(self, environ, start_response):\n        if environ['REQUEST_METHOD'] == 'GET':\n            return self.do_get(environ, start_response)\n        elif environ['REQUEST_METHOD'] == 'POST':\n            return self.do_post(environ, start_response)\n        else:\n            start_response('405 Method not allowed', [('Content-Type', 'text/plain')])\n            return ['Method not allowed']",
+                    "func_fullName": "pysimplesoap.server.WSGISOAPHandler.handler(self, environ, start_response)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "do_get",
+                    "func_desc": "This function is called to handle the GET request .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_get(self, environ, start_response):\n        path = environ.get('PATH_INFO').lstrip('/')\n        query = environ.get('QUERY_STRING')\n        if path != \"\" and path not in self.dispatcher.methods.keys():\n            start_response('404 Not Found', [('Content-Type', 'text/plain')])\n            return [\"Method not found: %s\" % path]\n        elif path == \"\":\n            # return wsdl if no method supplied\n            response = self.dispatcher.wsdl()\n        else:\n            # return supplied method help (?request or ?response messages)\n            req, res, doc = self.dispatcher.help(path)\n            if len(query) == 0 or query == \"request\":\n                response = req\n            else:\n                response = res\n        start_response('200 OK', [('Content-Type', 'text/xml'), ('Content-Length', str(len(response)))])\n        return [response]",
+                    "func_fullName": "pysimplesoap.server.WSGISOAPHandler.do_get(self, environ, start_response)"
+                },
+                {
+                    "func_id": 37,
+                    "func_name": "do_post",
+                    "func_desc": "Process a HTTP POST request .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_post(self, environ, start_response):\n        length = int(environ['CONTENT_LENGTH'])\n        request = environ['wsgi.input'].read(length)\n        response = self.dispatcher.dispatch(request)\n        start_response('200 OK', [('Content-Type', 'text/xml'), ('Content-Length', str(len(response)))])\n        return [response]",
+                    "func_fullName": "pysimplesoap.server.WSGISOAPHandler.do_post(self, environ, start_response)"
+                },
+                {
+                    "func_id": 111,
+                    "func_name": "request",
+                    "func_desc": "This method is called by the client when a request is made to the VCS API .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def request(self, location, method, body, headers):\n        log.debug(\"%s %s\", method, location)\n        log.debug(headers)\n        log.debug(body)\n        return {}, self.xml_response",
+                    "func_fullName": "pysimplesoap.transport.DummyTransport.request(self, location, method, body, headers)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 29,
+                    "func_name": "help",
+                    "func_desc": "Generate sample request and response messages",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def help(self, method=None):\n        \"\"\"Generate sample request and response messages\"\"\"\n        (function, returns, args, doc) = self.methods[method]\n        xml = \"\"\"",
+                    "func_fullName": "pysimplesoap.server.SoapDispatcher.help(self, method)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "preprocess",
+                    "func_desc": "Add basic credentials to outgoing message",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def preprocess(self, client, request, method, args, kwargs, headers, soap_uri):\n        \"Add basic credentials to outgoing message\"\n        # always extract WS Security header and send it\n        header = request('Header', ns=soap_uri, )\n        k = 'wsse:Security'\n        # for backward compatibility, use header if given:\n        if k in headers:\n            self.token = headers[k]\n        # convert the token to xml\n        header.marshall(k, self.token, ns=False, add_children_ns=False)\n        header(k)['xmlns:wsse'] = WSSE_URI\n        #<wsse:UsernameToken xmlns:wsu='http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd'>",
+                    "func_fullName": "pysimplesoap.wsse.UsernameToken.preprocess(self, client, request, method, args, kwargs, headers, soap_uri)"
+                },
+                {
+                    "func_id": 73,
+                    "func_name": "add_comment",
+                    "func_desc": "Add an xml comment to this child .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_comment(self, data):\n        \"\"\"Add an xml comment to this child\"\"\"\n        comment = self.__document.createComment(data)\n        self._element.appendChild(comment)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.add_comment(self, data)"
+                },
+                {
+                    "func_id": 98,
+                    "func_name": "_update_ns",
+                    "func_desc": "Replace the defined namespace alias with tohse used by the client .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _update_ns(self, name):\n        \"\"\"Replace the defined namespace alias with tohse used by the client.\"\"\"\n        pref = self.__ns_rx.search(name)\n        if pref:\n            pref = pref.groups()[0]\n            try:\n                name = name.replace(pref, self.__namespaces_map[pref])\n            except KeyError:\n                log.warning('Unknown namespace alias %s' % name)\n        return name",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement._update_ns(self, name)"
+                },
+                {
+                    "func_id": 99,
+                    "func_name": "marshall",
+                    "func_desc": "Marshall a python value and add it to the XML element .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def marshall(self, name, value, add_child=True, add_comments=False,\n                 ns=False, add_children_ns=True):\n        \"\"\"Analyze python value and add the serialized XML element using tag name\"\"\"\n        # Change node name to that used by a client\n        name = self._update_ns(name)\n\n        if isinstance(value, dict):  # serialize dict (<key>value</key>)\n            # for the first parent node, use the document target namespace\n            # (ns==True) or use the namespace string uri if passed (elements)\n            child = add_child and self.add_child(name, ns=ns) or self\n            for k, v in value.items():\n                if not add_children_ns:\n                    ns = False\n                elif hasattr(value, 'namespaces'):\n                    # for children, use the wsdl element target namespace:\n                    ns = value.namespaces.get(k)\n                else:\n                    # simple type\n                    ns = None\n                child.marshall(k, v, add_comments=add_comments, ns=ns)\n        elif isinstance(value, tuple):  # serialize tuple (<key>value</key>)\n            child = add_child and self.add_child(name, ns=ns) or self\n            if not add_children_ns:\n                ns = False\n            for k, v in value:\n                getattr(self, name).marshall(k, v, add_comments=add_comments, ns=ns)\n        elif isinstance(value, list):  # serialize lists\n            child = self.add_child(name, ns=ns)\n            if not add_children_ns:\n                ns = False\n            if add_comments:\n                child.add_comment(\"Repetitive array of:\")\n            for t in value:\n                child.marshall(name, t, False, add_comments=add_comments, ns=ns)\n        elif isinstance(value, (xml.dom.minidom.CDATASection, basestring)):  # do not convert strings or unicodes\n            self.add_child(name, value, ns=ns)\n        elif value is None:  # sent a empty tag?\n            self.add_child(name, ns=ns)\n        elif value in TYPE_MAP.keys():\n            # add commented placeholders for simple tipes (for examples/help only)\n            child = self.add_child(name, ns=ns)\n            child.add_comment(TYPE_MAP[value])\n        else:  # the rest of object types are converted to string\n            # get special serialization function (if any)\n            fn = TYPE_MARSHAL_FN.get(type(value), str)\n            self.add_child(name, fn(value), ns=ns)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.marshall(self, name, value, add_child, add_comments, ns, add_children_ns)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 32,
+                    "func_name": "do_POST",
+                    "func_desc": "SOAP POST gateway",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_POST(self):\n        \"\"\"SOAP POST gateway\"\"\"\n        request = self.rfile.read(int(self.headers.get('content-length')))\n        # convert xml request to unicode (according to request headers)\n        if sys.version < '3':\n            encoding = self.headers.getparam(\"charset\")\n        else:\n            encoding = self.headers.get_param(\"charset\")\n        request = request.decode(encoding)\n        fault = {}\n        # execute the method\n        response = self.server.dispatcher.dispatch(request, fault=fault)\n        # check if fault dict was completed (faultcode, faultstring, detail)\n        if fault:\n            self.send_response(500)\n        else:\n            self.send_response(200)\n        self.send_header(\"Content-type\", \"text/xml\")\n        self.end_headers()\n        self.wfile.write(response)",
+                    "func_fullName": "pysimplesoap.server.SOAPHandler.do_POST(self)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "__setitem__",
+                    "func_desc": "Set SOAP Header value",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __setitem__(self, item, value):\n        \"\"\"Set SOAP Header value - this header will be sent for every request.\"\"\"\n        self.__headers[item] = value",
+                    "func_fullName": "pysimplesoap.client.SoapClient.__setitem__(self, item, value)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "parse_proxy",
+                    "func_desc": "Parses a proxy address user pass host port into a dict suitable for httplib2",
+                    "func_file": "client",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_proxy(proxy_str):\n    \"\"\"Parses proxy address user:pass@host:port into a dict suitable for httplib2\"\"\"\n    proxy_dict = {}\n    if proxy_str is None:\n        return\n    if '@' in proxy_str:\n        user_pass, host_port = proxy_str.split('@')\n    else:\n        user_pass, host_port = '', proxy_str\n    if ':' in host_port:\n        host, port = host_port.split(':')\n        proxy_dict['proxy_host'], proxy_dict['proxy_port'] = host, int(port)\n    if ':' in user_pass:\n        proxy_dict['proxy_user'], proxy_dict['proxy_pass'] = user_pass.split(':')\n    return proxy_dict",
+                    "func_fullName": "pysimplesoap.client.parse_proxy(proxy_str)"
+                },
+                {
+                    "func_id": 102,
+                    "func_name": "socketwrap",
+                    "func_desc": "Create a realsocket object with TCP_NODELAY and TCP_SOCK_REUSEPORT .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def socketwrap(family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0):\n        sockobj = realsocket(family, type, proto)\n        if type == socket.SOCK_STREAM:\n            sockobj.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)\n        return sockobj",
+                    "func_fullName": "pysimplesoap.transport.socketwrap(family, type, proto)"
+                },
+                {
+                    "func_id": 112,
+                    "func_name": "get_http_wrapper",
+                    "func_desc": "Get a wrapper for the HTTP connector .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_http_wrapper(library=None, features=[]):\n    # If we are asked for a specific library, return it.\n    if library is not None:\n        try:\n            return _http_connectors[library]\n        except KeyError:\n            raise RuntimeError('%s transport is not available' % (library,))\n\n    # If we haven't been asked for a specific feature either, then just return our favourite\n    # implementation.\n    if not features:\n        return _http_connectors.get('httplib2', _http_connectors['urllib2'])\n\n    # If we are asked for a connector which supports the given features, then we will\n    # try that.\n    current_candidates = _http_connectors.keys()\n    new_candidates = []\n    for feature in features:\n        for candidate in current_candidates:\n            if candidate in _http_facilities.get(feature, []):\n                new_candidates.append(candidate)\n        current_candidates = new_candidates\n        new_candidates = []\n\n    # Return the first candidate in the list.\n    try:\n        candidate_name = current_candidates[0]\n    except IndexError:\n        raise RuntimeError(\"no transport available which supports these features: %s\" % (features,))\n    else:\n        return _http_connectors[candidate_name]",
+                    "func_fullName": "pysimplesoap.transport.get_http_wrapper(library, features)"
+                },
+                {
+                    "func_id": 113,
+                    "func_name": "set_http_wrapper",
+                    "func_desc": "Set a suitable HTTP connection wrapper .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def set_http_wrapper(library=None, features=[]):\n    \"\"\"Set a suitable HTTP connection wrapper.\"\"\"\n    global Http\n    Http = get_http_wrapper(library, features)\n    return Http",
+                    "func_fullName": "pysimplesoap.transport.set_http_wrapper(library, features)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 38,
+                    "func_name": "adder",
+                    "func_desc": "Add several values to a single SEA .",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def adder(p, c, dt=None):\n        \"\"\"Add several values\"\"\"\n        dt = dt + datetime.timedelta(365)\n        return {'ab': p['a'] + p['b'], 'dd': c[0]['d'] + c[1]['d'], 'dt': dt}",
+                    "func_fullName": "pysimplesoap.server.adder(p, c, dt)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for a HeaderNode .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, text=None, elements=None, document=None,\n                 namespace=None, prefix=None, namespaces_map={}, jetty=False):\n        \"\"\"\n        :param namespaces_map: How to map our namespace prefix to that given by the client;\n          {prefix: received_prefix}\n        \"\"\"\n        self.__namespaces_map = namespaces_map\n        _rx = \"|\".join(namespaces_map.keys())  # {'external': 'ext', 'model': 'mod'} -> 'external|model'\n        self.__ns_rx = re.compile(r\"^(%s):.*$\" % _rx)  # And now we build an expression ^(external|model):.*$\n                                                       # to find prefixes in all xml nodes i.e.: <model:code>1</model:code>\n                                                       # and later change that to <mod:code>1</mod:code>\n        self.__ns = namespace\n        self.__prefix = prefix\n        self.__jetty = jetty                           # special list support\n\n        if text is not None:\n            try:\n                self.__document = xml.dom.minidom.parseString(text)\n            except:\n                log.error(text)\n                raise\n            self.__elements = [self.__document.documentElement]\n        else:\n            self.__elements = elements\n            self.__document = document",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__init__(self, text, elements, document, namespace, prefix, namespaces_map, jetty)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 40,
+                    "func_name": "echo",
+                    "func_desc": "Copy request to response",
+                    "func_file": "server",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def echo(request):\n        \"\"\"Copy request->response (generic, any type)\"\"\"\n        return request.value",
+                    "func_fullName": "pysimplesoap.server.echo(request)"
+                },
+                {
+                    "func_id": 107,
+                    "func_name": "request",
+                    "func_desc": "Request a single file .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def request(self, url, method=\"GET\", body=None, headers={}):\n        req = urllib2.Request(url, body, headers)\n        try:\n            f = self.request_opener(req, timeout=self._timeout)\n            return f.info(), f.read()\n        except urllib2.HTTPError as f:\n            if f.code != 500:\n                raise\n            return f.info(), f.read()",
+                    "func_fullName": "pysimplesoap.transport.urllib2Transport.request(self, url, method, body, headers)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 17,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 64,
+                    "func_name": "postprocess",
+                    "func_desc": "Analyze incoming credentials",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def postprocess(self, client, response, method, args, kwargs, headers, soap_uri):\n        \"Analyze incoming credentials\"\n        # TODO: add some password validation callback?\n        pass",
+                    "func_fullName": "pysimplesoap.wsse.UsernameToken.postprocess(self, client, response, method, args, kwargs, headers, soap_uri)"
+                },
+                {
+                    "func_id": 67,
+                    "func_name": "postprocess",
+                    "func_desc": "Verify the signature of the incoming response",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def postprocess(self, client, response, method, args, kwargs, headers, soap_uri):\n        \"Verify the signature of the incoming response\"\n        from . import xmlsec\n        # get xml elements:\n        body = response('Body', ns=soap_uri, )\n        header = response('Header', ns=soap_uri, )\n        wsse = header(\"Security\", ns=WSSE_URI)\n        cert = wsse(\"BinarySecurityToken\", ns=WSSE_URI)\n        # check that the cert (binary token) is coming in the correct format:\n        self.__check(cert[\"EncodingType\"], Base64Binary_URI)\n        self.__check(cert[\"ValueType\"], X509v3_URI)\n        # extract the certificate (in DER to avoid new line & padding issues!)\n        cert_der = str(cert).decode(\"base64\")\n        public_key = xmlsec.x509_extract_rsa_public_key(cert_der, binary=True)\n        # validate the certificate using the certification authority:\n        if not self.cacert:\n            warnings.warn(\"No CA provided, WSSE not validating certificate\")\n        elif not xmlsec.x509_verify(self.cacert, cert_der, binary=True):\n            raise RuntimeError(\"WSSE certificate validation failed\")\n        # check body xml attributes was signed correctly (reference)\n        self.__check(body['xmlns:wsu'], WSU_URI)\n        ref_uri = body['wsu:Id']\n        signature = wsse(\"Signature\", ns=XMLDSIG_URI)\n        signed_info = signature(\"SignedInfo\")\n        signature_value = signature(\"SignatureValue\")\n        # TODO: these sanity checks should be moved to xmlsec?\n        self.__check(signed_info(\"Reference\")['URI'], \"#\" + ref_uri)\n        self.__check(signed_info(\"SignatureMethod\")['Algorithm'], \n                     XMLDSIG_URI + \"rsa-sha1\")\n        self.__check(signed_info(\"Reference\")(\"DigestMethod\")['Algorithm'], \n                     XMLDSIG_URI + \"sha1\")\n        # TODO: check KeyInfo uses the correct SecurityTokenReference\n        # workaround: copy namespaces so lxml can parse the xml to be signed\n        for attr, value in response[:]:\n            if attr.startswith(\"xmlns\"):\n                body[attr] = value\n        # use the internal tag xml representation (not the full xml document)\n        ref_xml = xmlsec.canonicalize(repr(body))\n        # verify the signed hash\n        computed_hash =  xmlsec.sha1_hash_digest(ref_xml)\n        digest_value = str(signed_info(\"Reference\")(\"DigestValue\"))\n        if computed_hash != digest_value:\n            raise RuntimeError(\"WSSE SHA1 hash digests mismatch\")\n        # workaround: prepare the signed info (assure the parent ns is present)\n        signed_info['xmlns'] = XMLDSIG_URI\n        xml = repr(signed_info)\n        # verify the signature using RSA-SHA1 (XML Security)\n        ok = xmlsec.rsa_verify(xml, str(signature_value), public_key)\n        if not ok:\n            raise RuntimeError(\"WSSE RSA-SHA1 signature verification failed\")\n        # TODO: remove any unsigned part from the xml?",
+                    "func_fullName": "pysimplesoap.wsse.BinaryTokenSignature.postprocess(self, client, response, method, args, kwargs, headers, soap_uri)"
+                },
+                {
+                    "func_id": 68,
+                    "func_name": "__check",
+                    "func_desc": "Check the value of the NSE record .",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __check(self, value, expected, msg=\"WSSE sanity check failed\"):\n        if value != expected:\n            raise RuntimeError(msg)",
+                    "func_fullName": "pysimplesoap.wsse.BinaryTokenSignature.__check(self, value, expected, msg)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 18,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 66,
+                    "func_name": "preprocess",
+                    "func_desc": "Sign the outgoing SOAP request",
+                    "func_file": "wsse",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def preprocess(self, client, request, method, args, kwargs, headers, soap_uri):\n        \"Sign the outgoing SOAP request\"\n        # get xml elements:\n        body = request('Body', ns=soap_uri, )\n        header = request('Header', ns=soap_uri, )\n        # prepare body xml attributes to be signed (reference)\n        body['wsu:Id'] = \"id-14\"\n        body['xmlns:wsu'] = WSU_URI\n        # workaround: copy namespaces so lxml can parse the xml to be signed\n        for attr, value in request[:]:\n            if attr.startswith(\"xmlns\"):\n                body[attr] = value\n        # use the internal tag xml representation (not the full xml document)\n        ref_xml = repr(body)\n        # sign using RSA-SHA1 (XML Security)\n        from . import xmlsec\n        vars = xmlsec.rsa_sign(ref_xml, \"#id-14\", \n                               self.private_key, self.password)\n        vars['certificate'] = self.certificate\n        # generate the xml (filling the placeholders)\n        wsse = SimpleXMLElement(BIN_TOKEN_TMPL % vars)\n        header.import_node(wsse)",
+                    "func_fullName": "pysimplesoap.wsse.BinaryTokenSignature.preprocess(self, client, request, method, args, kwargs, headers, soap_uri)"
+                },
+                {
+                    "func_id": 104,
+                    "func_name": "fixer",
+                    "func_desc": "Fixes a certificate issue .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def fixer(self, host, port, key_file, cert_file, timeout, context,\n                        check_hostname, *args, **kwargs):\n            chk = kwargs.get('disable_ssl_certificate_validation', True) ^ True\n            orig__init__(self, host, port=port, key_file=key_file,\n                cert_file=cert_file, timeout=timeout, context=context,\n                check_hostname=chk)",
+                    "func_fullName": "pysimplesoap.transport.fixer(self, host, port, key_file, cert_file, timeout, context, check_hostname, args, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 19,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 70,
+                    "func_name": "add_child",
+                    "func_desc": "Adds a child tag to a node .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_child(self, name, text=None, ns=True):\n        \"\"\"Adding a child tag to a node\"\"\"\n        if not ns or self.__ns is False:\n            ##log.debug('adding %s without namespace', name)\n            element = self.__document.createElement(name)\n        else:\n            ##log.debug('adding %s ns \"%s\" %s', name, self.__ns, ns)\n            if isinstance(ns, basestring):\n                element = self.__document.createElement(name)\n                if ns:\n                    element.setAttribute(\"xmlns\", ns)\n            elif self.__prefix:\n                element = self.__document.createElementNS(self.__ns, \"%s:%s\" % (self.__prefix, name))\n            else:\n                element = self.__document.createElementNS(self.__ns, name)\n        # don't append null tags!\n        if text is not None:\n            if isinstance(text, xml.dom.minidom.CDATASection):\n                element.appendChild(self.__document.createCDATASection(text.data))\n            else:\n                element.appendChild(self.__document.createTextNode(text))\n        self._element.appendChild(element)\n        return SimpleXMLElement(\n            elements=[element],\n            document=self.__document,\n            namespace=self.__ns,\n            prefix=self.__prefix,\n            jetty=self.__jetty,\n            namespaces_map=self.__namespaces_map\n        )",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.add_child(self, name, text, ns)"
+                },
+                {
+                    "func_id": 71,
+                    "func_name": "__setattr__",
+                    "func_desc": "Add text child tag node .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __setattr__(self, tag, text):\n        \"\"\"Add text child tag node (short form)\"\"\"\n        if tag.startswith(\"_\"):\n            object.__setattr__(self, tag, text)\n        else:\n            ##log.debug('__setattr__(%s, %s)', tag, text)\n            self.add_child(tag, text)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__setattr__(self, tag, text)"
+                },
+                {
+                    "func_id": 72,
+                    "func_name": "__delattr__",
+                    "func_desc": "Remove a child tag from the grammar .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __delattr__(self, tag):\n        \"\"\"Remove a child tag (non recursive!)\"\"\"\n        elements = [__element for __element in self._element.childNodes\n                    if __element.nodeType == __element.ELEMENT_NODE]\n        for element in elements:\n            self._element.removeChild(element)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__delattr__(self, tag)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 20,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 75,
+                    "func_name": "__repr__",
+                    "func_desc": "Return the XML representation of the tag .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __repr__(self):\n            \"\"\"Return the XML representation of this tag\"\"\"\n            return self._element.toxml()",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__repr__(self)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "__repr__",
+                    "func_desc": "Return the XML representation of the tag .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __repr__(self):\n            \"\"\"Return the XML representation of this tag\"\"\"\n            # NOTE: do not use self.as_xml('UTF-8') as it returns the whole xml doc\n            return self._element.toxml('UTF-8')",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__repr__(self)"
+                },
+                {
+                    "func_id": 89,
+                    "func_name": "__dir__",
+                    "func_desc": "List xml children tags names",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __dir__(self):\n        \"\"\"List xml children tags names\"\"\"\n        return [node.tagName for node\n                in self._element.childNodes\n                if node.nodeType != node.TEXT_NODE]",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__dir__(self)"
+                },
+                {
+                    "func_id": 92,
+                    "func_name": "__contains__",
+                    "func_desc": "Search for a tag name in this element or child nodes",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __contains__(self, item):\n        \"\"\"Search for a tag name in this element or child nodes\"\"\"\n        return self._element.getElementsByTagName(item)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__contains__(self, item)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 21,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 83,
+                    "func_name": "add_attribute",
+                    "func_desc": "Set an attribute from a string",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_attribute(self, name, value):\n        \"\"\"Set an attribute value from a string\"\"\"\n        self._element.setAttribute(name, value)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.add_attribute(self, name, value)"
+                },
+                {
+                    "func_id": 84,
+                    "func_name": "__setitem__",
+                    "func_desc": "Set an attribute value .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __setitem__(self, item, value):\n        \"\"\"Set an attribute value\"\"\"\n        if isinstance(item, basestring):\n            self.add_attribute(item, value)\n        elif isinstance(item, slice):\n            # set multiple attributes at once\n            for k, v in value.items():\n                self.add_attribute(k, v)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__setitem__(self, item, value)"
+                },
+                {
+                    "func_id": 85,
+                    "func_name": "__delitem__",
+                    "func_desc": "Remove an attribute",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __delitem__(self, item):\n        \"Remove an attribute\"\n        self._element.removeAttribute(item)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__delitem__(self, item)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 22,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 86,
+                    "func_name": "__call__",
+                    "func_desc": "Search for a child node and return a SimpleXMLElement object .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __call__(self, tag=None, ns=None, children=False, root=False,\n                 error=True, ):\n        \"\"\"Search (even in child nodes) and return a child tag by name\"\"\"\n        try:\n            if root:\n                # return entire document\n                return SimpleXMLElement(\n                    elements=[self.__document.documentElement],\n                    document=self.__document,\n                    namespace=self.__ns,\n                    prefix=self.__prefix,\n                    jetty=self.__jetty,\n                    namespaces_map=self.__namespaces_map\n                )\n            if tag is None:\n                # if no name given, iterate over siblings (same level)\n                return self.__iter__()\n            if children:\n                # future: filter children? by ns?\n                return self.children()\n            elements = None\n            if isinstance(tag, int):\n                # return tag by index\n                elements = [self.__elements[tag]]\n            if ns and not elements:\n                for ns_uri in isinstance(ns, (tuple, list)) and ns or (ns, ):\n                    ##log.debug('searching %s by ns=%s', tag, ns_uri)\n                    elements = self._element.getElementsByTagNameNS(ns_uri, tag)\n                    if elements:\n                        break\n            if self.__ns and not elements:\n                ##log.debug('searching %s by ns=%s', tag, self.__ns)\n                elements = self._element.getElementsByTagNameNS(self.__ns, tag)\n            if not elements:\n                ##log.debug('searching %s', tag)\n                elements = self._element.getElementsByTagName(tag)\n            if not elements:\n                ##log.debug(self._element.toxml())\n                if error:\n                    raise AttributeError(\"No elements found\")\n                else:\n                    return\n            return SimpleXMLElement(\n                elements=elements,\n                document=self.__document,\n                namespace=self.__ns,\n                prefix=self.__prefix,\n                jetty=self.__jetty,\n                namespaces_map=self.__namespaces_map)\n        except AttributeError as e:\n            raise AttributeError(\"Tag not found: %s (%s)\" % (tag, e))",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__call__(self, tag, ns, children, root, error)"
+                },
+                {
+                    "func_id": 87,
+                    "func_name": "__getattr__",
+                    "func_desc": "Shortcut for calling the attribute of the class",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __getattr__(self, tag):\n        \"\"\"Shortcut for __call__\"\"\"\n        return self.__call__(tag)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__getattr__(self, tag)"
+                },
+                {
+                    "func_id": 88,
+                    "func_name": "__iter__",
+                    "func_desc": "Iterate over all the XML elements at this level",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __iter__(self):\n        \"\"\"Iterate over xml tags at this level\"\"\"\n        try:\n            for __element in self.__elements:\n                yield SimpleXMLElement(\n                    elements=[__element],\n                    document=self.__document,\n                    namespace=self.__ns,\n                    prefix=self.__prefix,\n                    jetty=self.__jetty,\n                    namespaces_map=self.__namespaces_map)\n        except:\n            raise",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__iter__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 23,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 91,
+                    "func_name": "__len__",
+                    "func_desc": "Return the number of elements in the sequence .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __len__(self):\n        \"\"\"Return element count\"\"\"\n        return len(self.__elements)",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__len__(self)"
+                },
+                {
+                    "func_id": 93,
+                    "func_name": "__unicode__",
+                    "func_desc": "Returns the unicode text nodes of the current element .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __unicode__(self):\n        \"\"\"Returns the unicode text nodes of the current element\"\"\"\n        rc = ''\n        for node in self._element.childNodes:\n            if node.nodeType == node.TEXT_NODE or node.nodeType == node.CDATA_SECTION_NODE:\n                rc = rc + node.data\n        return rc",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__unicode__(self)"
+                },
+                {
+                    "func_id": 94,
+                    "func_name": "__str__",
+                    "func_desc": "Returns a string representation of the class .",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def __str__(self):\n            return self.__unicode__().encode('utf-8')",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__str__(self)"
+                },
+                {
+                    "func_id": 95,
+                    "func_name": "__int__",
+                    "func_desc": "Returns the integer value of the current element",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __int__(self):\n        \"\"\"Returns the integer value of the current element\"\"\"\n        return int(self.__str__())",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__int__(self)"
+                },
+                {
+                    "func_id": 96,
+                    "func_name": "__float__",
+                    "func_desc": "Returns the float value of the current element",
+                    "func_file": "simplexml",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __float__(self):\n        \"\"\"Returns the float value of the current element\"\"\"\n        try:\n            return float(self.__str__())\n        except:\n            raise IndexError(self._element.toxml())",
+                    "func_fullName": "pysimplesoap.simplexml.SimpleXMLElement.__float__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 24,
+            "feature_desc": "gamma=0.1430; k=24; a=0.25; combined=0.424; stability(ARI)=0.652; sep=0.286",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 103,
+                    "func_name": "supports_feature",
+                    "func_desc": "Check if the current wrapper supports the given feature .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def supports_feature(cls, feature_name):\n        return cls._wrapper_name in _http_facilities[feature_name]",
+                    "func_fullName": "pysimplesoap.transport.TransportBase.supports_feature(cls, feature_name)"
+                },
+                {
+                    "func_id": 106,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the class with the given parameters .",
+                    "func_file": "transport",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, timeout=None, proxy=None, cacert=None, sessions=False):\n        if (timeout is not None) and not self.supports_feature('timeout'):\n            raise RuntimeError('timeout is not supported with urllib2 transport')\n        if proxy:\n            raise RuntimeError('proxy is not supported with urllib2 transport')\n        if cacert:\n            raise RuntimeError('cacert is not support with urllib2 transport')\n\n        self.request_opener = urllib2.urlopen\n        if sessions:\n            opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(CookieJar()))\n            self.request_opener = opener.open\n\n        self._timeout = timeout",
+                    "func_fullName": "pysimplesoap.transport.urllib2Transport.__init__(self, timeout, proxy, cacert, sessions)"
+                }
+            ]
+        }
+    ]
+}

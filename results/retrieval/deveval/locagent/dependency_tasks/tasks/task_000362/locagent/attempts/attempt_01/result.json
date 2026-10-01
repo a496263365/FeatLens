@@ -1,0 +1,123 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 362,
+  "namespace": "boto.glacier.utils.compute_hashes_from_fileobj",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12251,
+      "input_estimate_after": 12251,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `compute_hashes_from_fileobj` function in `boto/glacier/utils.py`. The function needs to compute both linear hash (simple SHA256 of entire content) and tree hash (Glacier's tree hash algorithm) from a file-like object in a single pass.\n\nFrom the codebase analysis, I can identify the following reusable components:\n\n1. **`boto/glacier/utils.py:chunk_hashes`** - Already computes SHA256 hashes of chunks from a bytestring\n2. **`boto/glacier/utils.py:tree_hash`** - Computes tree hash from a list of chunk hashes\n3. **`boto/glacier/utils.py:bytes_to_hex`** - Converts bytes to hexadecimal string\n4. **`boto/utils.py:compute_hash`** - Shows pattern for reading file objects and computing hashes\n5. **`boto/glacier/concurrent.py:UploadWorkerThread._upload_chunk`** - Shows actual usage pattern for computing both linear and tree hashes from data\n\nThe key insight is that `compute_hashes_from_fileobj` needs to combine the logic from `chunk_hashes` and `tree_hash` but operate on a file-like object stream rather than a complete bytestring, while also computing the linear hash. The `compute_hash` function in `boto/utils.py` provides the streaming file reading pattern.\n\nHere are the verified reusable dependencies:\n\n```\nboto/glacier/utils.py\nline: 74\nfunction: chunk_hashes\n\nboto/glacier/utils.py\nline: 86\nfunction: tree_hash\n\nboto/glacier/utils.py\nline: 148\nfunction: bytes_to_hex\n\nboto/utils.py\nline: 1003\nfunction: compute_hash\n\nboto/glacier/concurrent.py\nline: 247\nline: 252\nline: 253\nfunction: UploadWorkerThread._upload_chunk\n```",
+  "final_locations": {
+    "files": [
+      "boto/glacier/utils.py",
+      "boto/utils.py",
+      "boto/glacier/concurrent.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/glacier/utils.py",
+        "name": "chunk_hashes",
+        "kind": "function",
+        "symbol": "boto.glacier.utils.chunk_hashes",
+        "start": 74,
+        "end": 83,
+        "code": "def chunk_hashes(bytestring, chunk_size=_MEGABYTE):\n    chunk_count = int(math.ceil(len(bytestring) / float(chunk_size)))\n    hashes = []\n    for i in range(chunk_count):\n        start = i * chunk_size\n        end = (i + 1) * chunk_size\n        hashes.append(hashlib.sha256(bytestring[start:end]).digest())\n    if not hashes:\n        return [hashlib.sha256(b'').digest()]\n    return hashes"
+      },
+      {
+        "file": "boto/glacier/utils.py",
+        "name": "tree_hash",
+        "kind": "function",
+        "symbol": "boto.glacier.utils.tree_hash",
+        "start": 86,
+        "end": 107,
+        "code": "def tree_hash(fo):\n    \"\"\"\n    Given a hash of each 1MB chunk (from chunk_hashes) this will hash\n    together adjacent hashes until it ends up with one big one. So a\n    tree of hashes.\n    \"\"\"\n    hashes = []\n    hashes.extend(fo)\n    while len(hashes) > 1:\n        new_hashes = []\n        while True:\n            if len(hashes) > 1:\n                first = hashes.pop(0)\n                second = hashes.pop(0)\n                new_hashes.append(hashlib.sha256(first + second).digest())\n            elif len(hashes) == 1:\n                only = hashes.pop(0)\n                new_hashes.append(only)\n            else:\n                break\n        hashes.extend(new_hashes)\n    return hashes[0]"
+      },
+      {
+        "file": "boto/glacier/utils.py",
+        "name": "bytes_to_hex",
+        "kind": "function",
+        "symbol": "boto.glacier.utils.bytes_to_hex",
+        "start": 148,
+        "end": 149,
+        "code": "def bytes_to_hex(str_as_bytes):\n    return binascii.hexlify(str_as_bytes)"
+      },
+      {
+        "file": "boto/utils.py",
+        "name": "compute_hash",
+        "kind": "function",
+        "symbol": "boto.utils.compute_hash",
+        "start": 1003,
+        "end": 1029,
+        "code": "def compute_hash(fp, buf_size=8192, size=None, hash_algorithm=md5):\n    hash_obj = hash_algorithm()\n    spos = fp.tell()\n    if size and size < buf_size:\n        s = fp.read(size)\n    else:\n        s = fp.read(buf_size)\n    while s:\n        if not isinstance(s, bytes):\n            s = s.encode('utf-8')\n        hash_obj.update(s)\n        if size:\n            size -= len(s)\n            if size <= 0:\n                break\n        if size and size < buf_size:\n            s = fp.read(size)\n        else:\n            s = fp.read(buf_size)\n    hex_digest = hash_obj.hexdigest()\n    base64_digest = encodebytes(hash_obj.digest()).decode('utf-8')\n    if base64_digest[-1] == '\\n':\n        base64_digest = base64_digest[0:-1]\n    # data_size based on bytes read.\n    data_size = fp.tell() - spos\n    fp.seek(spos)\n    return (hex_digest, base64_digest, data_size)"
+      },
+      {
+        "file": "boto/glacier/concurrent.py",
+        "name": "UploadWorkerThread._upload_chunk",
+        "kind": "function",
+        "symbol": "boto.glacier.concurrent.UploadWorkerThread._upload_chunk",
+        "start": 247,
+        "end": 262,
+        "code": "    def _upload_chunk(self, work):\n        part_number, part_size = work\n        start_byte = part_number * part_size\n        self._fileobj.seek(start_byte)\n        contents = self._fileobj.read(part_size)\n        linear_hash = hashlib.sha256(contents).hexdigest()\n        tree_hash_bytes = tree_hash(chunk_hashes(contents))\n        byte_range = (start_byte, start_byte + len(contents) - 1)\n        log.debug(\"Uploading chunk %s of size %s\", part_number, part_size)\n        response = self._api.upload_part(self._vault_name, self._upload_id,\n                                         linear_hash,\n                                         bytes_to_hex(tree_hash_bytes),\n                                         byte_range, contents)\n        # Reading the response allows the connection to be reused.\n        response.read()\n        return (part_number, tree_hash_bytes)"
+      }
+    ],
+    "unresolved": [
+      "1. **`boto/glacier/utils.py:chunk_hashes`** - Already computes SHA256 hashes of chunks from a bytestring",
+      "2. **`boto/glacier/utils.py:tree_hash`** - Computes tree hash from a list of chunk hashes",
+      "3. **`boto/glacier/utils.py:bytes_to_hex`** - Converts bytes to hexadecimal string",
+      "4. **`boto/utils.py:compute_hash`** - Shows pattern for reading file objects and computing hashes",
+      "5. **`boto/glacier/concurrent.py:UploadWorkerThread._upload_chunk`** - Shows actual usage pattern for computing both linear and tree hashes from data"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "boto.glacier.utils.bytes_to_hex",
+      "boto.glacier.utils.tree_hash"
+    ],
+    "exact_hit_dependencies": [
+      "boto.glacier.utils.bytes_to_hex",
+      "boto.glacier.utils.tree_hash"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 5,
+    "returned_code_chars": 2880
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30666,
+    "completion_tokens": 841,
+    "total_tokens": 31507,
+    "seconds": 92.49229955673218,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 207.1048080921173,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,120 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2056,
+  "namespace": "jinja2.utils.LRUCache.setdefault",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 19351,
+      "input_estimate_after": 19351,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the key reusable dependencies for implementing the `setdefault` method in `jinja2.utils.LRUCache`. The LRUCache class inherits from `abc.MutableMapping` and has several internal methods and attributes that would need to be used or referenced.\n\n```\nsrc/jinja2/utils.py\nline: 420\nclass: LRUCache\nline: 428-433\nfunction: LRUCache.__init__\nline: 434-440\nfunction: LRUCache._postinit\nline: 497-517\nfunction: LRUCache.__getitem__\nline: 519-531\nfunction: LRUCache.__setitem__\nline: 463-468\nfunction: LRUCache.get\n```",
+  "final_locations": {
+    "files": [
+      "src/jinja2/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache",
+        "kind": "class",
+        "symbol": "jinja2.utils.LRUCache",
+        "start": 421,
+        "end": 567,
+        "code": "class LRUCache:\n    \"\"\"A simple LRU Cache implementation.\"\"\"\n\n    # this is fast for small capacities (something below 1000) but doesn't\n    # scale.  But as long as it's only used as storage for templates this\n    # won't do any harm.\n\n    def __init__(self, capacity: int) -> None:\n        self.capacity = capacity\n        self._mapping: t.Dict[t.Any, t.Any] = {}\n        self._queue: \"te.Deque[t.Any]\" = deque()\n        self._postinit()\n\n    def _postinit(self) -> None:\n        # alias all queue methods for faster lookup\n        self._popleft = self._queue.popleft\n        self._pop = self._queue.pop\n        self._remove = self._queue.remove\n        self._wlock = Lock()\n        self._append = self._queue.append\n\n    def __getstate__(self) -> t.Mapping[str, t.Any]:\n        return {\n            \"capacity\": self.capacity,\n            \"_mapping\": self._mapping,\n            \"_queue\": self._queue,\n        }\n\n    def __setstate__(self, d: t.Mapping[str, t.Any]) -> None:\n        self.__dict__.update(d)\n        self._postinit()\n\n    def __getnewargs__(self) -> t.Tuple:\n        return (self.capacity,)\n\n    def copy(self) -> \"LRUCache\":\n        \"\"\"Return a shallow copy of the instance.\"\"\"\n        rv = self.__class__(self.capacity)\n        rv._mapping.update(self._mapping)\n        rv._queue.extend(self._queue)\n        return rv\n\n    def get(self, key: t.Any, default: t.Any = None) -> t.Any:\n        \"\"\"Return an item from the cache dict or `default`\"\"\"\n        try:\n            return self[key]\n        except KeyError:\n            return default\n\n    def setdefault(self, key: t.Any, default: t.Any = None) -> t.Any:\n        pass\n\n\n\n\n\n\n\n\n    def clear(self) -> None:\n        \"\"\"Clear the cache.\"\"\"\n        with self._wlock:\n            self._mapping.clear()\n            self._queue.clear()\n\n    def __contains__(self, key: t.Any) -> bool:\n        \"\"\"Check if a key exists in this cache.\"\"\"\n        return key in self._mapping\n\n    def __len__(self) -> int:\n        \"\"\"Return the current size of the cache.\"\"\"\n        return len(self._mapping)\n\n    def __repr__(self) -> str:\n        return f\"<{type(self).__name__} {self._mapping!r}>\"\n\n    def __getitem__(self, key: t.Any) -> t.Any:\n        \"\"\"Get an item from the cache. Moves the item up so that it has the\n        highest priority then.\n\n        Raise a `KeyError` if it does not exist.\n        \"\"\"\n        with self._wlock:\n            rv = self._mapping[key]\n\n            if self._queue[-1] != key:\n                try:\n                    self._remove(key)\n                except ValueError:\n                    # if something removed the key from the container\n                    # when we read, ignore the ValueError that we would\n                    # get otherwise.\n                    pass\n\n                self._append(key)\n\n            return rv\n\n    def __setitem__(self, key: t.Any, value: t.Any) -> None:\n        \"\"\"Sets the value for an item. Moves the item up so that it\n        has the highest priority then.\n        \"\"\"\n        with self._wlock:\n            if key in self._mapping:\n                self._remove(key)\n            elif len(self._mapping) == self.capacity:\n                del self._mapping[self._popleft()]\n\n            self._append(key)\n            self._mapping[key] = value\n\n    def __delitem__(self, key: t.Any) -> None:\n        \"\"\"Remove an item from the cache dict.\n        Raise a `KeyError` if it does not exist.\n        \"\"\"\n        with self._wlock:\n            del self._mapping[key]\n\n            try:\n                self._remove(key)\n            except ValueError:\n                pass\n\n    def items(self) -> t.Iterable[t.Tuple[t.Any, t.Any]]:\n        \"\"\"Return a list of items.\"\"\"\n        result = [(key, self._mapping[key]) for key in list(self._queue)]\n        result.reverse()\n        return result\n\n    def values(self) -> t.Iterable[t.Any]:\n        \"\"\"Return a list of all values.\"\"\"\n        return [x[1] for x in self.items()]\n\n    def keys(self) -> t.Iterable[t.Any]:\n        \"\"\"Return a list of all keys ordered by most recent usage.\"\"\"\n        return list(self)\n\n    def __iter__(self) -> t.Iterator[t.Any]:\n        return reversed(tuple(self._queue))\n\n    def __reversed__(self) -> t.Iterator[t.Any]:\n        \"\"\"Iterate over the keys in the cache dict, oldest items\n        coming first.\n        \"\"\"\n        return iter(tuple(self._queue))\n\n    __copy__ = copy"
+      },
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache.__init__",
+        "kind": "function",
+        "symbol": "jinja2.utils.LRUCache.__init__",
+        "start": 428,
+        "end": 432,
+        "code": "    def __init__(self, capacity: int) -> None:\n        self.capacity = capacity\n        self._mapping: t.Dict[t.Any, t.Any] = {}\n        self._queue: \"te.Deque[t.Any]\" = deque()\n        self._postinit()"
+      },
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache._postinit",
+        "kind": "function",
+        "symbol": "jinja2.utils.LRUCache._postinit",
+        "start": 434,
+        "end": 440,
+        "code": "    def _postinit(self) -> None:\n        # alias all queue methods for faster lookup\n        self._popleft = self._queue.popleft\n        self._pop = self._queue.pop\n        self._remove = self._queue.remove\n        self._wlock = Lock()\n        self._append = self._queue.append"
+      },
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache.__getitem__",
+        "kind": "function",
+        "symbol": "jinja2.utils.LRUCache.__getitem__",
+        "start": 497,
+        "end": 517,
+        "code": "    def __getitem__(self, key: t.Any) -> t.Any:\n        \"\"\"Get an item from the cache. Moves the item up so that it has the\n        highest priority then.\n\n        Raise a `KeyError` if it does not exist.\n        \"\"\"\n        with self._wlock:\n            rv = self._mapping[key]\n\n            if self._queue[-1] != key:\n                try:\n                    self._remove(key)\n                except ValueError:\n                    # if something removed the key from the container\n                    # when we read, ignore the ValueError that we would\n                    # get otherwise.\n                    pass\n\n                self._append(key)\n\n            return rv"
+      },
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache.__setitem__",
+        "kind": "function",
+        "symbol": "jinja2.utils.LRUCache.__setitem__",
+        "start": 519,
+        "end": 530,
+        "code": "    def __setitem__(self, key: t.Any, value: t.Any) -> None:\n        \"\"\"Sets the value for an item. Moves the item up so that it\n        has the highest priority then.\n        \"\"\"\n        with self._wlock:\n            if key in self._mapping:\n                self._remove(key)\n            elif len(self._mapping) == self.capacity:\n                del self._mapping[self._popleft()]\n\n            self._append(key)\n            self._mapping[key] = value"
+      },
+      {
+        "file": "src/jinja2/utils.py",
+        "name": "LRUCache.get",
+        "kind": "function",
+        "symbol": "jinja2.utils.LRUCache.get",
+        "start": 463,
+        "end": 468,
+        "code": "    def get(self, key: t.Any, default: t.Any = None) -> t.Any:\n        \"\"\"Return an item from the cache dict or `default`\"\"\"\n        try:\n            return self[key]\n        except KeyError:\n            return default"
+      }
+    ],
+    "unresolved": [
+      "src/jinja2/utils.py:line: 420"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 6203
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 57628,
+    "completion_tokens": 564,
+    "total_tokens": 58192,
+    "seconds": 35.13491892814636,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 49.327327251434326,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

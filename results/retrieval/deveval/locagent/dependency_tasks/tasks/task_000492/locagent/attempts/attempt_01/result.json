@@ -1,0 +1,102 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 492,
+  "namespace": "sumy.summarizers.lsa.LsaSummarizer._create_dictionary",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5463,
+      "input_estimate_after": 5463,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies for implementing the `_create_dictionary` function in LsaSummarizer:\n\n```\nsumy/summarizers/lsa.py\nline: 22\nclass: LsaSummarizer\nfunction: normalize_word (inherited from AbstractSummarizer)\n\nsumy/summarizers/_summarizer.py\nline: 15\nclass: AbstractSummarizer\nfunction: normalize_word\n\nsumy/models/__init__.py\nline: 1\nclass: ObjectDocumentModel\n(line numbers not available for document structure)\n\nsumy/nlp/stemmers/__init__.py\nfunction: null_stemmer\n(used via stem_word inherited from AbstractSummarizer)\n\nsumy/utils.py\nfunction: ItemsCount\n(used in base summarizer class)\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/lsa.py",
+      "sumy/summarizers/_summarizer.py",
+      "sumy/models/__init__.py",
+      "sumy/nlp/stemmers/__init__.py",
+      "sumy/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/lsa.py",
+        "name": "LsaSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.lsa.LsaSummarizer",
+        "start": 22,
+        "end": 122,
+        "code": "class LsaSummarizer(AbstractSummarizer):\n    MIN_DIMENSIONS = 3\n    REDUCTION_RATIO = 1/1\n    _stop_words = frozenset()\n\n    @property\n    def stop_words(self):\n        return self._stop_words\n\n    @stop_words.setter\n    def stop_words(self, words):\n        self._stop_words = frozenset(map(self.normalize_word, words))\n\n    def __call__(self, document, sentences_count):\n        self._ensure_dependecies_installed()\n\n        dictionary = self._create_dictionary(document)\n        # empty document\n        if not dictionary:\n            return ()\n\n        matrix = self._create_matrix(document, dictionary)\n        matrix = self._compute_term_frequency(matrix)\n        u, sigma, v = singular_value_decomposition(matrix, full_matrices=False)\n\n        ranks = iter(self._compute_ranks(sigma, v))\n        return self._get_best_sentences(document.sentences, sentences_count,\n            lambda s: next(ranks))\n\n    def _ensure_dependecies_installed(self):\n        if numpy is None:\n            raise ValueError(\"LSA summarizer requires NumPy. Please, install it by command 'pip install numpy'.\")\n\n    def _create_dictionary(self, document):\n        pass\n\n\n\n\n\n    def _create_matrix(self, document, dictionary):\n        \"\"\"\n        Creates matrix of shape |unique words|×|sentences| where cells\n        contains number of occurrences of words (rows) in sentences (cols).\n        \"\"\"\n        sentences = document.sentences\n\n        words_count = len(dictionary)\n        sentences_count = len(sentences)\n        if words_count < sentences_count:\n            message = (\n                \"Number of words (%d) is lower than number of sentences (%d). \"\n                \"LSA algorithm may not work properly.\"\n            )\n            warn(message % (words_count, sentences_count))\n\n        # create matrix |unique words|×|sentences| filled with zeroes\n        matrix = numpy.zeros((words_count, sentences_count))\n        for col, sentence in enumerate(sentences):\n            for word in map(self.stem_word, sentence.words):\n                # only valid words is counted (not stop-words, ...)\n                if word in dictionary:\n                    row = dictionary[word]\n                    matrix[row, col] += 1\n\n        return matrix\n\n    def _compute_term_frequency(self, matrix, smooth=0.4):\n        \"\"\"\n        Computes TF metrics for each sentence (column) in the given matrix.\n        You can read more about smoothing parameter at URL below:\n        http://nlp.stanford.edu/IR-book/html/htmledition/maximum-tf-normalization-1.html\n        \"\"\"\n        assert 0.0 <= smooth < 1.0\n\n        max_word_frequencies = numpy.max(matrix, axis=0)\n        rows, cols = matrix.shape\n        for row in range(rows):\n            for col in range(cols):\n                max_word_frequency = max_word_frequencies[col]\n                if max_word_frequency != 0:\n                    frequency = matrix[row, col]/max_word_frequency\n                    matrix[row, col] = smooth + (1.0 - smooth)*frequency\n\n        return matrix\n\n    def _compute_ranks(self, sigma, v_matrix):\n        assert len(sigma) == v_matrix.shape[0], \"Matrices should be multiplicable\"\n\n        dimensions = max(LsaSummarizer.MIN_DIMENSIONS,\n            int(len(sigma)*LsaSummarizer.REDUCTION_RATIO))\n        powered_sigma = tuple(s**2 if i < dimensions else 0.0\n            for i, s in enumerate(sigma))\n\n        ranks = []\n        # iterate over columns of matrix (rows of transposed matrix)\n        for column_vector in v_matrix.T:\n            rank = sum(s*v**2 for s, v in zip(powered_sigma, column_vector))\n            ranks.append(math.sqrt(rank))\n\n        return ranks"
+      },
+      {
+        "file": "sumy/summarizers/_summarizer.py",
+        "name": "AbstractSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers._summarizer.AbstractSummarizer",
+        "start": 17,
+        "end": 53,
+        "code": "class AbstractSummarizer(object):\n    def __init__(self, stemmer=null_stemmer):\n        if not callable(stemmer):\n            raise ValueError(\"Stemmer has to be a callable object\")\n\n        self._stemmer = stemmer\n\n    def __call__(self, document, sentences_count):\n        raise NotImplementedError(\"This method should be overriden in subclass\")\n\n    def stem_word(self, word):\n        return self._stemmer(self.normalize_word(word))\n\n    @staticmethod\n    def normalize_word(word):\n        return to_unicode(word).lower()\n\n    @staticmethod\n    def _get_best_sentences(sentences, count, rating, *args, **kwargs):\n        rate = rating\n        if isinstance(rating, dict):\n            assert not args and not kwargs\n            rate = lambda s: rating[s]\n\n        infos = (SentenceInfo(s, o, rate(s, *args, **kwargs))\n            for o, s in enumerate(sentences))\n\n        # sort sentences by rating in descending order\n        infos = sorted(infos, key=attrgetter(\"rating\"), reverse=True)\n        # get `count` first best rated sentences\n        if not callable(count):\n            count = ItemsCount(count)\n        infos = count(infos)\n        # sort sentences by their order in document\n        infos = sorted(infos, key=attrgetter(\"order\"))\n\n        return tuple(i.sentence for i in infos)"
+      },
+      {
+        "file": "sumy/nlp/stemmers/__init__.py",
+        "name": "null_stemmer",
+        "kind": "function",
+        "symbol": "sumy.nlp.stemmers.null_stemmer",
+        "start": 16,
+        "end": 19,
+        "code": "def null_stemmer(object):\n    \"\"\"Converts given object to unicode with lower letters.\"\"\"\n    from ..._compat import to_unicode\n    return to_unicode(object).lower()"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/lsa.py:function: normalize_word (inherited from AbstractSummarizer)",
+      "sumy/summarizers/_summarizer.py:line: 15",
+      "sumy/summarizers/_summarizer.py:function: normalize_word",
+      "sumy/models/__init__.py:line: 1",
+      "sumy/models/__init__.py:class: ObjectDocumentModel",
+      "sumy/utils.py:function: ItemsCount"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 5,
+    "unresolved_locations": 6,
+    "returned_code_chars": 5090
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 20513,
+    "completion_tokens": 506,
+    "total_tokens": 21019,
+    "seconds": 64.10711932182312,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 65.1671371459961,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

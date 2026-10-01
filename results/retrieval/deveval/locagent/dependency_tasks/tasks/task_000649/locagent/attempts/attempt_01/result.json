@@ -1,0 +1,121 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 649,
+  "namespace": "diffprivlib.accountant.BudgetAccountant.check",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8079,
+      "input_estimate_after": 8079,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndiffprivlib/validation.py\nfunction: check_epsilon_delta\n\ndiffprivlib/utils.py\nclass: BudgetError\n\ndiffprivlib/accountant.py\nline: 232\nfunction: BudgetAccountant.total\n\ndiffprivlib/accountant.py\nline: 405\nfunction: BudgetAccountant._BudgetAccountant.__total_delta_safe\n\ndiffprivlib/accountant.py\nline: 362\nfunction: BudgetAccountant.spend\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/validation.py",
+      "diffprivlib/utils.py",
+      "diffprivlib/accountant.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "check_epsilon_delta",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.check_epsilon_delta",
+        "start": 28,
+        "end": 57,
+        "code": "def check_epsilon_delta(epsilon, delta, allow_zero=False):\n    \"\"\"Checks that epsilon and delta are valid values for differential privacy.  Throws an error if checks fail,\n    otherwise returns nothing.\n\n    As well as the requirements of epsilon and delta separately, both cannot be simultaneously zero, unless\n    ``allow_zero`` is set to ``True``.\n\n    Parameters\n    ----------\n    epsilon : float\n        Epsilon parameter for differential privacy.  Must be non-negative.\n\n    delta : float\n        Delta parameter for differential privacy.  Must be on the unit interval, [0, 1].\n\n    allow_zero : bool, default: False\n        Allow epsilon and delta both be zero.\n\n    \"\"\"\n    if not isinstance(epsilon, Real) or not isinstance(delta, Real):\n        raise TypeError(\"Epsilon and delta must be numeric\")\n\n    if epsilon < 0:\n        raise ValueError(\"Epsilon must be non-negative\")\n\n    if not 0 <= delta <= 1:\n        raise ValueError(\"Delta must be in [0, 1]\")\n\n    if not allow_zero and epsilon + delta == 0:\n        raise ValueError(\"Epsilon and Delta cannot both be zero\")"
+      },
+      {
+        "file": "diffprivlib/utils.py",
+        "name": "BudgetError",
+        "kind": "class",
+        "symbol": "diffprivlib.utils.BudgetError",
+        "start": 157,
+        "end": 167,
+        "code": "class BudgetError(ValueError):\n    \"\"\"Custom exception to capture the privacy budget being exceeded, typically controlled by a\n    :class:`.BudgetAccountant`.\n\n    For example, this exception may be raised when the user:\n\n        - Attempts to execute a query which would exceed the privacy budget of the accountant.\n        - Attempts to change the slack of the accountant in such a way that the existing budget spends would exceed the\n          accountant's budget.\n\n    \"\"\""
+      },
+      {
+        "file": "diffprivlib/accountant.py",
+        "name": "BudgetAccountant.total",
+        "kind": "function",
+        "symbol": "diffprivlib.accountant.BudgetAccountant.total",
+        "start": 223,
+        "end": 273,
+        "code": "    def total(self, spent_budget=None, slack=None):\n        \"\"\"Returns the total current privacy spend.\n\n        `spent_budget` and `slack` can be specified as parameters, otherwise the class values will be used.\n\n        Parameters\n        ----------\n        spent_budget : list of tuples of the form (epsilon, delta), optional\n            List of tuples of budget spends.  If not provided, the accountant's spends will be used.\n\n        slack : float, optional\n            Slack in delta for composition.  If not provided, the accountant's slack will be used.\n\n        Returns\n        -------\n        epsilon : float\n            Total epsilon spend.\n\n        delta : float\n            Total delta spend.\n\n        \"\"\"\n        if spent_budget is None:\n            spent_budget = self.spent_budget\n        else:\n            for epsilon, delta in spent_budget:\n                check_epsilon_delta(epsilon, delta)\n\n        if slack is None:\n            slack = self.slack\n        elif not 0 <= slack <= self.delta:\n            raise ValueError(f\"Slack must be between 0 and delta ({self.delta}), inclusive. Got {slack}.\")\n\n        epsilon_sum, epsilon_exp_sum, epsilon_sq_sum = 0, 0, 0\n\n        for epsilon, _ in spent_budget:\n            epsilon_sum += epsilon\n            epsilon_exp_sum += (1 - np.exp(-epsilon)) * epsilon / (1 + np.exp(-epsilon))\n            epsilon_sq_sum += epsilon ** 2\n\n        total_epsilon_naive = epsilon_sum\n        total_delta = self.__total_delta_safe(spent_budget, slack)\n\n        if slack == 0:\n            return Budget(total_epsilon_naive, total_delta)\n\n        total_epsilon_drv = epsilon_exp_sum + np.sqrt(2 * epsilon_sq_sum * np.log(1 / slack))\n        total_epsilon_kov = epsilon_exp_sum + np.sqrt(2 * epsilon_sq_sum *\n                                                      np.log(np.exp(1) + np.sqrt(epsilon_sq_sum) / slack))\n\n        return Budget(min(total_epsilon_naive, total_epsilon_drv, total_epsilon_kov), total_delta)"
+      },
+      {
+        "file": "diffprivlib/accountant.py",
+        "name": "BudgetAccountant.__total_delta_safe",
+        "kind": "function",
+        "symbol": "diffprivlib.accountant.BudgetAccountant.__total_delta_safe",
+        "start": 386,
+        "end": 415,
+        "code": "    def __total_delta_safe(spent_budget, slack):\n        \"\"\"\n        Calculate total delta spend of `spent_budget`, with special consideration for floating point arithmetic.\n        Should yield greater precision, especially for a large number of budget spends with very small delta.\n\n        Parameters\n        ----------\n        spent_budget: list of tuples of the form (epsilon, delta)\n            List of budget spends, for which the total delta spend is to be calculated.\n\n        slack: float\n            Delta slack parameter for composition of spends.\n\n        Returns\n        -------\n        float\n            Total delta spend.\n\n        \"\"\"\n        delta_spend = [slack]\n        for _, delta in spent_budget:\n            delta_spend.append(delta)\n        delta_spend.sort()\n\n        # (1 - a) * (1 - b) = 1 - (a + b - a * b)\n        prod = 0\n        for delta in delta_spend:\n            prod += delta - prod * delta\n\n        return prod"
+      },
+      {
+        "file": "diffprivlib/accountant.py",
+        "name": "BudgetAccountant.spend",
+        "kind": "function",
+        "symbol": "diffprivlib.accountant.BudgetAccountant.spend",
+        "start": 362,
+        "end": 383,
+        "code": "    def spend(self, epsilon, delta):\n        \"\"\"Spend the given privacy budget.\n\n        Instructs the accountant to spend the given epsilon and delta privacy budget, while ensuring the target budget\n        is not exceeded.\n\n        Parameters\n        ----------\n        epsilon : float\n            Epsilon privacy budget to spend.\n\n        delta : float\n            Delta privacy budget to spend.\n\n        Returns\n        -------\n        self : BudgetAccountant\n\n        \"\"\"\n        self.check(epsilon, delta)\n        self.__spent_budget.append((epsilon, delta))\n        return self"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/accountant.py:function: BudgetAccountant._BudgetAccountant.__total_delta_safe"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "diffprivlib.accountant.BudgetAccountant.total",
+      "diffprivlib.utils.BudgetError",
+      "diffprivlib.validation.check_epsilon_delta"
+    ],
+    "exact_hit_dependencies": [
+      "diffprivlib.accountant.BudgetAccountant.total",
+      "diffprivlib.utils.BudgetError",
+      "diffprivlib.validation.check_epsilon_delta"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5050
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 29159,
+    "completion_tokens": 1930,
+    "total_tokens": 31089,
+    "seconds": 77.47811913490295,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 81.22128295898438,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

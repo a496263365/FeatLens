@@ -1,0 +1,110 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 627,
+  "namespace": "asyncssh.auth_keys.SSHAuthorizedKeys.validate",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7502,
+      "input_estimate_after": 7502,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nasyncssh/auth_keys.py\nline: 43\nclass: _SSHAuthorizedKeyEntry\nfunction: _SSHAuthorizedKeyEntry._import_key_or_cert\n\nasyncssh/pattern.py\nfunction: HostPatternList.matches\nfunction: WildcardPatternList.matches\n\nasyncssh/public_key.py\nfunction: SSHKey\n\nasyncssh/auth_keys.py\nline: 208\nfunction: _SSHAuthorizedKeyEntry.match_options\n\nasyncssh/auth_keys.py\nline: 278\nclass: SSHAuthorizedKeys\nfunction: SSHAuthorizedKeys.validate\n```",
+  "final_locations": {
+    "files": [
+      "asyncssh/auth_keys.py",
+      "asyncssh/pattern.py",
+      "asyncssh/public_key.py"
+    ],
+    "entities": [
+      {
+        "file": "asyncssh/auth_keys.py",
+        "name": "_SSHAuthorizedKeyEntry",
+        "kind": "class",
+        "symbol": "asyncssh.auth_keys._SSHAuthorizedKeyEntry",
+        "start": 43,
+        "end": 239,
+        "code": "class _SSHAuthorizedKeyEntry:\n    \"\"\"An entry in an SSH authorized_keys list\"\"\"\n\n    def __init__(self, line: str):\n        self.key: Optional[SSHKey] = None\n        self.cert: Optional[SSHX509Certificate] = None\n        self.options: Dict[str, object] = {}\n\n        try:\n            self._import_key_or_cert(line)\n            return\n        except KeyImportError:\n            pass\n\n        line = self._parse_options(line)\n        self._import_key_or_cert(line)\n\n    def _import_key_or_cert(self, line: str) -> None:\n        \"\"\"Import key or certificate in this entry\"\"\"\n\n        try:\n            self.key = import_public_key(line)\n            return\n        except KeyImportError:\n            pass\n\n        try:\n            self.cert = cast(SSHX509Certificate, import_certificate(line))\n\n            if ('cert-authority' in self.options and\n                    self.cert.subject != self.cert.issuer):\n                raise ValueError('X.509 cert-authority entries must '\n                                 'contain a root CA certificate')\n\n            return\n        except KeyImportError:\n            pass\n\n        if 'cert-authority' not in self.options:\n            try:\n                self.key = None\n                self.cert = None\n                self._add_subject('subject', import_certificate_subject(line))\n                return\n            except KeyImportError:\n                pass\n\n        raise KeyImportError('Unrecognized key, certificate, or subject')\n\n    def _set_string(self, option: str, value: str) -> None:\n        \"\"\"Set an option with a string value\"\"\"\n\n        self.options[option] = value\n\n    def _add_environment(self, option: str, value: str) -> None:\n        \"\"\"Add an environment key/value pair\"\"\"\n\n        if value.startswith('=') or '=' not in value:\n            raise ValueError('Invalid environment entry in authorized_keys')\n\n        name, value = value.split('=', 1)\n        cast(Dict[str, str], self.options.setdefault(option, {}))[name] = value\n\n    def _add_from(self, option: str, value: str) -> None:\n        \"\"\"Add a from host pattern\"\"\"\n\n        from_patterns = cast(List[HostPatternList],\n                             self.options.setdefault(option, []))\n        from_patterns.append(HostPatternList(value))\n\n    def _add_permitopen(self, option: str, value: str) -> None:\n        \"\"\"Add a permitopen host/port pair\"\"\"\n\n        try:\n            host, port_str = value.rsplit(':', 1)\n\n            if host.startswith('[') and host.endswith(']'):\n                host = host[1:-1]\n\n            port = None if port_str == '*' else int(port_str)\n        except:\n            raise ValueError('Illegal permitopen value: %s' % value) from None\n\n        permitted_opens = cast(Set[Tuple[str, Optional[int]]],\n                               self.options.setdefault(option, set()))\n        permitted_opens.add((host, port))\n\n    def _add_principals(self, option: str, value: str) -> None:\n        \"\"\"Add a principals wildcard pattern list\"\"\"\n\n        principal_patterns = cast(List[WildcardPatternList],\n                                  self.options.setdefault(option, []))\n        principal_patterns.append(WildcardPatternList(value))\n\n    def _add_subject(self, option: str, value: str) -> None:\n        \"\"\"Add an X.509 subject pattern\"\"\"\n\n        if _x509_available: # pragma: no branch\n            subject_patterns = cast(List[X509NamePattern],\n                                    self.options.setdefault(option, []))\n            subject_patterns.append(X509NamePattern(value))\n\n    _handlers = {\n        'command':     _set_string,\n        'environment': _add_environment,\n        'from':        _add_from,\n        'permitopen':  _add_permitopen,\n        'principals':  _add_principals,\n        'subject':     _add_subject\n    }\n\n    def _add_option(self) -> None:\n        \"\"\"Add an option value\"\"\"\n\n        if self._option.startswith('='):\n            raise ValueError('Missing option name in authorized_keys')\n\n        if '=' in self._option:\n            option, value = self._option.split('=', 1)\n\n            handler = self._handlers.get(option)\n            if handler:\n                handler(self, option, value)\n            else:\n                values = cast(List[str], self.options.setdefault(option, []))\n                values.append(value)\n        else:\n            self.options[self._option] = True\n\n    def _parse_options(self, line: str) -> str:\n        \"\"\"Parse options in this entry\"\"\"\n\n        self._option = ''\n\n        idx = 0\n        quoted = False\n        escaped = False\n\n        for idx, ch in enumerate(line):\n            if escaped:\n                self._option += ch\n                escaped = False\n            elif ch == '\\\\':\n                escaped = True\n            elif ch == '\"':\n                quoted = not quoted\n            elif quoted:\n                self._option += ch\n            elif ch in ' \\t':\n                break\n            elif ch == ',':\n                self._add_option()\n                self._option = ''\n            else:\n                self._option += ch\n\n        self._add_option()\n\n        if quoted:\n            raise ValueError('Unbalanced quote in authorized_keys')\n        elif escaped:\n            raise ValueError('Unbalanced backslash in authorized_keys')\n\n        return line[idx:].strip()\n\n    def match_options(self, client_host: str, client_addr: str,\n                      cert_principals: Optional[Sequence[str]],\n                      cert_subject: Optional['X509Name'] = None) -> bool:\n        \"\"\"Match \"from\", \"principals\" and \"subject\" options in entry\"\"\"\n\n        from_patterns = cast(List[HostPatternList], self.options.get('from'))\n\n        if from_patterns:\n            client_ip = ip_address(client_addr)\n\n            if not all(pattern.matches(client_host, client_addr, client_ip)\n                       for pattern in from_patterns):\n                return False\n\n        principal_patterns = cast(List[WildcardPatternList],\n                                  self.options.get('principals'))\n\n        if cert_principals is not None and principal_patterns is not None:\n            if not all(any(pattern.matches(principal)\n                           for principal in cert_principals)\n                       for pattern in principal_patterns):\n                return False\n\n        subject_patterns = cast(List['X509NamePattern'],\n                                self.options.get('subject'))\n\n        if cert_subject is not None and subject_patterns is not None:\n            if not all(pattern.matches(cert_subject)\n                       for pattern in subject_patterns):\n                return False\n\n        return True"
+      },
+      {
+        "file": "asyncssh/auth_keys.py",
+        "name": "_SSHAuthorizedKeyEntry._import_key_or_cert",
+        "kind": "function",
+        "symbol": "asyncssh.auth_keys._SSHAuthorizedKeyEntry._import_key_or_cert",
+        "start": 60,
+        "end": 90,
+        "code": "    def _import_key_or_cert(self, line: str) -> None:\n        \"\"\"Import key or certificate in this entry\"\"\"\n\n        try:\n            self.key = import_public_key(line)\n            return\n        except KeyImportError:\n            pass\n\n        try:\n            self.cert = cast(SSHX509Certificate, import_certificate(line))\n\n            if ('cert-authority' in self.options and\n                    self.cert.subject != self.cert.issuer):\n                raise ValueError('X.509 cert-authority entries must '\n                                 'contain a root CA certificate')\n\n            return\n        except KeyImportError:\n            pass\n\n        if 'cert-authority' not in self.options:\n            try:\n                self.key = None\n                self.cert = None\n                self._add_subject('subject', import_certificate_subject(line))\n                return\n            except KeyImportError:\n                pass\n\n        raise KeyImportError('Unrecognized key, certificate, or subject')"
+      },
+      {
+        "file": "asyncssh/auth_keys.py",
+        "name": "_SSHAuthorizedKeyEntry.match_options",
+        "kind": "function",
+        "symbol": "asyncssh.auth_keys._SSHAuthorizedKeyEntry.match_options",
+        "start": 208,
+        "end": 239,
+        "code": "    def match_options(self, client_host: str, client_addr: str,\n                      cert_principals: Optional[Sequence[str]],\n                      cert_subject: Optional['X509Name'] = None) -> bool:\n        \"\"\"Match \"from\", \"principals\" and \"subject\" options in entry\"\"\"\n\n        from_patterns = cast(List[HostPatternList], self.options.get('from'))\n\n        if from_patterns:\n            client_ip = ip_address(client_addr)\n\n            if not all(pattern.matches(client_host, client_addr, client_ip)\n                       for pattern in from_patterns):\n                return False\n\n        principal_patterns = cast(List[WildcardPatternList],\n                                  self.options.get('principals'))\n\n        if cert_principals is not None and principal_patterns is not None:\n            if not all(any(pattern.matches(principal)\n                           for principal in cert_principals)\n                       for pattern in principal_patterns):\n                return False\n\n        subject_patterns = cast(List['X509NamePattern'],\n                                self.options.get('subject'))\n\n        if cert_subject is not None and subject_patterns is not None:\n            if not all(pattern.matches(cert_subject)\n                       for pattern in subject_patterns):\n                return False\n\n        return True"
+      },
+      {
+        "file": "asyncssh/auth_keys.py",
+        "name": "SSHAuthorizedKeys",
+        "kind": "class",
+        "symbol": "asyncssh.auth_keys.SSHAuthorizedKeys",
+        "start": 242,
+        "end": 306,
+        "code": "class SSHAuthorizedKeys:\n    \"\"\"An SSH authorized keys list\"\"\"\n\n    def __init__(self, authorized_keys: Optional[str] = None):\n        self._user_entries: List[_SSHAuthorizedKeyEntry] = []\n        self._ca_entries: List[_SSHAuthorizedKeyEntry] = []\n        self._x509_entries: List[_SSHAuthorizedKeyEntry] = []\n\n        if authorized_keys:\n            self.load(authorized_keys)\n\n    def load(self, authorized_keys: str) -> None:\n        \"\"\"Load authorized keys data into this object\"\"\"\n\n        for line in authorized_keys.splitlines():\n            line = line.strip()\n            if not line or line.startswith('#'):\n                continue\n\n            try:\n                entry = _SSHAuthorizedKeyEntry(line)\n            except KeyImportError:\n                continue\n\n            if entry.key:\n                if 'cert-authority' in entry.options:\n                    self._ca_entries.append(entry)\n                else:\n                    self._user_entries.append(entry)\n            else:\n                self._x509_entries.append(entry)\n\n        if (not self._user_entries and not self._ca_entries and\n                not self._x509_entries):\n            raise ValueError('No valid entries found')\n\n    def validate(self, key: SSHKey, client_host: str, client_addr: str,\n                 cert_principals: Optional[Sequence[str]] = None,\n                 ca: bool = False) -> Optional[Mapping[str, object]]:\n        pass\n\n\n\n\n\n\n\n\n\n    def validate_x509(self, cert: SSHX509CertificateChain, client_host: str,\n                      client_addr: str) -> Tuple[Optional[_EntryOptions],\n                                                 Optional[SSHX509Certificate]]:\n        \"\"\"Return whether an X.509 certificate is valid for authentication\"\"\"\n\n        for entry in self._x509_entries:\n            if (entry.cert and 'cert-authority' not in entry.options and\n                    (cert.key != entry.cert.key or\n                     cert.subject != entry.cert.subject)):\n                continue # pragma: no cover (work around bug in coverage tool)\n\n            if entry.match_options(client_host, client_addr,\n                                   cert.user_principals, cert.subject):\n                return entry.options, entry.cert\n\n        return None, None"
+      }
+    ],
+    "unresolved": [
+      "asyncssh/pattern.py:function: HostPatternList.matches",
+      "asyncssh/pattern.py:function: WildcardPatternList.matches",
+      "asyncssh/public_key.py:function: SSHKey"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.25,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "asyncssh.auth_keys._SSHAuthorizedKeyEntry.match_options"
+    ],
+    "exact_hit_dependencies": [
+      "asyncssh.auth_keys._SSHAuthorizedKeyEntry.match_options"
+    ],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 11260
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30109,
+    "completion_tokens": 2017,
+    "total_tokens": 32126,
+    "seconds": 93.66569113731384,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 184.74313187599182,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

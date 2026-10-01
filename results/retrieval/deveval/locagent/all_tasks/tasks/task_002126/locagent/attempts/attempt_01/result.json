@@ -1,0 +1,134 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2126,
+  "namespace": "diffprivlib.utils.check_random_state",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 22502,
+      "input_estimate_after": 22502,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify several key locations in the repository that contain reusable dependencies and patterns for implementing the `check_random_state` function. These locations show how random state handling is currently implemented and used throughout the codebase.\n\n```\ndiffprivlib/mechanisms/base.py\nline: 26\nline: 83\nfunction: DPMechanism.__init__\nreference: check_random_state import and usage\n\ndiffprivlib/mechanisms/base.py\nline: 234\nline: 257\nfunction: bernoulli_neg_exp\nreference: check_random_state call with secure=True\n\ndiffprivlib/mechanisms/bingham.py\nline: 21\nline: 55-56\nclass: Bingham\nreference: secrets.SystemRandom detection and handling\n\ndiffprivlib/mechanisms/staircase.py\nline: 21\nline: 58-59\nclass: Staircase\nreference: secrets.SystemRandom detection and handling\n\ndiffprivlib/mechanisms/laplace.py\nline: 412-414\nfunction: LaplaceBoundedDomain.randomise\nreference: TypeError handling for secrets.SystemRandom\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/mechanisms/base.py",
+      "diffprivlib/mechanisms/bingham.py",
+      "diffprivlib/mechanisms/staircase.py",
+      "diffprivlib/mechanisms/laplace.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/mechanisms/base.py",
+        "name": "DPMechanism.__init__",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.base.DPMechanism.__init__",
+        "start": 79,
+        "end": 83,
+        "code": "    def __init__(self, *, epsilon, delta, random_state=None):\n        self.epsilon, self.delta = self._check_epsilon_delta(epsilon, delta)\n        self.random_state = random_state\n\n        self._rng = check_random_state(random_state, True)"
+      },
+      {
+        "file": "diffprivlib/mechanisms/base.py",
+        "name": "bernoulli_neg_exp",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.base.bernoulli_neg_exp",
+        "start": 234,
+        "end": 269,
+        "code": "def bernoulli_neg_exp(gamma, random_state=None):\n    \"\"\"Sample from Bernoulli(exp(-gamma)).\n\n    Adapted from \"The Discrete Gaussian for Differential Privacy\", Canonne, Kamath, Steinke, 2020.\n    https://arxiv.org/pdf/2004.00010v2.pdf\n\n    Parameters\n    ----------\n    gamma : float\n        Parameter to sample from Bernoulli(exp(-gamma)).  Must be non-negative.\n\n    random_state : int or RandomState, optional\n        Controls the randomness of the mechanism.  To obtain a deterministic behaviour during randomisation,\n        ``random_state`` has to be fixed to an integer.\n\n    Returns\n    -------\n    One sample from the Bernoulli(exp(-gamma)) distribution.\n\n    \"\"\"\n    if gamma < 0:\n        raise ValueError(f\"Gamma must be non-negative, got {gamma}.\")\n\n    rng = check_random_state(random_state, True)\n\n    while gamma > 1:\n        gamma -= 1\n        if not bernoulli_neg_exp(1, rng):\n            return 0\n\n    counter = 1\n\n    while rng.random() <= gamma / counter:\n        counter += 1\n\n    return counter % 2"
+      },
+      {
+        "file": "diffprivlib/mechanisms/bingham.py",
+        "name": "Bingham.__init__",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.bingham.Bingham.__init__",
+        "start": 51,
+        "end": 56,
+        "code": "    def __init__(self, *, epsilon, sensitivity=1.0, random_state=None):\n        super().__init__(epsilon=epsilon, delta=0, random_state=random_state)\n        self.sensitivity = self._check_sensitivity(sensitivity)\n\n        if isinstance(self._rng, secrets.SystemRandom):\n            self._rng = np.random.default_rng()"
+      },
+      {
+        "file": "diffprivlib/mechanisms/bingham.py",
+        "name": "Bingham",
+        "kind": "class",
+        "symbol": "diffprivlib.mechanisms.bingham.Bingham",
+        "start": 30,
+        "end": 152,
+        "code": "class Bingham(DPMechanism):\n    r\"\"\"\n    The Bingham mechanism in differential privacy.\n\n    Used to estimate the first eigenvector (associated with the largest eigenvalue) of a covariance matrix.\n\n    Paper link: http://eprints.whiterose.ac.uk/123206/7/simbingham8.pdf\n\n    Parameters\n    ----------\n    epsilon : float\n        Privacy parameter :math:`\\epsilon` for the mechanism.  Must be in (0, ∞].\n\n    sensitivity : float, default: 1\n        The sensitivity of the mechanism.  Must be in [0, ∞).\n\n    random_state : int or RandomState, optional\n        Controls the randomness of the mechanism.  To obtain a deterministic behaviour during randomisation,\n        ``random_state`` has to be fixed to an integer.\n\n    \"\"\"\n    def __init__(self, *, epsilon, sensitivity=1.0, random_state=None):\n        super().__init__(epsilon=epsilon, delta=0, random_state=random_state)\n        self.sensitivity = self._check_sensitivity(sensitivity)\n\n        if isinstance(self._rng, secrets.SystemRandom):\n            self._rng = np.random.default_rng()\n\n    @classmethod\n    def _check_epsilon_delta(cls, epsilon, delta):\n        if not delta == 0:\n            raise ValueError(\"Delta must be zero\")\n\n        return super()._check_epsilon_delta(epsilon, delta)\n\n    @classmethod\n    def _check_sensitivity(cls, sensitivity):\n        if not isinstance(sensitivity, Real):\n            raise TypeError(\"Sensitivity must be numeric\")\n\n        if sensitivity < 0:\n            raise ValueError(\"Sensitivity must be non-negative\")\n\n        return float(sensitivity)\n\n    def _check_all(self, value):\n        super()._check_all(value)\n        self._check_sensitivity(self.sensitivity)\n\n        if not isinstance(value, np.ndarray):\n            raise TypeError(f\"Value to be randomised must be a numpy array, got {type(value)}\")\n        if value.ndim != 2:\n            raise ValueError(f\"Array must be 2-dimensional, got {value.ndim} dimensions\")\n        if value.shape[0] != value.shape[1]:\n            raise ValueError(f\"Array must be square, got {value.shape[0]} x {value.shape[1]}\")\n        if not np.allclose(value, value.T):\n            raise ValueError(\"Array must be symmetric, supplied array is not.\")\n\n        return True\n\n    @copy_docstring(DPMechanism.bias)\n    def bias(self, value):\n        raise NotImplementedError\n\n    @copy_docstring(DPMechanism.variance)\n    def variance(self, value):\n        raise NotImplementedError\n\n    def randomise(self, value):\n        \"\"\"Randomise `value` with the mechanism.\n\n        Parameters\n        ----------\n        value : numpy array\n            The data to be randomised.\n\n        Returns\n        -------\n        numpy array\n            The randomised eigenvector.\n\n        \"\"\"\n        self._check_all(value)\n\n        eigvals, eigvecs = np.linalg.eigh(value)\n        dims = value.shape[0]\n\n        if dims == 1:\n            return np.ones((1, 1))\n        if self.sensitivity / self.epsilon == 0:\n            return eigvecs[:, eigvals.argmax()]\n\n        value_translated = self.epsilon * (eigvals.max() * np.eye(dims) - value) / 4 / self.sensitivity\n        translated_eigvals = np.linalg.eigvalsh(value_translated)\n\n        left, right, mid = 1, dims, (1 + dims) / 2\n        old_interval_size = (right - left) * 2\n\n        while right - left < old_interval_size:\n            old_interval_size = right - left\n\n            mid = (right + left) / 2\n            f_mid = np.array([1 / (mid + 2 * eig) for eig in translated_eigvals]).sum()\n\n            if f_mid <= 1:\n                right = mid\n\n            if f_mid >= 1:\n                left = mid\n\n        b_const = mid\n        omega = np.eye(dims) + 2 * value_translated / b_const\n        omega_inv = np.linalg.inv(omega)\n        norm_const = np.exp(-(dims - b_const) / 2) * ((dims / b_const) ** (dims / 2))\n\n        while True:\n            rnd_vec = self._rng.multivariate_normal(np.zeros(dims), omega_inv / 4, size=4).sum(axis=0)\n            unit_vec = rnd_vec / np.linalg.norm(rnd_vec)\n            prob = np.exp(-unit_vec.dot(value_translated).dot(unit_vec)) / norm_const\\\n                / ((unit_vec.dot(omega).dot(unit_vec)) ** (dims / 2))\n\n            if self._rng.random() <= prob:\n                return unit_vec"
+      },
+      {
+        "file": "diffprivlib/mechanisms/staircase.py",
+        "name": "Staircase.__init__",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.staircase.Staircase.__init__",
+        "start": 54,
+        "end": 59,
+        "code": "    def __init__(self, *, epsilon, sensitivity, gamma=None, random_state=None):\n        super().__init__(epsilon=epsilon, delta=0, sensitivity=sensitivity, random_state=random_state)\n        self.gamma = self._check_gamma(gamma, epsilon=self.epsilon)\n\n        if isinstance(self._rng, secrets.SystemRandom):\n            self._rng = np.random.default_rng()"
+      },
+      {
+        "file": "diffprivlib/mechanisms/staircase.py",
+        "name": "Staircase",
+        "kind": "class",
+        "symbol": "diffprivlib.mechanisms.staircase.Staircase",
+        "start": 30,
+        "end": 107,
+        "code": "class Staircase(Laplace):\n    r\"\"\"\n    The staircase mechanism in differential privacy.\n\n    The staircase mechanism is an optimisation of the classical Laplace Mechanism (:class:`.Laplace`), described as a\n    \"geometric mixture of uniform random variables\".\n    Paper link: https://arxiv.org/pdf/1212.1186.pdf\n\n    Parameters\n    ----------\n    epsilon : float\n        Privacy parameter :math:`\\epsilon` for the mechanism.  Must be in (0, ∞].\n\n    sensitivity : float\n        The sensitivity of the mechanism.  Must be in [0, ∞).\n\n    gamma : float, default: 1 / (1 + exp(epsilon/2))\n        Value of the tuning parameter gamma for the mechanism.  Must be in [0, 1].\n\n    random_state : int or RandomState, optional\n        Controls the randomness of the mechanism.  To obtain a deterministic behaviour during randomisation,\n        ``random_state`` has to be fixed to an integer.\n\n    \"\"\"\n    def __init__(self, *, epsilon, sensitivity, gamma=None, random_state=None):\n        super().__init__(epsilon=epsilon, delta=0, sensitivity=sensitivity, random_state=random_state)\n        self.gamma = self._check_gamma(gamma, epsilon=self.epsilon)\n\n        if isinstance(self._rng, secrets.SystemRandom):\n            self._rng = np.random.default_rng()\n\n    @classmethod\n    def _check_gamma(cls, gamma, epsilon=None):\n        if gamma is None and epsilon is not None:\n            gamma = 1 / (1 + np.exp(epsilon / 2))\n\n        if not isinstance(gamma, Real):\n            raise TypeError(\"Gamma must be numeric\")\n        if not 0.0 <= gamma <= 1.0:\n            raise ValueError(\"Gamma must be in [0,1]\")\n\n        return float(gamma)\n\n    @copy_docstring(Laplace._check_all)\n    def _check_all(self, value):\n        super()._check_all(value)\n        self._check_gamma(self.gamma)\n\n        return True\n\n    @classmethod\n    def _check_epsilon_delta(cls, epsilon, delta):\n        if not delta == 0:\n            raise ValueError(\"Delta must be zero\")\n\n        return super()._check_epsilon_delta(epsilon, delta)\n\n    @copy_docstring(Laplace.bias)\n    def bias(self, value):\n        return 0.0\n\n    @copy_docstring(Laplace.variance)\n    def variance(self, value):\n        raise NotImplementedError\n\n    @copy_docstring(Laplace.randomise)\n    def randomise(self, value):\n        self._check_all(value)\n\n        sign = -1 if self._rng.random() < 0.5 else 1\n        geometric_rv = self._rng.geometric(1 - np.exp(- self.epsilon)) - 1\n        unif_rv = self._rng.random()\n        binary_rv = 0 if self._rng.random() < self.gamma / (self.gamma +\n                                                            (1 - self.gamma) * np.exp(- self.epsilon)) else 1\n\n        return value + sign * ((1 - binary_rv) * ((geometric_rv + self.gamma * unif_rv) * self.sensitivity) +\n                               binary_rv * ((geometric_rv + self.gamma + (1 - self.gamma) * unif_rv) *\n                                            self.sensitivity))"
+      },
+      {
+        "file": "diffprivlib/mechanisms/laplace.py",
+        "name": "LaplaceBoundedDomain.randomise",
+        "kind": "function",
+        "symbol": "diffprivlib.mechanisms.laplace.LaplaceBoundedDomain.randomise",
+        "start": 398,
+        "end": 420,
+        "code": "    def randomise(self, value):\n        self._check_all(value)\n\n        if self._scale is None:\n            self._scale = self._find_scale()\n\n        value = max(min(value, self.upper), self.lower)\n        if np.isnan(value):\n            return float(\"nan\")\n\n        samples = 1\n\n        while True:\n            try:\n                unif = self._rng.random(4 * samples)\n            except TypeError:  # rng is secrets.SystemRandom\n                unif = [self._rng.random() for _ in range(4 * samples)]\n            noisy = value + self._scale * self._laplace_sampler(*np.array(unif).reshape(4, -1))\n\n            if ((noisy >= self.lower) & (noisy <= self.upper)).any():\n                idx = np.argmax((noisy >= self.lower) & (noisy <= self.upper))\n                return noisy[idx]\n            samples = min(100000, samples * 2)"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/mechanisms/base.py:line: 26",
+      "diffprivlib/mechanisms/bingham.py:line: 21",
+      "diffprivlib/mechanisms/staircase.py:line: 21"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 4,
+    "unresolved_locations": 3,
+    "returned_code_chars": 9885
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 50924,
+    "completion_tokens": 614,
+    "total_tokens": 51538,
+    "seconds": 33.66281747817993,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 44.371285915374756,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

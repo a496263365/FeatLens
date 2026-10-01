@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 107,
+  "namespace": "twtxt.parser.parse_tweets",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3831,
+      "input_estimate_after": 3831,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the reusable dependencies needed to implement the `parse_tweets` function in `twtxt/parser.py`. The function needs to process a list of raw tweet lines, parse each one into a Tweet object using existing code, and handle exceptions.\n\nKey reusable dependencies identified:\n\n```\ntwtxt/parser.py\nline: 59\nfunction: parse_tweet\n\ntwtxt/models.py\nline: 17\nclass: Tweet\n\ntwtxt/parser.py\nline: 27\nfunction: parse_iso8601\n\ntwtxt/parser.py\nline: 22\nfunction: make_aware\n\ntwtxt/models.py\nline: 91\nclass: Source\n```",
+  "final_locations": {
+    "files": [
+      "twtxt/parser.py",
+      "twtxt/models.py"
+    ],
+    "entities": [
+      {
+        "file": "twtxt/parser.py",
+        "name": "parse_tweet",
+        "kind": "function",
+        "symbol": "twtxt.parser.parse_tweet",
+        "start": 59,
+        "end": 81,
+        "code": "def parse_tweet(raw_tweet, source, now=None):\n    \"\"\"\n        Parses a single raw tweet line from a twtxt file\n        and returns a :class:`Tweet` object.\n\n        :param str raw_tweet: a single raw tweet line\n        :param Source source: the source of the given tweet\n        :param Datetime now: the current datetime\n\n        :returns: the parsed tweet\n        :rtype: Tweet\n    \"\"\"\n    from twtxt.models import Tweet\n    if now is None:\n        now = datetime.now(timezone.utc)\n\n    raw_created_at, text = raw_tweet.split(\"\\t\", 1)\n    created_at = parse_iso8601(raw_created_at)\n\n    if created_at > now:\n        raise ValueError(\"Tweet is from the future\")\n\n    return Tweet(click.unstyle(text.strip()), created_at, source)"
+      },
+      {
+        "file": "twtxt/models.py",
+        "name": "Tweet",
+        "kind": "class",
+        "symbol": "twtxt.models.Tweet",
+        "start": 17,
+        "end": 88,
+        "code": "class Tweet:\n    \"\"\"A :class:`Tweet` represents a single tweet.\n\n    :param str text: text of the tweet in raw format\n    :param ~datetime.datetime created_at: (optional) when the tweet was created, defaults to :meth:`~datetime.datetime.now` when no value is given\n    :param Source source: (optional) the :class:`Source` the tweet is from\n    \"\"\"\n\n    def __init__(self, text, created_at=None, source=None):\n        if text:\n            self.text = text\n        else:\n            raise ValueError(\"empty text\")\n\n        if created_at is None:\n            created_at = datetime.now(tzlocal())\n\n        try:\n            self.created_at = created_at.replace(microsecond=0)\n        except AttributeError:\n            raise TypeError(\"created_at is of invalid type\")\n\n        self.source = source\n\n    @staticmethod\n    def _is_valid_operand(other):\n        return (hasattr(other, \"text\") and\n                hasattr(other, \"created_at\"))\n\n    def __lt__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at < other.created_at\n\n    def __le__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at < other.created_at or (self.created_at == other.created_at and self.text == other.text)\n\n    def __gt__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at > other.created_at\n\n    def __ge__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at > other.created_at or (self.created_at == other.created_at and self.text == other.text)\n\n    def __eq__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at == other.created_at and self.text == other.text\n\n    def __str__(self):\n        return \"{created_at}\\t{text}\".format(created_at=self.created_at.isoformat(), text=self.text)\n\n    @property\n    def relative_datetime(self):\n        \"\"\"Return human-readable relative time string.\"\"\"\n        now = datetime.now(timezone.utc)\n        created_at = self.created_at.astimezone(timezone.utc)\n\n        delta = humanize.naturaldelta(abs(created_at - now))\n        tense = \"from now\" if now < created_at else \"ago\"\n\n        return f\"{delta} {tense}\"\n\n    @property\n    def absolute_datetime(self):\n        \"\"\"Return human-readable absolute time string.\"\"\"\n        return self.created_at.strftime(\"%a, %d %b %Y %H:%M:%S\")"
+      },
+      {
+        "file": "twtxt/parser.py",
+        "name": "parse_iso8601",
+        "kind": "function",
+        "symbol": "twtxt.parser.parse_iso8601",
+        "start": 27,
+        "end": 29,
+        "code": "def parse_iso8601(string):\n    \"\"\"Parse string using dateutil.parser.\"\"\"\n    return make_aware(dateutil.parser.parse(string))"
+      },
+      {
+        "file": "twtxt/parser.py",
+        "name": "make_aware",
+        "kind": "function",
+        "symbol": "twtxt.parser.make_aware",
+        "start": 22,
+        "end": 24,
+        "code": "def make_aware(dt):\n    \"\"\"Appends tzinfo and assumes UTC, if datetime object has no tzinfo already.\"\"\"\n    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)"
+      },
+      {
+        "file": "twtxt/models.py",
+        "name": "Source",
+        "kind": "class",
+        "symbol": "twtxt.models.Source",
+        "start": 91,
+        "end": 102,
+        "code": "class Source:\n    \"\"\"A :class:`Source` represents a twtxt feed, remote as well as local.\n\n    :param str nick: nickname of twtxt user\n    :param str url: URL to remote twtxt file\n    :param str file: path to local twtxt file\n    \"\"\"\n\n    def __init__(self, nick, url=None, file=None):\n        self.nick = nick.lower()\n        self.url = url\n        self.file = file"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "twtxt.parser.parse_tweet"
+    ],
+    "exact_hit_dependencies": [
+      "twtxt.parser.parse_tweet"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3946
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17135,
+    "completion_tokens": 564,
+    "total_tokens": 17699,
+    "seconds": 79.51722145080566,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 79.94004249572754,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

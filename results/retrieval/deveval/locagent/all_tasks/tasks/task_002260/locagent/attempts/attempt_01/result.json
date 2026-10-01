@@ -1,0 +1,147 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2260,
+  "namespace": "gunicorn.util.split_request_uri",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13532,
+      "input_estimate_after": 13532,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ngunicorn/http/wsgi.py\nline: 180\nfunction: create\nline: 185\nfunction: _create\n\ngunicorn/http/message.py\nline: 197\nfunction: Request\nline: 200\nfunction: set_request_uri\n\ngunicorn/http/unreader.py\nline: 1\nclass: Unreader\nfunction: Unreader.read\n\ngunicorn/workers/base.py\nline: 202\nfunction: Worker.handle_request\nline: 205\nfunction: Worker.wsgi\n\ngunicorn/workers/sync.py\nline: 135\nfunction: SyncWorker.handle\nline: 140\nfunction: SyncWorker.handle_request\n```",
+  "final_locations": {
+    "files": [
+      "gunicorn/http/wsgi.py",
+      "gunicorn/http/message.py",
+      "gunicorn/http/unreader.py",
+      "gunicorn/workers/base.py",
+      "gunicorn/workers/sync.py"
+    ],
+    "entities": [
+      {
+        "file": "gunicorn/http/wsgi.py",
+        "name": "create",
+        "kind": "function",
+        "symbol": "gunicorn.http.wsgi.create",
+        "start": 109,
+        "end": 190,
+        "code": "def create(req, sock, client, server, cfg):\n    resp = Response(req, sock, cfg)\n\n    # set initial environ\n    environ = default_environ(req, sock, cfg)\n\n    # default variables\n    host = None\n    script_name = os.environ.get(\"SCRIPT_NAME\", \"\")\n\n    # add the headers to the environ\n    for hdr_name, hdr_value in req.headers:\n        if hdr_name == \"EXPECT\":\n            # handle expect\n            if hdr_value.lower() == \"100-continue\":\n                sock.send(b\"HTTP/1.1 100 Continue\\r\\n\\r\\n\")\n        elif hdr_name == 'HOST':\n            host = hdr_value\n        elif hdr_name == \"SCRIPT_NAME\":\n            script_name = hdr_value\n        elif hdr_name == \"CONTENT-TYPE\":\n            environ['CONTENT_TYPE'] = hdr_value\n            continue\n        elif hdr_name == \"CONTENT-LENGTH\":\n            environ['CONTENT_LENGTH'] = hdr_value\n            continue\n\n        key = 'HTTP_' + hdr_name.replace('-', '_')\n        if key in environ:\n            hdr_value = \"%s,%s\" % (environ[key], hdr_value)\n        environ[key] = hdr_value\n\n    # set the url scheme\n    environ['wsgi.url_scheme'] = req.scheme\n\n    # set the REMOTE_* keys in environ\n    # authors should be aware that REMOTE_HOST and REMOTE_ADDR\n    # may not qualify the remote addr:\n    # http://www.ietf.org/rfc/rfc3875\n    if isinstance(client, str):\n        environ['REMOTE_ADDR'] = client\n    elif isinstance(client, bytes):\n        environ['REMOTE_ADDR'] = client.decode()\n    else:\n        environ['REMOTE_ADDR'] = client[0]\n        environ['REMOTE_PORT'] = str(client[1])\n\n    # handle the SERVER_*\n    # Normally only the application should use the Host header but since the\n    # WSGI spec doesn't support unix sockets, we are using it to create\n    # viable SERVER_* if possible.\n    if isinstance(server, str):\n        server = server.split(\":\")\n        if len(server) == 1:\n            # unix socket\n            if host:\n                server = host.split(':')\n                if len(server) == 1:\n                    if req.scheme == \"http\":\n                        server.append(80)\n                    elif req.scheme == \"https\":\n                        server.append(443)\n                    else:\n                        server.append('')\n            else:\n                # no host header given which means that we are not behind a\n                # proxy, so append an empty port.\n                server.append('')\n    environ['SERVER_NAME'] = server[0]\n    environ['SERVER_PORT'] = str(server[1])\n\n    # set the path and script name\n    path_info = req.path\n    if script_name:\n        path_info = path_info.split(script_name, 1)[1]\n    environ['PATH_INFO'] = util.unquote_to_wsgi_str(path_info)\n    environ['SCRIPT_NAME'] = script_name\n\n    # override the environ with the correct remote and server address if\n    # we are behind a proxy using the proxy protocol.\n    environ.update(proxy_environ(req))\n    return resp, environ"
+      },
+      {
+        "file": "gunicorn/http/message.py",
+        "name": "Request.parse",
+        "kind": "function",
+        "symbol": "gunicorn.http.message.Request.parse",
+        "start": 194,
+        "end": 237,
+        "code": "    def parse(self, unreader):\n        buf = io.BytesIO()\n        self.get_data(unreader, buf, stop=True)\n\n        # get request line\n        line, rbuf = self.read_line(unreader, buf, self.limit_request_line)\n\n        # proxy protocol\n        if self.proxy_protocol(bytes_to_str(line)):\n            # get next request line\n            buf = io.BytesIO()\n            buf.write(rbuf)\n            line, rbuf = self.read_line(unreader, buf, self.limit_request_line)\n\n        self.parse_request_line(line)\n        buf = io.BytesIO()\n        buf.write(rbuf)\n\n        # Headers\n        data = buf.getvalue()\n        idx = data.find(b\"\\r\\n\\r\\n\")\n\n        done = data[:2] == b\"\\r\\n\"\n        while True:\n            idx = data.find(b\"\\r\\n\\r\\n\")\n            done = data[:2] == b\"\\r\\n\"\n\n            if idx < 0 and not done:\n                self.get_data(unreader, buf)\n                data = buf.getvalue()\n                if len(data) > self.max_buffer_headers:\n                    raise LimitRequestHeaders(\"max buffer headers\")\n            else:\n                break\n\n        if done:\n            self.unreader.unread(data[2:])\n            return b\"\"\n\n        self.headers = self.parse_headers(data[:idx])\n\n        ret = data[idx + 4:]\n        buf = None\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/unreader.py",
+        "name": "Unreader",
+        "kind": "class",
+        "symbol": "gunicorn.http.unreader.Unreader",
+        "start": 13,
+        "end": 54,
+        "code": "class Unreader(object):\n    def __init__(self):\n        self.buf = io.BytesIO()\n\n    def chunk(self):\n        raise NotImplementedError()\n\n    def read(self, size=None):\n        if size is not None and not isinstance(size, int):\n            raise TypeError(\"size parameter must be an int or long.\")\n\n        if size is not None:\n            if size == 0:\n                return b\"\"\n            if size < 0:\n                size = None\n\n        self.buf.seek(0, os.SEEK_END)\n\n        if size is None and self.buf.tell():\n            ret = self.buf.getvalue()\n            self.buf = io.BytesIO()\n            return ret\n        if size is None:\n            d = self.chunk()\n            return d\n\n        while self.buf.tell() < size:\n            chunk = self.chunk()\n            if not chunk:\n                ret = self.buf.getvalue()\n                self.buf = io.BytesIO()\n                return ret\n            self.buf.write(chunk)\n        data = self.buf.getvalue()\n        self.buf = io.BytesIO()\n        self.buf.write(data[size:])\n        return data[:size]\n\n    def unread(self, data):\n        self.buf.seek(0, os.SEEK_END)\n        self.buf.write(data)"
+      },
+      {
+        "file": "gunicorn/http/unreader.py",
+        "name": "Unreader.read",
+        "kind": "function",
+        "symbol": "gunicorn.http.unreader.Unreader.read",
+        "start": 20,
+        "end": 50,
+        "code": "    def read(self, size=None):\n        if size is not None and not isinstance(size, int):\n            raise TypeError(\"size parameter must be an int or long.\")\n\n        if size is not None:\n            if size == 0:\n                return b\"\"\n            if size < 0:\n                size = None\n\n        self.buf.seek(0, os.SEEK_END)\n\n        if size is None and self.buf.tell():\n            ret = self.buf.getvalue()\n            self.buf = io.BytesIO()\n            return ret\n        if size is None:\n            d = self.chunk()\n            return d\n\n        while self.buf.tell() < size:\n            chunk = self.chunk()\n            if not chunk:\n                ret = self.buf.getvalue()\n                self.buf = io.BytesIO()\n                return ret\n            self.buf.write(chunk)\n        data = self.buf.getvalue()\n        self.buf = io.BytesIO()\n        self.buf.write(data[size:])\n        return data[:size]"
+      },
+      {
+        "file": "gunicorn/workers/base.py",
+        "name": "Worker.handle_abort",
+        "kind": "function",
+        "symbol": "gunicorn.workers.base.Worker.handle_abort",
+        "start": 200,
+        "end": 203,
+        "code": "    def handle_abort(self, sig, frame):\n        self.alive = False\n        self.cfg.worker_abort(self)\n        sys.exit(1)"
+      },
+      {
+        "file": "gunicorn/workers/base.py",
+        "name": "Worker.handle_error",
+        "kind": "function",
+        "symbol": "gunicorn.workers.base.Worker.handle_error",
+        "start": 205,
+        "end": 271,
+        "code": "    def handle_error(self, req, client, addr, exc):\n        request_start = datetime.now()\n        addr = addr or ('', -1)  # unix socket case\n        if isinstance(exc, (\n            InvalidRequestLine, InvalidRequestMethod,\n            InvalidHTTPVersion, InvalidHeader, InvalidHeaderName,\n            LimitRequestLine, LimitRequestHeaders,\n            InvalidProxyLine, ForbiddenProxyRequest,\n            InvalidSchemeHeaders,\n            SSLError,\n        )):\n\n            status_int = 400\n            reason = \"Bad Request\"\n\n            if isinstance(exc, InvalidRequestLine):\n                mesg = \"Invalid Request Line '%s'\" % str(exc)\n            elif isinstance(exc, InvalidRequestMethod):\n                mesg = \"Invalid Method '%s'\" % str(exc)\n            elif isinstance(exc, InvalidHTTPVersion):\n                mesg = \"Invalid HTTP Version '%s'\" % str(exc)\n            elif isinstance(exc, (InvalidHeaderName, InvalidHeader,)):\n                mesg = \"%s\" % str(exc)\n                if not req and hasattr(exc, \"req\"):\n                    req = exc.req  # for access log\n            elif isinstance(exc, LimitRequestLine):\n                mesg = \"%s\" % str(exc)\n            elif isinstance(exc, LimitRequestHeaders):\n                reason = \"Request Header Fields Too Large\"\n                mesg = \"Error parsing headers: '%s'\" % str(exc)\n                status_int = 431\n            elif isinstance(exc, InvalidProxyLine):\n                mesg = \"'%s'\" % str(exc)\n            elif isinstance(exc, ForbiddenProxyRequest):\n                reason = \"Forbidden\"\n                mesg = \"Request forbidden\"\n                status_int = 403\n            elif isinstance(exc, InvalidSchemeHeaders):\n                mesg = \"%s\" % str(exc)\n            elif isinstance(exc, SSLError):\n                reason = \"Forbidden\"\n                mesg = \"'%s'\" % str(exc)\n                status_int = 403\n\n            msg = \"Invalid request from ip={ip}: {error}\"\n            self.log.warning(msg.format(ip=addr[0], error=str(exc)))\n        else:\n            if hasattr(req, \"uri\"):\n                self.log.exception(\"Error handling request %s\", req.uri)\n            status_int = 500\n            reason = \"Internal Server Error\"\n            mesg = \"\"\n\n        if req is not None:\n            request_time = datetime.now() - request_start\n            environ = default_environ(req, client, self.cfg)\n            environ['REMOTE_ADDR'] = addr[0]\n            environ['REMOTE_PORT'] = str(addr[1])\n            resp = Response(req, client, self.cfg)\n            resp.status = \"%s %s\" % (status_int, reason)\n            resp.response_length = len(mesg)\n            self.log.access(resp, req, environ, request_time)\n\n        try:\n            util.write_error(client, status_int, reason, mesg)\n        except Exception:\n            self.log.debug(\"Failed to send error message.\")"
+      },
+      {
+        "file": "gunicorn/workers/sync.py",
+        "name": "SyncWorker.handle",
+        "kind": "function",
+        "symbol": "gunicorn.workers.sync.SyncWorker.handle",
+        "start": 128,
+        "end": 160,
+        "code": "    def handle(self, listener, client, addr):\n        req = None\n        try:\n            if self.cfg.is_ssl:\n                client = sock.ssl_wrap_socket(client, self.cfg)\n            parser = http.RequestParser(self.cfg, client, addr)\n            req = next(parser)\n            self.handle_request(listener, req, client, addr)\n        except http.errors.NoMoreData as e:\n            self.log.debug(\"Ignored premature client disconnection. %s\", e)\n        except StopIteration as e:\n            self.log.debug(\"Closing connection. %s\", e)\n        except ssl.SSLError as e:\n            if e.args[0] == ssl.SSL_ERROR_EOF:\n                self.log.debug(\"ssl connection closed\")\n                client.close()\n            else:\n                self.log.debug(\"Error processing SSL request.\")\n                self.handle_error(req, client, addr, e)\n        except EnvironmentError as e:\n            if e.errno not in (errno.EPIPE, errno.ECONNRESET, errno.ENOTCONN):\n                self.log.exception(\"Socket error processing request.\")\n            else:\n                if e.errno == errno.ECONNRESET:\n                    self.log.debug(\"Ignoring connection reset\")\n                elif e.errno == errno.ENOTCONN:\n                    self.log.debug(\"Ignoring socket not connected\")\n                else:\n                    self.log.debug(\"Ignoring EPIPE\")\n        except Exception as e:\n            self.handle_error(req, client, addr, e)\n        finally:\n            util.close(client)"
+      },
+      {
+        "file": "gunicorn/workers/sync.py",
+        "name": "SyncWorker.handle_request",
+        "kind": "function",
+        "symbol": "gunicorn.workers.sync.SyncWorker.handle_request",
+        "start": 162,
+        "end": 210,
+        "code": "    def handle_request(self, listener, req, client, addr):\n        environ = {}\n        resp = None\n        try:\n            self.cfg.pre_request(self, req)\n            request_start = datetime.now()\n            resp, environ = wsgi.create(req, client, addr,\n                                        listener.getsockname(), self.cfg)\n            # Force the connection closed until someone shows\n            # a buffering proxy that supports Keep-Alive to\n            # the backend.\n            resp.force_close()\n            self.nr += 1\n            if self.nr >= self.max_requests:\n                self.log.info(\"Autorestarting worker after current request.\")\n                self.alive = False\n            respiter = self.wsgi(environ, resp.start_response)\n            try:\n                if isinstance(respiter, environ['wsgi.file_wrapper']):\n                    resp.write_file(respiter)\n                else:\n                    for item in respiter:\n                        resp.write(item)\n                resp.close()\n            finally:\n                request_time = datetime.now() - request_start\n                self.log.access(resp, req, environ, request_time)\n                if hasattr(respiter, \"close\"):\n                    respiter.close()\n        except EnvironmentError:\n            # pass to next try-except level\n            util.reraise(*sys.exc_info())\n        except Exception:\n            if resp and resp.headers_sent:\n                # If the requests have already been sent, we should close the\n                # connection to indicate the error.\n                self.log.exception(\"Error handling request\")\n                try:\n                    client.shutdown(socket.SHUT_RDWR)\n                    client.close()\n                except EnvironmentError:\n                    pass\n                raise StopIteration()\n            raise\n        finally:\n            try:\n                self.cfg.post_request(self, req, environ, resp)\n            except Exception:\n                self.log.exception(\"Exception in post_request hook\")"
+      }
+    ],
+    "unresolved": [
+      "gunicorn/http/wsgi.py:function: _create",
+      "gunicorn/http/message.py:function: Request",
+      "gunicorn/http/message.py:function: set_request_uri",
+      "gunicorn/http/unreader.py:line: 1",
+      "gunicorn/workers/base.py:function: Worker.handle_request",
+      "gunicorn/workers/base.py:function: Worker.wsgi"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 5,
+    "unresolved_locations": 6,
+    "returned_code_chars": 12803
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26469,
+    "completion_tokens": 492,
+    "total_tokens": 26961,
+    "seconds": 40.26078915596008,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 53.77868151664734,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

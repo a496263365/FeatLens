@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1004,
+  "namespace": "boltons.cacheutils.ThresholdCounter.update",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13274,
+      "input_estimate_after": 13274,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I need to identify reusable dependencies for implementing the `ThresholdCounter.update` method. The method should handle both iterables of keys and mappings of keys to integer counts, updating the counts in the ThresholdCounter instance.\n\nFrom the code analysis, I can see:\n\n1. The `ThresholdCounter.add` method (lines 708-724) is the core method for incrementing a single key's count by 1.\n2. The `ThresholdCounter` class has internal structures: `_count_map`, `total`, `_cur_bucket`, `_thresh_count`.\n3. The `update` method needs to handle both iterables (calling `add` for each) and mappings (adding the count values).\n4. Looking at similar patterns in the codebase, the `LRI.update` method (lines 304-318) shows how to handle both iterables and mappings with kwargs.\n\nHere are the reusable dependencies:\n\n```\nboltons/cacheutils.py\nline: 708\nclass: ThresholdCounter\nfunction: add\n\nboltons/cacheutils.py\nline: 304\nclass: LRI\nfunction: update\n\nboltons/cacheutils.py\nline: 714\nline: 715\nline: 716\nline: 717\nline: 718\nvariable: _count_map\n\nboltons/cacheutils.py\nline: 698\nvariable: total\n\nboltons/cacheutils.py\nline: 701\nvariable: _cur_bucket\n\nboltons/cacheutils.py\nline: 720\nline: 721\nline: 722\nline: 723\nlogic: compaction logic\n```",
+  "final_locations": {
+    "files": [
+      "boltons/cacheutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "ThresholdCounter.add",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.ThresholdCounter.add",
+        "start": 708,
+        "end": 724,
+        "code": "    def add(self, key):\n        \"\"\"Increment the count of *key* by 1, automatically adding it if it\n        does not exist.\n\n        Cache compaction is triggered every *1/threshold* additions.\n        \"\"\"\n        self.total += 1\n        try:\n            self._count_map[key][0] += 1\n        except KeyError:\n            self._count_map[key] = [1, self._cur_bucket - 1]\n\n        if self.total % self._thresh_count == 0:\n            self._count_map = dict([(k, v) for k, v in self._count_map.items()\n                                    if sum(v) > self._cur_bucket])\n            self._cur_bucket += 1\n        return"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "ThresholdCounter",
+        "kind": "class",
+        "symbol": "boltons.cacheutils.ThresholdCounter",
+        "start": 649,
+        "end": 806,
+        "code": "class ThresholdCounter(object):\n    \"\"\"A **bounded** dict-like Mapping from keys to counts. The\n    ThresholdCounter automatically compacts after every (1 /\n    *threshold*) additions, maintaining exact counts for any keys\n    whose count represents at least a *threshold* ratio of the total\n    data. In other words, if a particular key is not present in the\n    ThresholdCounter, its count represents less than *threshold* of\n    the total data.\n\n    >>> tc = ThresholdCounter(threshold=0.1)\n    >>> tc.add(1)\n    >>> tc.items()\n    [(1, 1)]\n    >>> tc.update([2] * 10)\n    >>> tc.get(1)\n    0\n    >>> tc.add(5)\n    >>> 5 in tc\n    True\n    >>> len(list(tc.elements()))\n    11\n\n    As you can see above, the API is kept similar to\n    :class:`collections.Counter`. The most notable feature omissions\n    being that counted items cannot be set directly, uncounted, or\n    removed, as this would disrupt the math.\n\n    Use the ThresholdCounter when you need best-effort long-lived\n    counts for dynamically-keyed data. Without a bounded datastructure\n    such as this one, the dynamic keys often represent a memory leak\n    and can impact application reliability. The ThresholdCounter's\n    item replacement strategy is fully deterministic and can be\n    thought of as *Amortized Least Relevant*. The absolute upper bound\n    of keys it will store is *(2/threshold)*, but realistically\n    *(1/threshold)* is expected for uniformly random datastreams, and\n    one or two orders of magnitude better for real-world data.\n\n    This algorithm is an implementation of the Lossy Counting\n    algorithm described in \"Approximate Frequency Counts over Data\n    Streams\" by Manku & Motwani. Hat tip to Kurt Rose for discovery\n    and initial implementation.\n\n    \"\"\"\n    # TODO: hit_count/miss_count?\n    def __init__(self, threshold=0.001):\n        if not 0 < threshold < 1:\n            raise ValueError('expected threshold between 0 and 1, not: %r'\n                             % threshold)\n\n        self.total = 0\n        self._count_map = {}\n        self._threshold = threshold\n        self._thresh_count = int(1 / threshold)\n        self._cur_bucket = 1\n\n    @property\n    def threshold(self):\n        return self._threshold\n\n    def add(self, key):\n        \"\"\"Increment the count of *key* by 1, automatically adding it if it\n        does not exist.\n\n        Cache compaction is triggered every *1/threshold* additions.\n        \"\"\"\n        self.total += 1\n        try:\n            self._count_map[key][0] += 1\n        except KeyError:\n            self._count_map[key] = [1, self._cur_bucket - 1]\n\n        if self.total % self._thresh_count == 0:\n            self._count_map = dict([(k, v) for k, v in self._count_map.items()\n                                    if sum(v) > self._cur_bucket])\n            self._cur_bucket += 1\n        return\n\n    def elements(self):\n        \"\"\"Return an iterator of all the common elements tracked by the\n        counter. Yields each key as many times as it has been seen.\n        \"\"\"\n        repeaters = itertools.starmap(itertools.repeat, self.iteritems())\n        return itertools.chain.from_iterable(repeaters)\n\n    def most_common(self, n=None):\n        \"\"\"Get the top *n* keys and counts as tuples. If *n* is omitted,\n        returns all the pairs.\n        \"\"\"\n        if n <= 0:\n            return []\n        ret = sorted(self.iteritems(), key=lambda x: x[1], reverse=True)\n        if n is None or n >= len(ret):\n            return ret\n        return ret[:n]\n\n    def get_common_count(self):\n        \"\"\"Get the sum of counts for keys exceeding the configured data\n        threshold.\n        \"\"\"\n        return sum([count for count, _ in self._count_map.values()])\n\n    def get_uncommon_count(self):\n        \"\"\"Get the sum of counts for keys that were culled because the\n        associated counts represented less than the configured\n        threshold. The long-tail counts.\n        \"\"\"\n        return self.total - self.get_common_count()\n\n    def get_commonality(self):\n        \"\"\"Get a float representation of the effective count accuracy. The\n        higher the number, the less uniform the keys being added, and\n        the higher accuracy and efficiency of the ThresholdCounter.\n\n        If a stronger measure of data cardinality is required,\n        consider using hyperloglog.\n        \"\"\"\n        return float(self.get_common_count()) / self.total\n\n    def __getitem__(self, key):\n        return self._count_map[key][0]\n\n    def __len__(self):\n        return len(self._count_map)\n\n    def __contains__(self, key):\n        return key in self._count_map\n\n    def iterkeys(self):\n        return iter(self._count_map)\n\n    def keys(self):\n        return list(self.iterkeys())\n\n    def itervalues(self):\n        count_map = self._count_map\n        for k in count_map:\n            yield count_map[k][0]\n\n    def values(self):\n        return list(self.itervalues())\n\n    def iteritems(self):\n        count_map = self._count_map\n        for k in count_map:\n            yield (k, count_map[k][0])\n\n    def items(self):\n        return list(self.iteritems())\n\n    def get(self, key, default=0):\n        \"Get count for *key*, defaulting to 0.\"\n        try:\n            return self[key]\n        except KeyError:\n            return default\n\n    def update(self, iterable, **kwargs):\n        pass"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI.update",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI.update",
+        "start": 304,
+        "end": 318,
+        "code": "    def update(self, E, **F):\n        # E and F are throwback names to the dict() __doc__\n        with self._lock:\n            if E is self:\n                return\n            setitem = self.__setitem__\n            if callable(getattr(E, 'keys', None)):\n                for k in E.keys():\n                    setitem(k, E[k])\n            else:\n                for k, v in E:\n                    setitem(k, v)\n            for k in F:\n                setitem(k, F[k])\n            return"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI",
+        "kind": "class",
+        "symbol": "boltons.cacheutils.LRI",
+        "start": 103,
+        "end": 337,
+        "code": "class LRI(dict):\n    \"\"\"The ``LRI`` implements the basic *Least Recently Inserted* strategy to\n    caching. One could also think of this as a ``SizeLimitedDefaultDict``.\n\n    *on_miss* is a callable that accepts the missing key (as opposed\n    to :class:`collections.defaultdict`'s \"default_factory\", which\n    accepts no arguments.) Also note that, like the :class:`LRI`,\n    the ``LRI`` is instrumented with statistics tracking.\n\n    >>> cap_cache = LRI(max_size=2)\n    >>> cap_cache['a'], cap_cache['b'] = 'A', 'B'\n    >>> from pprint import pprint as pp\n    >>> pp(dict(cap_cache))\n    {'a': 'A', 'b': 'B'}\n    >>> [cap_cache['b'] for i in range(3)][0]\n    'B'\n    >>> cap_cache['c'] = 'C'\n    >>> print(cap_cache.get('a'))\n    None\n    >>> cap_cache.hit_count, cap_cache.miss_count, cap_cache.soft_miss_count\n    (3, 1, 1)\n    \"\"\"\n    def __init__(self, max_size=DEFAULT_MAX_SIZE, values=None,\n                 on_miss=None):\n        if max_size <= 0:\n            raise ValueError('expected max_size > 0, not %r' % max_size)\n        self.hit_count = self.miss_count = self.soft_miss_count = 0\n        self.max_size = max_size\n        self._lock = RLock()\n        self._init_ll()\n\n        if on_miss is not None and not callable(on_miss):\n            raise TypeError('expected on_miss to be a callable'\n                            ' (or None), not %r' % on_miss)\n        self.on_miss = on_miss\n\n        if values:\n            self.update(values)\n\n    # TODO: fromkeys()?\n\n    # linked list manipulation methods.\n    #\n    # invariants:\n    # 1) 'anchor' is the sentinel node in the doubly linked list.  there is\n    #    always only one, and its KEY and VALUE are both _MISSING.\n    # 2) the most recently accessed node comes immediately before 'anchor'.\n    # 3) the least recently accessed node comes immediately after 'anchor'.\n    def _init_ll(self):\n        anchor = []\n        anchor[:] = [anchor, anchor, _MISSING, _MISSING]\n        # a link lookup table for finding linked list links in O(1)\n        # time.\n        self._link_lookup = {}\n        self._anchor = anchor\n\n    def _print_ll(self):\n        print('***')\n        for (key, val) in self._get_flattened_ll():\n            print(key, val)\n        print('***')\n        return\n\n    def _get_flattened_ll(self):\n        flattened_list = []\n        link = self._anchor\n        while True:\n            flattened_list.append((link[KEY], link[VALUE]))\n            link = link[NEXT]\n            if link is self._anchor:\n                break\n        return flattened_list\n\n    def _get_link_and_move_to_front_of_ll(self, key):\n        # find what will become the newest link. this may raise a\n        # KeyError, which is useful to __getitem__ and __setitem__\n        newest = self._link_lookup[key]\n\n        # splice out what will become the newest link.\n        newest[PREV][NEXT] = newest[NEXT]\n        newest[NEXT][PREV] = newest[PREV]\n\n        # move what will become the newest link immediately before\n        # anchor (invariant 2)\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        second_newest[NEXT] = anchor[PREV] = newest\n        newest[PREV] = second_newest\n        newest[NEXT] = anchor\n        return newest\n\n    def _set_key_and_add_to_front_of_ll(self, key, value):\n        # create a new link and place it immediately before anchor\n        # (invariant 2).\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        newest = [second_newest, anchor, key, value]\n        second_newest[NEXT] = anchor[PREV] = newest\n        self._link_lookup[key] = newest\n\n    def _set_key_and_evict_last_in_ll(self, key, value):\n        # the link after anchor is the oldest in the linked list\n        # (invariant 3).  the current anchor becomes a link that holds\n        # the newest key, and the oldest link becomes the new anchor\n        # (invariant 1).  now the newest link comes before anchor\n        # (invariant 2).  no links are moved; only their keys\n        # and values are changed.\n        oldanchor = self._anchor\n        oldanchor[KEY] = key\n        oldanchor[VALUE] = value\n\n        self._anchor = anchor = oldanchor[NEXT]\n        evicted = anchor[KEY]\n        anchor[KEY] = anchor[VALUE] = _MISSING\n        del self._link_lookup[evicted]\n        self._link_lookup[key] = oldanchor\n        return evicted\n\n    def _remove_from_ll(self, key):\n        # splice a link out of the list and drop it from our lookup\n        # table.\n        link = self._link_lookup.pop(key)\n        link[PREV][NEXT] = link[NEXT]\n        link[NEXT][PREV] = link[PREV]\n\n    def __setitem__(self, key, value):\n        with self._lock:\n            try:\n                link = self._get_link_and_move_to_front_of_ll(key)\n            except KeyError:\n                if len(self) < self.max_size:\n                    self._set_key_and_add_to_front_of_ll(key, value)\n                else:\n                    evicted = self._set_key_and_evict_last_in_ll(key, value)\n                    super(LRI, self).__delitem__(evicted)\n                super(LRI, self).__setitem__(key, value)\n            else:\n                link[VALUE] = value\n\n    def __getitem__(self, key):\n        with self._lock:\n            try:\n                link = self._link_lookup[key]\n            except KeyError:\n                self.miss_count += 1\n                if not self.on_miss:\n                    raise\n                ret = self[key] = self.on_miss(key)\n                return ret\n\n            self.hit_count += 1\n            return link[VALUE]\n\n    def get(self, key, default=None):\n        try:\n            return self[key]\n        except KeyError:\n            self.soft_miss_count += 1\n            return default\n\n    def __delitem__(self, key):\n        with self._lock:\n            super(LRI, self).__delitem__(key)\n            self._remove_from_ll(key)\n\n    def pop(self, key, default=_MISSING):\n        # NB: hit/miss counts are bypassed for pop()\n        with self._lock:\n            try:\n                ret = super(LRI, self).pop(key)\n            except KeyError:\n                if default is _MISSING:\n                    raise\n                ret = default\n            else:\n                self._remove_from_ll(key)\n            return ret\n\n    def popitem(self):\n        with self._lock:\n            item = super(LRI, self).popitem()\n            self._remove_from_ll(item[0])\n            return item\n\n    def clear(self):\n        with self._lock:\n            super(LRI, self).clear()\n            self._init_ll()\n\n    def copy(self):\n        return self.__class__(max_size=self.max_size, values=self)\n\n    def setdefault(self, key, default=None):\n        with self._lock:\n            try:\n                return self[key]\n            except KeyError:\n                self.soft_miss_count += 1\n                self[key] = default\n                return default\n\n    def update(self, E, **F):\n        # E and F are throwback names to the dict() __doc__\n        with self._lock:\n            if E is self:\n                return\n            setitem = self.__setitem__\n            if callable(getattr(E, 'keys', None)):\n                for k in E.keys():\n                    setitem(k, E[k])\n            else:\n                for k, v in E:\n                    setitem(k, v)\n            for k in F:\n                setitem(k, F[k])\n            return\n\n    def __eq__(self, other):\n        with self._lock:\n            if self is other:\n                return True\n            if len(other) != len(self):\n                return False\n            if not isinstance(other, LRI):\n                return other == self\n            return super(LRI, self).__eq__(other)\n\n    def __ne__(self, other):\n        return not (self == other)\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        val_map = super(LRI, self).__repr__()\n        return ('%s(max_size=%r, on_miss=%r, values=%s)'\n                % (cn, self.max_size, self.on_miss, val_map))"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "ThresholdCounter.__init__",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.ThresholdCounter.__init__",
+        "start": 693,
+        "end": 702,
+        "code": "    def __init__(self, threshold=0.001):\n        if not 0 < threshold < 1:\n            raise ValueError('expected threshold between 0 and 1, not: %r'\n                             % threshold)\n\n        self.total = 0\n        self._count_map = {}\n        self._threshold = threshold\n        self._thresh_count = int(1 / threshold)\n        self._cur_bucket = 1"
+      }
+    ],
+    "unresolved": [
+      "boltons/cacheutils.py:function: add",
+      "boltons/cacheutils.py:function: update",
+      "boltons/cacheutils.py:variable: _count_map",
+      "boltons/cacheutils.py:variable: total",
+      "boltons/cacheutils.py:variable: _cur_bucket"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "boltons.cacheutils.ThresholdCounter.add"
+    ],
+    "exact_hit_dependencies": [
+      "boltons.cacheutils.ThresholdCounter.add"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 14712
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 44713,
+    "completion_tokens": 730,
+    "total_tokens": 45443,
+    "seconds": 54.20687484741211,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 60.91543126106262,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

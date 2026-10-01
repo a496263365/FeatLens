@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 991,
+  "namespace": "jwt.utils.base64url_decode",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2226,
+      "input_estimate_after": 2226,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\njwt/algorithms.py\nfunction: HMACAlgorithm.from_jwk\nfunction: ECAlgorithm.from_jwk\nfunction: OKPAlgorithm.from_jwk\n\njwt/api_jws.py\nfunction: PyJWS._load\n\njwt/utils.py\nfunction: from_base64url_uint\n```",
+  "final_locations": {
+    "files": [
+      "jwt/algorithms.py",
+      "jwt/api_jws.py",
+      "jwt/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "jwt/algorithms.py",
+        "name": "HMACAlgorithm.from_jwk",
+        "kind": "function",
+        "symbol": "jwt.algorithms.HMACAlgorithm.from_jwk",
+        "start": 290,
+        "end": 304,
+        "code": "    def from_jwk(jwk: str | JWKDict) -> bytes:\n        try:\n            if isinstance(jwk, str):\n                obj: JWKDict = json.loads(jwk)\n            elif isinstance(jwk, dict):\n                obj = jwk\n            else:\n                raise ValueError\n        except ValueError:\n            raise InvalidKeyError(\"Key is not valid JSON\")\n\n        if obj.get(\"kty\") != \"oct\":\n            raise InvalidKeyError(\"Not an HMAC key\")\n\n        return base64url_decode(obj[\"k\"])"
+      },
+      {
+        "file": "jwt/algorithms.py",
+        "name": "ECAlgorithm.from_jwk",
+        "kind": "function",
+        "symbol": "jwt.algorithms.ECAlgorithm.from_jwk",
+        "start": 595,
+        "end": 660,
+        "code": "        def from_jwk(jwk: str | JWKDict) -> AllowedECKeys:\n            try:\n                if isinstance(jwk, str):\n                    obj = json.loads(jwk)\n                elif isinstance(jwk, dict):\n                    obj = jwk\n                else:\n                    raise ValueError\n            except ValueError:\n                raise InvalidKeyError(\"Key is not valid JSON\")\n\n            if obj.get(\"kty\") != \"EC\":\n                raise InvalidKeyError(\"Not an Elliptic curve key\")\n\n            if \"x\" not in obj or \"y\" not in obj:\n                raise InvalidKeyError(\"Not an Elliptic curve key\")\n\n            x = base64url_decode(obj.get(\"x\"))\n            y = base64url_decode(obj.get(\"y\"))\n\n            curve = obj.get(\"crv\")\n            curve_obj: EllipticCurve\n\n            if curve == \"P-256\":\n                if len(x) == len(y) == 32:\n                    curve_obj = SECP256R1()\n                else:\n                    raise InvalidKeyError(\"Coords should be 32 bytes for curve P-256\")\n            elif curve == \"P-384\":\n                if len(x) == len(y) == 48:\n                    curve_obj = SECP384R1()\n                else:\n                    raise InvalidKeyError(\"Coords should be 48 bytes for curve P-384\")\n            elif curve == \"P-521\":\n                if len(x) == len(y) == 66:\n                    curve_obj = SECP521R1()\n                else:\n                    raise InvalidKeyError(\"Coords should be 66 bytes for curve P-521\")\n            elif curve == \"secp256k1\":\n                if len(x) == len(y) == 32:\n                    curve_obj = SECP256K1()\n                else:\n                    raise InvalidKeyError(\n                        \"Coords should be 32 bytes for curve secp256k1\"\n                    )\n            else:\n                raise InvalidKeyError(f\"Invalid curve: {curve}\")\n\n            public_numbers = EllipticCurvePublicNumbers(\n                x=int.from_bytes(x, byteorder=\"big\"),\n                y=int.from_bytes(y, byteorder=\"big\"),\n                curve=curve_obj,\n            )\n\n            if \"d\" not in obj:\n                return public_numbers.public_key()\n\n            d = base64url_decode(obj.get(\"d\"))\n            if len(d) != len(x):\n                raise InvalidKeyError(\n                    \"D should be {} bytes for curve {}\", len(x), curve\n                )\n\n            return EllipticCurvePrivateNumbers(\n                int.from_bytes(d, byteorder=\"big\"), public_numbers\n            ).private_key()"
+      },
+      {
+        "file": "jwt/algorithms.py",
+        "name": "OKPAlgorithm.from_jwk",
+        "kind": "function",
+        "symbol": "jwt.algorithms.OKPAlgorithm.from_jwk",
+        "start": 822,
+        "end": 854,
+        "code": "        def from_jwk(jwk: str | JWKDict) -> AllowedOKPKeys:\n            try:\n                if isinstance(jwk, str):\n                    obj = json.loads(jwk)\n                elif isinstance(jwk, dict):\n                    obj = jwk\n                else:\n                    raise ValueError\n            except ValueError:\n                raise InvalidKeyError(\"Key is not valid JSON\")\n\n            if obj.get(\"kty\") != \"OKP\":\n                raise InvalidKeyError(\"Not an Octet Key Pair\")\n\n            curve = obj.get(\"crv\")\n            if curve != \"Ed25519\" and curve != \"Ed448\":\n                raise InvalidKeyError(f\"Invalid curve: {curve}\")\n\n            if \"x\" not in obj:\n                raise InvalidKeyError('OKP should have \"x\" parameter')\n            x = base64url_decode(obj.get(\"x\"))\n\n            try:\n                if \"d\" not in obj:\n                    if curve == \"Ed25519\":\n                        return Ed25519PublicKey.from_public_bytes(x)\n                    return Ed448PublicKey.from_public_bytes(x)\n                d = base64url_decode(obj.get(\"d\"))\n                if curve == \"Ed25519\":\n                    return Ed25519PrivateKey.from_private_bytes(d)\n                return Ed448PrivateKey.from_private_bytes(d)\n            except ValueError as err:\n                raise InvalidKeyError(\"Invalid key parameter\") from err"
+      },
+      {
+        "file": "jwt/api_jws.py",
+        "name": "PyJWS._load",
+        "kind": "function",
+        "symbol": "jwt.api_jws.PyJWS._load",
+        "start": 249,
+        "end": 285,
+        "code": "    def _load(self, jwt: str | bytes) -> tuple[bytes, bytes, dict[str, Any], bytes]:\n        if isinstance(jwt, str):\n            jwt = jwt.encode(\"utf-8\")\n\n        if not isinstance(jwt, bytes):\n            raise DecodeError(f\"Invalid token type. Token must be a {bytes}\")\n\n        try:\n            signing_input, crypto_segment = jwt.rsplit(b\".\", 1)\n            header_segment, payload_segment = signing_input.split(b\".\", 1)\n        except ValueError as err:\n            raise DecodeError(\"Not enough segments\") from err\n\n        try:\n            header_data = base64url_decode(header_segment)\n        except (TypeError, binascii.Error) as err:\n            raise DecodeError(\"Invalid header padding\") from err\n\n        try:\n            header = json.loads(header_data)\n        except ValueError as e:\n            raise DecodeError(f\"Invalid header string: {e}\") from e\n\n        if not isinstance(header, dict):\n            raise DecodeError(\"Invalid header string: must be a json object\")\n\n        try:\n            payload = base64url_decode(payload_segment)\n        except (TypeError, binascii.Error) as err:\n            raise DecodeError(\"Invalid payload padding\") from err\n\n        try:\n            signature = base64url_decode(crypto_segment)\n        except (TypeError, binascii.Error) as err:\n            raise DecodeError(\"Invalid crypto padding\") from err\n\n        return (payload, signing_input, header, signature)"
+      },
+      {
+        "file": "jwt/utils.py",
+        "name": "from_base64url_uint",
+        "kind": "function",
+        "symbol": "jwt.utils.from_base64url_uint",
+        "start": 52,
+        "end": 54,
+        "code": "def from_base64url_uint(val: Union[bytes, str]) -> int:\n    data = base64url_decode(force_bytes(val))\n    return int.from_bytes(data, byteorder=\"big\")"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 5892
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 12372,
+    "completion_tokens": 1067,
+    "total_tokens": 13439,
+    "seconds": 43.530624866485596,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 45.89884901046753,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

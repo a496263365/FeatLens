@@ -1,0 +1,123 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 27,
+  "namespace": "litdata.streaming.resolver._resolve_dir",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11576,
+      "input_estimate_after": 11576,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `_resolve_dir` function in `litdata/streaming/resolver.py`. These are existing components that handle different path resolution scenarios which should be integrated into the target function:\n\n```\nlitdata/streaming/resolver.py\nline: 36\nclass: Dir\nline: 40-41\n\nlitdata/streaming/resolver.py\nline: 101\nfunction: _resolve_studio\nline: 101-137\n\nlitdata/streaming/resolver.py\nline: 140\nfunction: _resolve_s3_connections\nline: 140-157\n\nlitdata/streaming/resolver.py\nline: 160\nfunction: _resolve_datasets\nline: 160-203\n\nlitdata/streaming/resolver.py\nline: 288\nfunction: _resolve_time_template\nline: 288-295\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/resolver.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "Dir",
+        "kind": "class",
+        "symbol": "litdata.streaming.resolver.Dir",
+        "start": 37,
+        "end": 41,
+        "code": "class Dir:\n    \"\"\"Holds a directory path and possibly its associated remote URL.\"\"\"\n\n    path: Optional[str] = None\n    url: Optional[str] = None"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_resolve_studio",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._resolve_studio",
+        "start": 101,
+        "end": 137,
+        "code": "def _resolve_studio(dir_path: str, target_name: Optional[str], target_id: Optional[str]) -> Dir:\n    client = LightningClient(max_tries=2)\n\n    # Get the ids from env variables\n    cluster_id = os.getenv(\"LIGHTNING_CLUSTER_ID\", None)\n    project_id = os.getenv(\"LIGHTNING_CLOUD_PROJECT_ID\", None)\n\n    if cluster_id is None:\n        raise RuntimeError(\"The `cluster_id` couldn't be found from the environement variables.\")\n\n    if project_id is None:\n        raise RuntimeError(\"The `project_id` couldn't be found from the environement variables.\")\n\n    clusters = client.cluster_service_list_project_clusters(project_id).clusters\n\n    cloudspaces = client.cloud_space_service_list_cloud_spaces(project_id=project_id, cluster_id=cluster_id).cloudspaces\n    target_cloud_space = [cloudspace for cloudspace in cloudspaces if _match_studio(target_id, target_name, cloudspace)]\n\n    if not target_cloud_space:\n        raise ValueError(f\"We didn't find any matching Studio for the provided name `{target_name}`.\")\n\n    target_cluster = [cluster for cluster in clusters if cluster.id == target_cloud_space[0].cluster_id]\n\n    if not target_cluster:\n        raise ValueError(\n            f\"We didn't find a matching cluster associated with the id {target_cloud_space[0].cluster_id}.\"\n        )\n\n    bucket_name = target_cluster[0].spec.aws_v1.bucket_name\n\n    return Dir(\n        path=dir_path,\n        url=os.path.join(\n            f\"s3://{bucket_name}/projects/{project_id}/cloudspaces/{target_cloud_space[0].id}/code/content\",\n            *dir_path.split(\"/\")[4:],\n        ),\n    )"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_resolve_s3_connections",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._resolve_s3_connections",
+        "start": 140,
+        "end": 157,
+        "code": "def _resolve_s3_connections(dir_path: str) -> Dir:\n    client = LightningClient(max_tries=2)\n\n    # Get the ids from env variables\n    project_id = os.getenv(\"LIGHTNING_CLOUD_PROJECT_ID\", None)\n    if project_id is None:\n        raise RuntimeError(\"The `project_id` couldn't be found from the environement variables.\")\n\n    target_name = dir_path.split(\"/\")[3]\n\n    data_connections = client.data_connection_service_list_data_connections(project_id).data_connections\n\n    data_connection = [dc for dc in data_connections if dc.name == target_name]\n\n    if not data_connection:\n        raise ValueError(f\"We didn't find any matching data connection with the provided name `{target_name}`.\")\n\n    return Dir(path=dir_path, url=os.path.join(data_connection[0].aws.source, *dir_path.split(\"/\")[4:]))"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_resolve_datasets",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._resolve_datasets",
+        "start": 160,
+        "end": 203,
+        "code": "def _resolve_datasets(dir_path: str) -> Dir:\n    client = LightningClient(max_tries=2)\n\n    # Get the ids from env variables\n    cluster_id = os.getenv(\"LIGHTNING_CLUSTER_ID\", None)\n    project_id = os.getenv(\"LIGHTNING_CLOUD_PROJECT_ID\", None)\n    cloud_space_id = os.getenv(\"LIGHTNING_CLOUD_SPACE_ID\", None)\n\n    if cluster_id is None:\n        raise RuntimeError(\"The `cluster_id` couldn't be found from the environement variables.\")\n\n    if project_id is None:\n        raise RuntimeError(\"The `project_id` couldn't be found from the environement variables.\")\n\n    if cloud_space_id is None:\n        raise RuntimeError(\"The `cloud_space_id` couldn't be found from the environement variables.\")\n\n    clusters = client.cluster_service_list_project_clusters(project_id).clusters\n\n    target_cloud_space = [\n        cloudspace\n        for cloudspace in client.cloud_space_service_list_cloud_spaces(\n            project_id=project_id, cluster_id=cluster_id\n        ).cloudspaces\n        if cloudspace.id == cloud_space_id\n    ]\n\n    if not target_cloud_space:\n        raise ValueError(f\"We didn't find any matching Studio for the provided id `{cloud_space_id}`.\")\n\n    target_cluster = [cluster for cluster in clusters if cluster.id == target_cloud_space[0].cluster_id]\n\n    if not target_cluster:\n        raise ValueError(\n            f\"We didn't find a matching cluster associated with the id {target_cloud_space[0].cluster_id}.\"\n        )\n\n    return Dir(\n        path=dir_path,\n        url=os.path.join(\n            f\"s3://{target_cluster[0].spec.aws_v1.bucket_name}/projects/{project_id}/datasets/\",\n            *dir_path.split(\"/\")[3:],\n        ),\n    )"
+      },
+      {
+        "file": "litdata/streaming/resolver.py",
+        "name": "_resolve_time_template",
+        "kind": "function",
+        "symbol": "litdata.streaming.resolver._resolve_time_template",
+        "start": 288,
+        "end": 295,
+        "code": "def _resolve_time_template(path: str) -> str:\n    match = re.search(\"^.*{%.*}$\", path)\n    if match is None:\n        return path\n\n    pattern = path.split(\"{\")[1].split(\"}\")[0]\n\n    return path.replace(\"{\" + pattern + \"}\", datetime.datetime.now().strftime(pattern))"
+      }
+    ],
+    "unresolved": [
+      "litdata/streaming/resolver.py:line: 36"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 5,
+    "hit_dependencies": [
+      "litdata.streaming.resolver.Dir",
+      "litdata.streaming.resolver._resolve_datasets",
+      "litdata.streaming.resolver._resolve_s3_connections",
+      "litdata.streaming.resolver._resolve_studio",
+      "litdata.streaming.resolver._resolve_time_template"
+    ],
+    "exact_hit_dependencies": [
+      "litdata.streaming.resolver.Dir",
+      "litdata.streaming.resolver._resolve_datasets",
+      "litdata.streaming.resolver._resolve_s3_connections",
+      "litdata.streaming.resolver._resolve_studio",
+      "litdata.streaming.resolver._resolve_time_template"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4438
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 32968,
+    "completion_tokens": 607,
+    "total_tokens": 33575,
+    "seconds": 38.85013437271118,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 214.87361645698547,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

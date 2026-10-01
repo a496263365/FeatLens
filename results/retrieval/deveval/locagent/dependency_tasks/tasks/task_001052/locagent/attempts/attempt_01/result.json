@@ -1,0 +1,125 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1052,
+  "namespace": "boltons.socketutils.BufferedSocket.recv",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 15536,
+      "input_estimate_after": 15536,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the key reusable dependencies and patterns needed to implement the `recv` method in `boltons/socketutils.py`. The implementation should follow existing patterns from similar methods in the codebase.\n\nHere are the verified locations containing reusable dependencies:\n\n```\nboltons/socketutils.py\nline: 84\nline: 86\nvariable: _UNSET\n\nboltons/socketutils.py\nline: 150\nvariable: BufferedSocket.rbuf\n\nboltons/socketutils.py\nline: 170\nline: 171\nvariable: BufferedSocket._recv_lock\n\nboltons/socketutils.py\nline: 368\nfunction: BufferedSocket.recv_size\n\nboltons/socketutils.py\nline: 442\nline: 445\nline: 446\npattern: flags validation\n\nboltons/socketutils.py\nline: 633\nclass: Timeout\n```",
+  "final_locations": {
+    "files": [
+      "boltons/socketutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/socketutils.py",
+        "name": "_UNSET",
+        "kind": "variable",
+        "symbol": "boltons.socketutils._UNSET",
+        "start": 86,
+        "end": 86,
+        "code": "    _UNSET = make_sentinel(var_name='_UNSET')"
+      },
+      {
+        "file": "boltons/socketutils.py",
+        "name": "BufferedSocket.__init__",
+        "kind": "function",
+        "symbol": "boltons.socketutils.BufferedSocket.__init__",
+        "start": 147,
+        "end": 171,
+        "code": "    def __init__(self, sock, timeout=_UNSET,\n                 maxsize=DEFAULT_MAXSIZE, recvsize=_UNSET):\n        self.sock = sock\n        self.rbuf = b''\n        self.sbuf = []\n        self.maxsize = int(maxsize)\n\n        if timeout is _UNSET:\n            if self.sock.gettimeout() is None:\n                self.timeout = DEFAULT_TIMEOUT\n            else:\n                self.timeout = self.sock.gettimeout()\n        else:\n            if timeout is None:\n                self.timeout = timeout\n            else:\n                self.timeout = float(timeout)\n\n        if recvsize is _UNSET:\n            self._recvsize = self.maxsize\n        else:\n            self._recvsize = int(recvsize)\n\n        self._send_lock = RLock()\n        self._recv_lock = RLock()"
+      },
+      {
+        "file": "boltons/socketutils.py",
+        "name": "BufferedSocket.recv_size",
+        "kind": "function",
+        "symbol": "boltons.socketutils.BufferedSocket.recv_size",
+        "start": 368,
+        "end": 421,
+        "code": "    def recv_size(self, size, timeout=_UNSET):\n        \"\"\"Read off of the internal buffer, then off the socket, until\n        *size* bytes have been read.\n\n        Args:\n            size (int): number of bytes to read before returning.\n            timeout (float): The timeout for this operation. Can be 0 for\n                nonblocking and None for no timeout. Defaults to the value\n                set in the constructor of BufferedSocket.\n\n        If the appropriate number of bytes cannot be fetched from the\n        buffer and socket before *timeout* expires, then a\n        :exc:`Timeout` will be raised. If the connection is closed, a\n        :exc:`ConnectionClosed` will be raised.\n        \"\"\"\n        with self._recv_lock:\n            if timeout is _UNSET:\n                timeout = self.timeout\n            chunks = []\n            total_bytes = 0\n            try:\n                start = time.time()\n                self.sock.settimeout(timeout)\n                nxt = self.rbuf or self.sock.recv(self._recvsize)\n                while nxt:\n                    total_bytes += len(nxt)\n                    if total_bytes >= size:\n                        break\n                    chunks.append(nxt)\n                    if timeout:\n                        cur_timeout = timeout - (time.time() - start)\n                        if cur_timeout <= 0.0:\n                            raise socket.timeout()\n                        self.sock.settimeout(cur_timeout)\n                    nxt = self.sock.recv(self._recvsize)\n                else:\n                    msg = ('connection closed after reading %s of %s requested'\n                           ' bytes' % (total_bytes, size))\n                    raise ConnectionClosed(msg)  # check recv buffer\n            except socket.timeout:\n                self.rbuf = b''.join(chunks)\n                msg = 'read %s of %s bytes' % (total_bytes, size)\n                raise Timeout(timeout, msg)  # check recv buffer\n            except Exception:\n                # received data is still buffered in the case of errors\n                self.rbuf = b''.join(chunks)\n                raise\n            extra_bytes = total_bytes - size\n            if extra_bytes:\n                last, self.rbuf = nxt[:-extra_bytes], nxt[-extra_bytes:]\n            else:\n                last, self.rbuf = nxt, b''\n            chunks.append(last)\n        return b''.join(chunks)"
+      },
+      {
+        "file": "boltons/socketutils.py",
+        "name": "BufferedSocket.send",
+        "kind": "function",
+        "symbol": "boltons.socketutils.BufferedSocket.send",
+        "start": 423,
+        "end": 465,
+        "code": "    def send(self, data, flags=0, timeout=_UNSET):\n        \"\"\"Send the contents of the internal send buffer, as well as *data*,\n        to the receiving end of the connection. Returns the total\n        number of bytes sent. If no exception is raised, all of *data* was\n        sent and the internal send buffer is empty.\n\n        Args:\n            data (bytes): The bytes to send.\n            flags (int): Kept for API compatibility with sockets. Only\n                the default 0 is valid.\n            timeout (float): The timeout for this operation. Can be 0 for\n                nonblocking and None for no timeout. Defaults to the value\n                set in the constructor of BufferedSocket.\n\n        Will raise :exc:`Timeout` if the send operation fails to\n        complete before *timeout*. In the event of an exception, use\n        :meth:`BufferedSocket.getsendbuffer` to see which data was\n        unsent.\n        \"\"\"\n        with self._send_lock:\n            if timeout is _UNSET:\n                timeout = self.timeout\n            if flags:\n                raise ValueError(\"non-zero flags not supported\")\n            sbuf = self.sbuf\n            sbuf.append(data)\n            if len(sbuf) > 1:\n                sbuf[:] = [b''.join([s for s in sbuf if s])]\n            self.sock.settimeout(timeout)\n            start, total_sent = time.time(), 0\n            try:\n                while sbuf[0]:\n                    sent = self.sock.send(sbuf[0])\n                    total_sent += sent\n                    sbuf[0] = sbuf[0][sent:]\n                    if timeout:\n                        cur_timeout = timeout - (time.time() - start)\n                        if cur_timeout <= 0.0:\n                            raise socket.timeout()\n                        self.sock.settimeout(cur_timeout)\n            except socket.timeout:\n                raise Timeout(timeout, '%s bytes unsent' % len(sbuf[0]))\n        return total_sent"
+      },
+      {
+        "file": "boltons/socketutils.py",
+        "name": "Timeout",
+        "kind": "class",
+        "symbol": "boltons.socketutils.Timeout",
+        "start": 633,
+        "end": 645,
+        "code": "class Timeout(socket.timeout, Error):\n    \"\"\"Inheriting from :exc:`socket.timeout`, Timeout is used to indicate\n    when a socket operation did not complete within the time\n    specified. Raised from any of :class:`BufferedSocket`'s ``recv``\n    methods.\n    \"\"\"\n    def __init__(self, timeout, extra=\"\"):\n        msg = 'socket operation timed out'\n        if timeout is not None:\n            msg += ' after %sms.' % (timeout * 1000)\n        if extra:\n            msg += ' ' + extra\n        super(Timeout, self).__init__(msg)"
+      }
+    ],
+    "unresolved": [
+      "boltons/socketutils.py:line: 84",
+      "boltons/socketutils.py:variable: _UNSET",
+      "boltons/socketutils.py:variable: BufferedSocket.rbuf",
+      "boltons/socketutils.py:variable: BufferedSocket._recv_lock"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.875,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 8,
+    "hit_dependencies": [
+      "boltons.socketutils.BufferedSocket._recv_lock",
+      "boltons.socketutils.BufferedSocket._recvsize",
+      "boltons.socketutils.BufferedSocket.rbuf",
+      "boltons.socketutils.BufferedSocket.sock",
+      "boltons.socketutils.BufferedSocket.timeout",
+      "boltons.socketutils.Timeout",
+      "boltons.socketutils._UNSET"
+    ],
+    "exact_hit_dependencies": [
+      "boltons.socketutils.Timeout",
+      "boltons.socketutils._UNSET"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 4,
+    "returned_code_chars": 5662
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 48568,
+    "completion_tokens": 626,
+    "total_tokens": 49194,
+    "seconds": 62.41132426261902,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 79.39751815795898,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

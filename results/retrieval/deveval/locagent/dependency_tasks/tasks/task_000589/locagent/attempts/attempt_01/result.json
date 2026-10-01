@@ -1,0 +1,106 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 589,
+  "namespace": "bentoml._internal.models.model.Model.create",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10454,
+      "input_estimate_after": 10454,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `Model.create` method. These are existing components that would need to be utilized or referenced when implementing the create functionality:\n\n```\nsrc/bentoml/_internal/models/model.py\nline: 84\nclass: Model\nfunction: __init__\n\nsrc/bentoml/_internal/models/model.py\nline: -1\nclass: Model\nfunction: flush\n\nsrc/bentoml/_internal/models/model.py\nline: 199\nclass: Model\nfunction: save\n\nsrc/bentoml/_internal/models/model.py\nline: 219\nclass: Model\nfunction: from_fs\n\nsrc/bentoml/_internal/models/model.py\nline: 236\nclass: Model\nfunction: enter_cloudpickle_context\nline: 267\nclass: Model\nfunction: exit_cloudpickle_context\n\nsrc/bentoml/models.py\nline: -1\nfunction: create\n```",
+  "final_locations": {
+    "files": [
+      "src/bentoml/_internal/models/model.py",
+      "src/bentoml/models.py"
+    ],
+    "entities": [
+      {
+        "file": "src/bentoml/_internal/models/model.py",
+        "name": "Model.__init__",
+        "kind": "function",
+        "symbol": "bentoml._internal.models.model.Model.__init__",
+        "start": 84,
+        "end": 98,
+        "code": "    def __init__(\n        self,\n        tag: Tag,\n        model_fs: FS,\n        info: ModelInfo,\n        custom_objects: dict[str, t.Any] | None = None,\n        *,\n        _internal: bool = False,\n    ):\n        if not _internal:\n            raise BentoMLException(\n                \"Model cannot be instantiated directly; use bentoml.<framework>.save or bentoml.models.get instead\"\n            )\n\n        self.__attrs_init__(tag, model_fs, info, custom_objects)  # type: ignore (no types for attrs init)"
+      },
+      {
+        "file": "src/bentoml/_internal/models/model.py",
+        "name": "Model",
+        "kind": "class",
+        "symbol": "bentoml._internal.models.model.Model",
+        "start": 73,
+        "end": 383,
+        "code": "class Model(StoreItem):\n    _tag: Tag\n    __fs: FS\n\n    _info: ModelInfo\n    _custom_objects: dict[str, t.Any] | None = None\n\n    _runnable: t.Type[Runnable] | None = attr.field(init=False, default=None)\n\n    _model: t.Any = None\n\n    def __init__(\n        self,\n        tag: Tag,\n        model_fs: FS,\n        info: ModelInfo,\n        custom_objects: dict[str, t.Any] | None = None,\n        *,\n        _internal: bool = False,\n    ):\n        if not _internal:\n            raise BentoMLException(\n                \"Model cannot be instantiated directly; use bentoml.<framework>.save or bentoml.models.get instead\"\n            )\n\n        self.__attrs_init__(tag, model_fs, info, custom_objects)  # type: ignore (no types for attrs init)\n\n    @staticmethod\n    def _export_ext() -> str:\n        return \"bentomodel\"\n\n    @property\n    def tag(self) -> Tag:\n        return self._tag\n\n    @property\n    def _fs(self) -> FS:\n        return self.__fs\n\n    @property\n    def info(self) -> ModelInfo:\n        return self._info\n\n    @property\n    def custom_objects(self) -> t.Dict[str, t.Any]:\n        if self._custom_objects is None:\n            if self._fs.isfile(CUSTOM_OBJECTS_FILENAME):\n                with self._fs.open(CUSTOM_OBJECTS_FILENAME, \"rb\") as cofile:\n                    self._custom_objects: dict[str, t.Any] | None = cloudpickle.load(\n                        cofile\n                    )\n                    if not isinstance(self._custom_objects, dict):\n                        raise ValueError(\"Invalid custom objects found.\")\n            else:\n                self._custom_objects: dict[str, t.Any] | None = {}\n\n        return self._custom_objects\n\n    def __eq__(self, other: object) -> bool:\n        return isinstance(other, Model) and self._tag == other._tag\n\n    def __hash__(self) -> int:\n        return hash(self._tag)\n\n    @classmethod\n    def create(\n        cls,\n        name: Tag | str,\n        *,\n        module: str,\n        api_version: str,\n        signatures: ModelSignaturesType,\n        labels: dict[str, str] | None = None,\n        options: ModelOptions | None = None,\n        custom_objects: dict[str, t.Any] | None = None,\n        metadata: dict[str, t.Any] | None = None,\n        context: ModelContext,\n    ) -> Model:\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    @inject\n    def save(\n        self,\n        model_store: ModelStore = Provide[BentoMLContainer.model_store],\n    ) -> Model:\n        try:\n            self.validate()\n        except BentoMLException as e:\n            raise BentoMLException(f\"Failed to save {self!s}: {e}\") from None\n\n        with model_store.register(self.tag) as model_path:\n            out_fs = fs.open_fs(model_path, create=True, writeable=True)\n            fs.mirror.mirror(self._fs, out_fs, copy_if_newer=False)\n            self._fs.close()\n            self.__fs = out_fs\n\n        return self\n\n    @classmethod\n    def from_fs(cls: t.Type[Model], item_fs: FS) -> Model:\n        try:\n            with item_fs.open(MODEL_YAML_FILENAME, \"r\") as model_yaml:\n                info = ModelInfo.from_yaml_file(model_yaml)\n        except fs.errors.ResourceNotFound:\n            raise BentoMLException(\n                f\"Failed to load bento model because it does not contain a '{MODEL_YAML_FILENAME}'\"\n            )\n\n        res = Model(tag=info.tag, model_fs=item_fs, info=info, _internal=True)\n        try:\n            res.validate()\n        except BentoMLException as e:\n            raise BentoMLException(f\"Failed to load {res!s}: {e}\") from None\n\n        return res\n\n    @classmethod\n    def enter_cloudpickle_context(\n        cls,\n        external_modules: list[ModuleType],\n        imported_modules: list[ModuleType],\n    ) -> list[ModuleType]:\n        \"\"\"\n        Enter a context for cloudpickle to pickle custom objects defined in external modules.\n\n        Args:\n            external_modules: list of external modules to pickle\n            imported_modules: list to added modules, needs to be surely unregistered after pickling\n\n        Returns:\n            list[ModuleType]: list of module names that were imported in the context\n\n        Raise:\n            ValueError: if any of the external modules is not importable\n        \"\"\"\n        if not external_modules:\n            return []\n\n        registed_before: set[str] = cloudpickle.list_registry_pickle_by_value()\n        for mod in external_modules:\n            if mod.__name__ in registed_before:\n                continue\n            cloudpickle.register_pickle_by_value(mod)\n            imported_modules.append(mod)\n\n        return imported_modules\n\n    @classmethod\n    def exit_cloudpickle_context(cls, imported_modules: list[ModuleType]) -> None:\n        \"\"\"\n        Exit the context for cloudpickle, unregister imported external modules.\n\n        Needs to be called after self.flush\n        \"\"\"\n        if not imported_modules:\n            return\n\n        for mod in imported_modules:\n            cloudpickle.unregister_pickle_by_value(mod)\n\n    def flush(self):\n        self._write_info()\n        self._write_custom_objects()\n\n    def _write_info(self):\n        with self._fs.open(MODEL_YAML_FILENAME, \"w\", encoding=\"utf-8\") as model_yaml:\n            self.info.dump(t.cast(io.StringIO, model_yaml))\n\n    def _write_custom_objects(self):\n        # pickle custom_objects if it is not None and not empty\n        if self.custom_objects:\n            with self._fs.open(CUSTOM_OBJECTS_FILENAME, \"wb\") as cofile:\n                cloudpickle.dump(self.custom_objects, cofile)  # type: ignore (incomplete cloudpickle types)\n\n    @property\n    def creation_time(self) -> datetime:\n        return self.info.creation_time\n\n    def validate(self):\n        if not self._fs.isfile(MODEL_YAML_FILENAME):\n            raise BentoMLException(\n                f\"{self!s} does not contain a {MODEL_YAML_FILENAME}.\"\n            )\n\n    def __str__(self):\n        return f'Model(tag=\"{self.tag}\")'\n\n    def __repr__(self):\n        return f'Model(tag=\"{self.tag}\", path=\"{self.path}\")'\n\n    def to_runner(\n        self,\n        name: str = \"\",\n        max_batch_size: int | None = None,\n        max_latency_ms: int | None = None,\n        method_configs: dict[str, dict[str, int]] | None = None,\n        embedded: bool = False,\n        scheduling_strategy: type[Strategy] | None = None,\n    ) -> Runner:\n        \"\"\"\n        TODO(chaoyu): add docstring\n\n        Args:\n            name:\n            max_batch_size:\n            max_latency_ms:\n            runnable_method_configs:\n\n        Returns:\n\n        \"\"\"\n        from ..runner import Runner\n        from ..runner.strategy import DefaultStrategy\n\n        if scheduling_strategy is None:\n            scheduling_strategy = DefaultStrategy\n\n        # TODO: @larme @yetone run this branch only yatai version is incompatible with embedded runner\n        yatai_version = os.environ.get(\"YATAI_T_VERSION\")\n        if embedded and yatai_version:\n            logger.warning(\n                f\"Yatai of version {yatai_version} is incompatible with embedded runner, set `embedded=False` for runner {name}\"\n            )\n            embedded = False\n\n        return Runner(\n            self.to_runnable(),\n            name=name if name != \"\" else self.tag.name,\n            models=[self],\n            max_batch_size=max_batch_size,\n            max_latency_ms=max_latency_ms,\n            method_configs=method_configs,\n            embedded=embedded,\n            scheduling_strategy=scheduling_strategy,\n        )\n\n    def to_runnable(self) -> t.Type[Runnable]:\n        if self._runnable is None:\n            self._runnable = self.info.imported_module.get_runnable(self)\n        return self._runnable\n\n    def load_model(self, *args: t.Any, **kwargs: t.Any) -> t.Any:\n        \"\"\"\n        Load the model into memory from the model store directory.\n        This is a shortcut to the ``load_model`` function defined in the framework module\n        used for saving the target model.\n\n        For example, if the ``BentoModel`` is saved with\n        ``bentoml.tensorflow.save_model``, this method will pass it to the\n        ``bentoml.tensorflow.load_model`` method, along with any additional arguments.\n        \"\"\"\n        if self._model is None:\n            self._model = self.info.imported_module.load_model(self, *args, **kwargs)\n        return self._model\n\n    def with_options(self, **kwargs: t.Any) -> Model:\n        res = Model(\n            self._tag,\n            self._fs,\n            self.info.with_options(**kwargs),\n            self._custom_objects,\n            _internal=True,\n        )\n        return res"
+      },
+      {
+        "file": "src/bentoml/_internal/models/model.py",
+        "name": "Model.from_fs",
+        "kind": "function",
+        "symbol": "bentoml._internal.models.model.Model.from_fs",
+        "start": 219,
+        "end": 234,
+        "code": "    def from_fs(cls: t.Type[Model], item_fs: FS) -> Model:\n        try:\n            with item_fs.open(MODEL_YAML_FILENAME, \"r\") as model_yaml:\n                info = ModelInfo.from_yaml_file(model_yaml)\n        except fs.errors.ResourceNotFound:\n            raise BentoMLException(\n                f\"Failed to load bento model because it does not contain a '{MODEL_YAML_FILENAME}'\"\n            )\n\n        res = Model(tag=info.tag, model_fs=item_fs, info=info, _internal=True)\n        try:\n            res.validate()\n        except BentoMLException as e:\n            raise BentoMLException(f\"Failed to load {res!s}: {e}\") from None\n\n        return res"
+      }
+    ],
+    "unresolved": [
+      "src/bentoml/_internal/models/model.py:function: __init__",
+      "src/bentoml/_internal/models/model.py:line: -1",
+      "src/bentoml/_internal/models/model.py:function: flush",
+      "src/bentoml/_internal/models/model.py:function: save",
+      "src/bentoml/_internal/models/model.py:function: from_fs",
+      "src/bentoml/_internal/models/model.py:function: enter_cloudpickle_context",
+      "src/bentoml/_internal/models/model.py:function: exit_cloudpickle_context",
+      "src/bentoml/models.py:line: -1",
+      "src/bentoml/models.py:function: create"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.1111111111111111,
+    "exact_entity_dr": 0.1111111111111111,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "bentoml._internal.models.model.Model.__init__"
+    ],
+    "exact_hit_dependencies": [
+      "bentoml._internal.models.model.Model.__init__"
+    ],
+    "returned_entities": 3,
+    "returned_files": 2,
+    "unresolved_locations": 9,
+    "returned_code_chars": 9732
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 35871,
+    "completion_tokens": 1496,
+    "total_tokens": 37367,
+    "seconds": 80.87500524520874,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 91.75713515281677,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

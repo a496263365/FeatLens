@@ -1,0 +1,118 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 47,
+  "namespace": "chatette.adapters.factory.create_adapter",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3956,
+      "input_estimate_after": 3956,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `create_adapter` function in `chatette/adapters/factory.py`:\n\n```\nchatette/adapters/rasa.py\nline: 15\nclass: RasaAdapter\nfunction: __init__\n\nchatette/adapters/rasa_md.py\nline: 1\nclass: RasaMdAdapter\n\nchatette/adapters/jsonl.py\nline: 1\nclass: JsonListAdapter\n\nchatette/adapters/_base.py\nline: 1\nclass: Adapter\n\nchatette/adapters/__init__.py\nline: 1\nimports: RasaAdapter, JsonListAdapter\n```",
+  "final_locations": {
+    "files": [
+      "chatette/adapters/rasa.py",
+      "chatette/adapters/rasa_md.py",
+      "chatette/adapters/jsonl.py",
+      "chatette/adapters/_base.py",
+      "chatette/adapters/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "chatette/adapters/rasa.py",
+        "name": "RasaAdapter",
+        "kind": "class",
+        "symbol": "chatette.adapters.rasa.RasaAdapter",
+        "start": 15,
+        "end": 104,
+        "code": "class RasaAdapter(Adapter):\n    def __init__(self, base_filepath=None, batch_size=10000):# -> None:\n        super(RasaAdapter, self).__init__(base_filepath, batch_size)\n        self._base_file_contents = None\n\n    @classmethod\n    def _get_file_extension(cls):\n        return \"json\"\n\n\n    def _write_batch(self, output_file_handle, batch):\n        rasa_entities = [self.prepare_example(ex) for ex in batch.examples]  # TODO rename this?\n\n        json_data = self._get_base_to_extend()\n        json_data[\"rasa_nlu_data\"][\"common_examples\"] = rasa_entities\n        json_data[\"rasa_nlu_data\"][\"entity_synonyms\"] = \\\n            self.__format_synonyms(batch.synonyms)\n        json_data = cast_to_unicode(json_data)\n\n        output_file_handle.write(\n            json.dumps(json_data, ensure_ascii=False, indent=2, sort_keys=True)\n        )\n\n\n    def prepare_example(self, example):\n        def entity_to_rasa(entity):\n            return {\n                \"entity\": entity.slot_name,\n                \"value\": entity.value,\n                \"start\": entity._start_index,\n                \"end\": entity._start_index + entity._len,\n            }\n\n        return {\n            \"intent\": example.intent_name,\n            \"text\": example.text,\n            \"entities\": [entity_to_rasa(entity) for entity in example.entities]\n        }\n\n    @classmethod\n    def __format_synonyms(cls, synonyms):\n        # {str: [str]} -> [{\"value\": str, \"synonyms\": [str]}]\n        return [\n            {\n                \"value\": slot_name,\n                \"synonyms\": synonyms[slot_name]\n            }\n            for slot_name in synonyms\n            if len(synonyms[slot_name]) > 1\n        ]\n\n\n    def _get_base_to_extend(self):\n        if self._base_file_contents is None:\n            if self._base_filepath is None:\n                return self._get_empty_base()\n            with io.open(self._base_filepath, 'r') as base_file:\n                self._base_file_contents = json.load(base_file)\n            self.check_base_file_contents()\n        return self._base_file_contents\n\n    def _get_empty_base(self):\n        return {\n            \"rasa_nlu_data\": {\n                \"common_examples\": None,\n                \"regex_features\": [],\n                \"lookup_tables\": [],\n                \"entity_synonyms\": None,\n            }\n        }\n\n    def check_base_file_contents(self):\n        \"\"\"\n        Checks that `self._base_file_contents` contains well formatted JSON.\n        Throws a `SyntaxError` if the data is incorrect.\n        \"\"\"\n        if self._base_file_contents is None:\n            return\n        if not isinstance(self._base_file_contents, dict):\n            self._base_file_contents = None\n            raise SyntaxError(\n                \"Couldn't load valid data from base file '\" + \\\n                self._base_filepath + \"'\"\n            )\n        else:\n            if \"rasa_nlu_data\" not in self._base_file_contents:\n                self._base_file_contents = None\n                raise SyntaxError(\n                    \"Expected 'rasa_nlu_data' as a root of base file '\" + \\\n                    self._base_filepath + \"'\")"
+      },
+      {
+        "file": "chatette/adapters/rasa_md.py",
+        "name": "RasaMdAdapter",
+        "kind": "class",
+        "symbol": "chatette.adapters.rasa_md.RasaMdAdapter",
+        "start": 17,
+        "end": 123,
+        "code": "class RasaMdAdapter(Adapter):\n    def __init__(self, base_filepath=None):\n        super(RasaMdAdapter, self).__init__(base_filepath, None)\n        self._base_file_contents = None\n\n\n    @classmethod\n    def _get_file_extension(cls):\n        return \"md\"\n    def __get_file_name(self, batch, output_directory, single_file):\n        if single_file:\n            return \\\n                os.path.join(\n                    output_directory, \"nlu.\" + self._get_file_extension()\n                )\n        raise ValueError(\n            \"Tried to generate several files with Rasa Markdown adapter.\"\n        )\n\n\n    def _write_batch(self, output_file_handle, batch):\n        output_file_handle.write(\n            \"<!-- Generated using Chatette v\" + cast_to_unicode(__version__) + \\\n            \" -->\\n\\n\"\n        )\n\n        prepared_examples = dict()\n        for example in batch.examples:\n            append_to_list_in_dict(\n                prepared_examples,\n                example.intent_name, self.prepare_example(example)\n            )\n\n        for intent_name in prepared_examples:\n            output_file_handle.write(\n                \"## intent:\" + cast_to_unicode(intent_name) + '\\n'\n            )\n            for text in prepared_examples[intent_name]:\n                output_file_handle.write(cast_to_unicode(\"- \" + text + '\\n'))\n            output_file_handle.write(cast_to_unicode('\\n'))\n\n        output_file_handle.write(\n            cast_to_unicode(self.__format_synonyms(batch.synonyms))\n        )\n\n        remainder = self._get_base_to_extend()\n        if remainder is not None:\n            output_file_handle.write(cast_to_unicode(remainder) + '\\n')\n\n\n    def prepare_example(self, example):\n        if len(example.entities) == 0:\n            return example.text\n\n        sorted_entities = \\\n            sorted(\n                example.entities,\n                reverse=True,\n                key=lambda entity: entity._start_index\n            )\n        result = example.text[:]\n        for entity in sorted_entities:\n            result = \\\n                result[:entity._start_index] + \"[\" + \\\n                result[entity._start_index:entity._start_index + entity._len] + \\\n                \"](\" + entity.slot_name + \")\" + \\\n                result[entity._start_index + entity._len:]\n        return result\n\n\n    @classmethod\n    def __format_synonyms(cls, synonyms):\n        \"\"\"\n        Returns a str that will be written in the output files for all\n        the synonyms `synonyms`.\n        \"\"\"\n        result = \"\"\n        for syn_name in synonyms:\n            if len(synonyms[syn_name]) > 1:\n                result += \"## synonym:\" + syn_name + '\\n'\n                for syn in synonyms[syn_name]:\n                    if syn != syn_name:\n                        result += \"- \" + syn + '\\n'\n                result += '\\n'\n        return result\n\n\n    def _get_base_to_extend(self):\n        if self._base_file_contents is None:\n            if self._base_filepath is None:\n                return self._get_empty_base()\n            with io.open(self._base_filepath, 'r') as base_file:\n                self._base_file_contents = ''.join(base_file.readlines())\n            self.check_base_file_contents()\n        return self._base_file_contents\n\n    def _get_empty_base(self):\n        return \"\"\n\n    def check_base_file_contents(self):\n        if self._base_file_contents is None:\n            return\n        if not isinstance(self._base_file_contents, string_types):\n            raise SyntaxError(\n                \"Couldn't load valid data from base file '\" + \\\n                self._base_file_contents + \"'\"\n            )"
+      },
+      {
+        "file": "chatette/adapters/jsonl.py",
+        "name": "JsonListAdapter",
+        "kind": "class",
+        "symbol": "chatette.adapters.jsonl.JsonListAdapter",
+        "start": 10,
+        "end": 51,
+        "code": "class JsonListAdapter(Adapter):\n    @classmethod\n    def _get_file_extension(cls):\n        return \"jsonl\"\n\n    def prepare_example(self, example):\n        return json.dumps(\n            cast_to_unicode(example.as_dict()),\n            ensure_ascii=False, sort_keys=True\n        )\n\n    def _write_batch(self, output_file_handle, batch):\n        output_file_handle.writelines([\n            self.prepare_example(example) + \"\\n\"\n            for example in batch.examples\n        ])\n\n    def write(self, output_directory, examples, synonyms):\n        super(JsonListAdapter, self).write(output_directory, examples, synonyms)\n\n        processed_synonyms = self.__format_synonyms(synonyms)\n        if processed_synonyms is not None:\n            synonyms_file_path = os.path.join(output_directory, \"synonyms.json\")\n            with io.open(synonyms_file_path, 'w') as output_file:\n                output_file.write(\n                    json.dumps(\n                        cast_to_unicode(processed_synonyms),\n                        ensure_ascii=False, sort_keys=True, indent=2\n                    )\n                )\n\n\n    @classmethod\n    def __format_synonyms(cls, synonyms):\n        result = {\n            key: values\n            for (key, values) in synonyms.items()\n            if len(values) > 1 or values[0] != key\n        }\n        if not result:\n            return None\n        return result"
+      },
+      {
+        "file": "chatette/adapters/_base.py",
+        "name": "Adapter",
+        "kind": "class",
+        "symbol": "chatette.adapters._base.Adapter",
+        "start": 26,
+        "end": 124,
+        "code": "class Adapter(with_metaclass(ABCMeta, object)):\n    \"\"\"\n    Superclass for all the adapters.\n    Using the list of generated examples, creates and writes\n    the output file(s).\n    \"\"\"\n    def __init__(self, base_filepath=None, batch_size=10000):\n        super(Adapter, self).__init__()\n        self._batch_size = batch_size\n        self._base_filepath = base_filepath\n\n    def write(self, output_directory, examples, synonyms):\n        \"\"\"\n        Creates files in `output/output_directory` and\n        writes batches of the examples `examples` and synonyms `synonyms`\n        into them.\n        \"\"\"\n        if self._batch_size is not None:\n            single_file_output = (len(examples) <= self._batch_size)\n        else:\n            single_file_output = True\n\n        if not os.path.exists(output_directory):\n            os.makedirs(output_directory)\n\n        for batch in self.__generate_batch(examples, synonyms, self._batch_size):\n            output_file_path = \\\n                self.__get_file_name(\n                    batch, output_directory, single_file_output\n                )\n            with io.open(output_file_path, 'w') as output_file:\n                self._write_batch(output_file, batch)\n\n    @classmethod\n    @abstractmethod\n    def _get_file_extension(cls):\n        raise NotImplementedError()\n    def __get_file_name(self, batch, output_directory, single_file):\n        # pylint: disable=bad-continuation\n        if single_file:\n            return \\\n                os.path.join(\n                    output_directory, \"output.\" + self._get_file_extension()\n                )\n        return \\\n            os.path.join(\n                output_directory, \"output.\" + str(batch.index) + \".\" + \\\n                self._get_file_extension()\n            )\n\n\n    @abstractmethod\n    def _write_batch(self, output_file_handle, batch):\n        \"\"\"\n        Writes a batch of examples to file `output_file_handle`.\n        This file will not be accessed after being written.\n        \"\"\"\n        raise NotImplementedError()\n\n    @classmethod\n    def __generate_batch(cls, examples, synonyms, nb_examples_per_batch):\n        \"\"\"\n        Generates a batch every time it is called, containing\n        `nb_examples_per_batch` of the examples `examples`\n        and the synonyms `synonyms`.\n        If `nb_examples_per_batch` is `None`,\n        one batch containing all the examples will be generated.\n        \"\"\"\n        if nb_examples_per_batch is None:\n            yield Batch(0, examples[:], synonyms)\n        else:\n            length = len(examples)\n            for (batch_index, i) in enumerate(\n                range(0, length, nb_examples_per_batch)\n            ):\n                yield \\\n                    Batch(\n                        batch_index,\n                        examples[i:min(i + nb_examples_per_batch, length)],\n                        synonyms\n                    )\n\n\n    @abstractmethod\n    def prepare_example(self, example):\n        \"\"\"Transforms an example into a str writable to an output file.\"\"\"\n        raise NotImplementedError()\n\n    def _get_base_to_extend(self):\n        \"\"\"\n        Returns a representation of the base to extend when writing a file.\n        This base is taken from a file given through command line options.\n        The type of object returned and what to do with it depends on the\n        concrete implementation of the adapter.\n        Some adapters shouldn't accept an extendable base.\n        \"\"\"\n        raise ValueError(\n            self.__class__.__name__ + \" does not support base files.\"\n        )"
+      }
+    ],
+    "unresolved": [
+      "chatette/adapters/rasa.py:function: __init__",
+      "chatette/adapters/rasa_md.py:line: 1",
+      "chatette/adapters/jsonl.py:line: 1",
+      "chatette/adapters/_base.py:line: 1",
+      "chatette/adapters/__init__.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "chatette.adapters.jsonl.JsonListAdapter",
+      "chatette.adapters.rasa.RasaAdapter",
+      "chatette.adapters.rasa_md.RasaMdAdapter"
+    ],
+    "exact_hit_dependencies": [
+      "chatette.adapters.jsonl.JsonListAdapter",
+      "chatette.adapters.rasa.RasaAdapter",
+      "chatette.adapters.rasa_md.RasaMdAdapter"
+    ],
+    "returned_entities": 4,
+    "returned_files": 5,
+    "unresolved_locations": 5,
+    "returned_code_chars": 11693
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16453,
+    "completion_tokens": 530,
+    "total_tokens": 16983,
+    "seconds": 74.46514844894409,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 76.58402705192566,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

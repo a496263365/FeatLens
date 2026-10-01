@@ -1,0 +1,82 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1097,
+  "namespace": "mackup.utils.get_copy_folder_location",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9343,
+      "input_estimate_after": 9343,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmackup/utils.py\nline: 256\nfunction: get_copy_folder_location\n\nmackup/config.py\nline: (varies)\nclass: Config\nfunction: _parse_path\n\nmackup/mackup.py\nline: (varies)\nfunction: (imports utils)\n\nmackup/main.py\nline: (varies)\nfunction: (imports utils)\n\nmackup/application.py\nline: (varies)\nfunction: (imports utils)\n```",
+  "final_locations": {
+    "files": [
+      "mackup/utils.py",
+      "mackup/config.py",
+      "mackup/mackup.py",
+      "mackup/main.py",
+      "mackup/application.py"
+    ],
+    "entities": [
+      {
+        "file": "mackup/config.py",
+        "name": "Config",
+        "kind": "class",
+        "symbol": "mackup.config.Config",
+        "start": 31,
+        "end": 280,
+        "code": "class Config(object):\n\n    \"\"\"The Mackup Config class.\"\"\"\n\n    def __init__(self, filename=None):\n        \"\"\"\n        Create a Config instance.\n\n        Args:\n            filename (str): Optional filename of the config file. If empty,\n                            defaults to MACKUP_CONFIG_FILE\n        \"\"\"\n        assert isinstance(filename, str) or filename is None\n\n        # Initialize the parser\n        self._parser = self._setup_parser(filename)\n\n        # Do we have an old config file?\n        self._warn_on_old_config()\n\n        # Get the storage engine\n        self._engine = self._parse_engine()\n\n        # Get the path where the Mackup folder is\n        self._path = self._parse_path()\n\n        # Get the directory replacing 'Mackup', if any\n        self._directory = self._parse_directory()\n\n        # Get the list of apps to ignore\n        self._apps_to_ignore = self._parse_apps_to_ignore()\n\n        # Get the list of apps to allow\n        self._apps_to_sync = self._parse_apps_to_sync()\n\n    @property\n    def engine(self):\n        \"\"\"\n        The engine used by the storage.\n\n        ENGINE_DROPBOX, ENGINE_GDRIVE, ENGINE_COPY, ENGINE_ICLOUD or ENGINE_FS.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._engine)\n\n    @property\n    def path(self):\n        \"\"\"\n        Path to the Mackup configuration files.\n\n        The path to the directory where Mackup is gonna create and store his\n        directory.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._path)\n\n    @property\n    def directory(self):\n        \"\"\"\n        The name of the Mackup directory, named Mackup by default.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._directory)\n\n    @property\n    def fullpath(self):\n        \"\"\"\n        Full path to the Mackup configuration files.\n\n        The full path to the directory when Mackup is storing the configuration\n        files.\n\n        Returns:\n            str\n        \"\"\"\n        return str(os.path.join(self.path, self.directory))\n\n    @property\n    def apps_to_ignore(self):\n        \"\"\"\n        Get the list of applications ignored in the config file.\n\n        Returns:\n            set. Set of application names to ignore, lowercase\n        \"\"\"\n        return set(self._apps_to_ignore)\n\n    @property\n    def apps_to_sync(self):\n        \"\"\"\n        Get the list of applications allowed in the config file.\n\n        Returns:\n            set. Set of application names to allow, lowercase\n        \"\"\"\n        return set(self._apps_to_sync)\n\n    def _setup_parser(self, filename=None):\n        \"\"\"\n        Configure the ConfigParser instance the way we want it.\n\n        Args:\n            filename (str) or None\n\n        Returns:\n            SafeConfigParser\n        \"\"\"\n        assert isinstance(filename, str) or filename is None\n\n        # If we are not overriding the config filename\n        if not filename:\n            filename = MACKUP_CONFIG_FILE\n\n        parser = configparser.SafeConfigParser(\n            allow_no_value=True, inline_comment_prefixes=(\";\", \"#\")\n        )\n        parser.read(os.path.join(os.path.join(os.environ[\"HOME\"], filename)))\n\n        return parser\n\n    def _warn_on_old_config(self):\n        \"\"\"Warn the user if an old config format is detected.\"\"\"\n        # Is an old section in the config file?\n        old_sections = [\"Allowed Applications\", \"Ignored Applications\"]\n        for old_section in old_sections:\n            if self._parser.has_section(old_section):\n                error(\n                    \"Old config file detected. Aborting.\\n\"\n                    \"\\n\"\n                    \"An old section (e.g. [Allowed Applications]\"\n                    \" or [Ignored Applications] has been detected\"\n                    \" in your {} file.\\n\"\n                    \"I'd rather do nothing than do something you\"\n                    \" do not want me to do.\\n\"\n                    \"\\n\"\n                    \"Please read the up to date documentation on\"\n                    \" <https://github.com/lra/mackup> and migrate\"\n                    \" your configuration file.\".format(MACKUP_CONFIG_FILE)\n                )\n\n    def _parse_engine(self):\n        \"\"\"\n        Parse the storage engine in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self._parser.has_option(\"storage\", \"engine\"):\n            engine = str(self._parser.get(\"storage\", \"engine\"))\n        else:\n            engine = ENGINE_DROPBOX\n\n        assert isinstance(engine, str)\n\n        if engine not in [\n            ENGINE_DROPBOX,\n            ENGINE_GDRIVE,\n            ENGINE_COPY,\n            ENGINE_ICLOUD,\n            ENGINE_FS,\n        ]:\n            raise ConfigError(\"Unknown storage engine: {}\".format(engine))\n\n        return str(engine)\n\n    def _parse_path(self):\n        \"\"\"\n        Parse the storage path in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self.engine == ENGINE_DROPBOX:\n            path = get_dropbox_folder_location()\n        elif self.engine == ENGINE_GDRIVE:\n            path = get_google_drive_folder_location()\n        elif self.engine == ENGINE_COPY:\n            path = get_copy_folder_location()\n        elif self.engine == ENGINE_ICLOUD:\n            path = get_icloud_folder_location()\n        elif self.engine == ENGINE_FS:\n            if self._parser.has_option(\"storage\", \"path\"):\n                cfg_path = self._parser.get(\"storage\", \"path\")\n                path = os.path.join(os.environ[\"HOME\"], cfg_path)\n            else:\n                raise ConfigError(\n                    \"The required 'path' can't be found while\"\n                    \" the 'file_system' engine is used.\"\n                )\n\n        return str(path)\n\n    def _parse_directory(self):\n        \"\"\"\n        Parse the storage directory in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self._parser.has_option(\"storage\", \"directory\"):\n            directory = self._parser.get(\"storage\", \"directory\")\n            # Don't allow CUSTOM_APPS_DIR as a storage directory\n            if directory == CUSTOM_APPS_DIR:\n                raise ConfigError(\n                    \"{} cannot be used as a storage directory.\".format(CUSTOM_APPS_DIR)\n                )\n        else:\n            directory = MACKUP_BACKUP_PATH\n\n        return str(directory)\n\n    def _parse_apps_to_ignore(self):\n        \"\"\"\n        Parse the applications to ignore in the config.\n\n        Returns:\n            set\n        \"\"\"\n        # We ignore nothing by default\n        apps_to_ignore = set()\n\n        # Is the \"[applications_to_ignore]\" in the cfg file?\n        section_title = \"applications_to_ignore\"\n        if self._parser.has_section(section_title):\n            apps_to_ignore = set(self._parser.options(section_title))\n\n        return apps_to_ignore\n\n    def _parse_apps_to_sync(self):\n        \"\"\"\n        Parse the applications to backup in the config.\n\n        Returns:\n            set\n        \"\"\"\n        # We allow nothing by default\n        apps_to_sync = set()\n\n        # Is the \"[applications_to_sync]\" section in the cfg file?\n        section_title = \"applications_to_sync\"\n        if self._parser.has_section(section_title):\n            apps_to_sync = set(self._parser.options(section_title))\n\n        return apps_to_sync"
+      }
+    ],
+    "unresolved": [
+      "mackup/config.py:function: _parse_path",
+      "mackup/mackup.py:function: (imports utils)",
+      "mackup/main.py:function: (imports utils)",
+      "mackup/application.py:function: (imports utils)"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 1,
+    "returned_files": 5,
+    "unresolved_locations": 4,
+    "returned_code_chars": 7273
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 41930,
+    "completion_tokens": 1197,
+    "total_tokens": 43127,
+    "seconds": 68.81522536277771,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 70.43143677711487,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

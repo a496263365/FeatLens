@@ -1,0 +1,104 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 593,
+  "namespace": "bentoml._internal.resource.CpuResource.validate",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 14130,
+      "input_estimate_after": 14130,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/bentoml/_internal/resource.py\nline: 112\nfunction: CpuResource.validate\n\nsrc/bentoml/_internal/resource.py\nline: 105\nfunction: CpuResource.from_system\n\nsrc/bentoml/_internal/resource.py\nline: 124\nfunction: query_cgroup_cpu_count\n\nsrc/bentoml/_internal/resource.py\nline: 89\nfunction: CpuResource.from_spec\n\nsrc/bentoml/_internal/resource.py\nline: 261\nfunction: NvidiaGpuResource.validate\n```",
+  "final_locations": {
+    "files": [
+      "src/bentoml/_internal/resource.py"
+    ],
+    "entities": [
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "CpuResource.from_system",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.CpuResource.from_system",
+        "start": 105,
+        "end": 109,
+        "code": "    def from_system(cls) -> float:\n        if psutil.POSIX:\n            return query_cgroup_cpu_count()\n        else:\n            return float(query_os_cpu_count())"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "query_cgroup_cpu_count",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.query_cgroup_cpu_count",
+        "start": 124,
+        "end": 174,
+        "code": "def query_cgroup_cpu_count() -> float:\n    # Query active cpu processor count using cgroup v1 API, based on OpenJDK\n    # implementation for `active_processor_count` using cgroup v1:\n    # https://github.com/openjdk/jdk/blob/master/src/hotspot/os/linux/cgroupSubsystem_linux.cpp\n    # For cgroup v2, see:\n    # https://github.com/openjdk/jdk/blob/master/src/hotspot/os/linux/cgroupV2Subsystem_linux.cpp\n    # Possible supports: cpuset.cpus on kubernetes\n    def _read_cgroup_file(filename: str) -> float:\n        with open(filename, \"r\", encoding=\"utf-8\") as f:\n            return int(f.read().strip())\n\n    cgroup_root = \"/sys/fs/cgroup/\"\n    cfs_quota_us_file = os.path.join(cgroup_root, \"cpu\", \"cpu.cfs_quota_us\")\n    cfs_period_us_file = os.path.join(cgroup_root, \"cpu\", \"cpu.cfs_period_us\")\n    cpu_max_file = os.path.join(cgroup_root, \"cpu.max\")\n\n    quota = None\n\n    if os.path.exists(cfs_quota_us_file) and os.path.exists(cfs_period_us_file):\n        try:\n            quota = _read_cgroup_file(cfs_quota_us_file) / _read_cgroup_file(\n                cfs_period_us_file\n            )\n        except FileNotFoundError as err:\n            logger.warning(\"Caught exception while calculating CPU quota: %s\", err)\n    # reading from cpu.max for cgroup v2\n    elif os.path.exists(cpu_max_file):\n        try:\n            with open(cpu_max_file, \"r\", encoding=\"utf-8\") as max_file:\n                cfs_string = max_file.read()\n                quota_str, period_str = cfs_string.split()\n                if quota_str.isnumeric() and period_str.isnumeric():\n                    quota = float(quota_str) / float(period_str)\n                else:\n                    # quota_str is \"max\" meaning the cpu quota is unset\n                    quota = None\n        except FileNotFoundError as err:\n            logger.warning(\"Caught exception while calculating CPU quota: %s\", err)\n    if quota is not None and quota < 0:\n        quota = None\n    elif quota == 0:\n        quota = 1\n\n    os_cpu_count = float(os.cpu_count() or 1.0)\n\n    limit_count = math.inf\n\n    if quota:\n        limit_count = quota\n\n    return float(min(limit_count, os_cpu_count))"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "CpuResource.from_spec",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.CpuResource.from_spec",
+        "start": 79,
+        "end": 102,
+        "code": "    def from_spec(cls, spec: t.Any) -> float:\n        \"\"\"\n        Convert spec to CpuResource.\n\n        spec can be a float, int or string.\n        - 1.0 -> 1.0\n        - 1 -> 1.0\n        - \"1\" -> 1.0\n        - \"10m\" -> 0.01\n        \"\"\"\n        if not isinstance(spec, (int, float, str)):\n            raise TypeError(\"cpu must be int, float or str\")\n\n        if isinstance(spec, (int, float)):\n            return float(spec)\n\n        milli_match = re.match(\"([0-9]+)m\", spec)\n        if milli_match:\n            return float(milli_match[1]) / 1000.0\n\n        try:\n            return float(spec)\n        except ValueError:\n            raise BentoMLConfigException(f\"Invalid CPU resource limit '{spec}'. \")"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "NvidiaGpuResource.validate",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.NvidiaGpuResource.validate",
+        "start": 261,
+        "end": 267,
+        "code": "    def validate(cls, val: t.List[int]):\n        if any([gpu_index < 0 for gpu_index in val]):\n            raise BentoMLConfigException(f\"Negative GPU device in {val}.\")\n        if any([gpu_index >= len(cls.from_system()) for gpu_index in val]):\n            raise BentoMLConfigException(\n                f\"GPU device index in {val} is greater than the system available: {cls.from_system()}\"\n            )"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "bentoml._internal.resource.CpuResource.from_system"
+    ],
+    "exact_hit_dependencies": [
+      "bentoml._internal.resource.CpuResource.from_system"
+    ],
+    "returned_entities": 4,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3413
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 61976,
+    "completion_tokens": 2202,
+    "total_tokens": 64178,
+    "seconds": 91.73242712020874,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 138.4540729522705,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

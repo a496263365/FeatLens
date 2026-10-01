@@ -1,0 +1,261 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1363; k=3; a=0.25; combined=0.792; stability(ARI)=1.000; sep=0.223",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "cli",
+                    "func_desc": "This function is a generator function that generates a list of tables and tables with the necessary information .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def cli(\n    paths,\n    dbname,\n    separator,\n    quoting,\n    skip_errors,\n    replace_tables,\n    table,\n    extract_column,\n    date,\n    datetime,\n    datetime_format,\n    primary_key,\n    fts,\n    index,\n    shape,\n    filename_column,\n    fixed_columns,\n    fixed_columns_int,\n    fixed_columns_float,\n    no_index_fks,\n    no_fulltext_fks,\n    just_strings,",
+                    "func_fullName": "csvs_to_sqlite.cli.cli(paths, dbname, separator, quoting, skip_errors, replace_tables, table, extract_column, date, datetime, datetime_format, primary_key, fts, index, shape, filename_column, fixed_columns, fixed_columns_int, fixed_columns_float, no_index_fks, no_fulltext_fks, just_strings)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, conn, table_name, value_column, index_fts):\n        self.conn = conn\n        self.table_name = table_name\n        self.value_column = value_column\n        self.fts_table_name = \"{table_name}_{value_column}_fts\".format(\n            table_name=table_name, value_column=value_column\n        )\n        self.index_fts = index_fts\n        self.cache = lru.LRUCacheDict(max_size=1000)\n        self.ensure_table_exists()",
+                    "func_fullName": "csvs_to_sqlite.utils.LookupTable.__init__(self, conn, table_name, value_column, index_fts)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "ensure_table_exists",
+                    "func_desc": "Ensures that the table exists in the database .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def ensure_table_exists(self):\n        if not self.conn.execute(\n            \"\"\"\n            SELECT name\n            FROM sqlite_master\n            WHERE type='table'\n            AND name=?\n        \"\"\",\n            (self.table_name,),\n        ).fetchall():\n            create_sql = \"\"\"\n                CREATE TABLE \"{table_name}\" (\n                    \"id\" INTEGER PRIMARY KEY,\n                    \"{value_column}\" TEXT\n                );\n            \"\"\".format(\n                table_name=self.table_name, value_column=self.value_column\n            )\n            self.conn.execute(create_sql)\n            if self.index_fts:\n                # Add a FTS index on the value_column\n                self.conn.execute(\n                    \"\"\"\n                    CREATE VIRTUAL TABLE \"{fts_table_name}\"\n                    USING {fts_version} ({value_column}, content=\"{table_name}\");\n                \"\"\".format(\n                        fts_version=best_fts_version(),\n                        fts_table_name=self.fts_table_name,\n                        table_name=self.table_name,\n                        value_column=self.value_column,\n                    )\n                )",
+                    "func_fullName": "csvs_to_sqlite.utils.LookupTable.ensure_table_exists(self)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "id_for_value",
+                    "func_desc": "Returns the id of the record with the given value .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def id_for_value(self, value):\n        if pd.isnull(value):\n            return None\n        # value should be a string\n        if not isinstance(value, six.string_types):\n            if isinstance(value, float):\n                value = \"{0:g}\".format(value)\n            else:\n                value = six.text_type(value)\n        try:\n            # First try our in-memory cache\n            return self.cache[value]\n        except KeyError:\n            # Next try the database table\n            sql = 'SELECT id FROM \"{table_name}\" WHERE \"{value_column}\"=?'.format(\n                table_name=self.table_name, value_column=self.value_column\n            )\n            result = self.conn.execute(sql, (value,)).fetchall()\n            if result:\n                id = result[0][0]\n            else:\n                # Not in DB! Insert it\n                cursor = self.conn.cursor()\n                cursor.execute(\n                    \"\"\"\n                    INSERT INTO \"{table_name}\" (\"{value_column}\") VALUES (?);\n                \"\"\".format(\n                        table_name=self.table_name, value_column=self.value_column\n                    ),\n                    (value,),\n                )\n                id = cursor.lastrowid\n                if self.index_fts:\n                    # And update FTS index\n                    sql = \"\"\"\n                        INSERT INTO \"{fts_table_name}\" (rowid, \"{value_column}\") VALUES (?, ?);\n                    \"\"\".format(\n                        fts_table_name=self.fts_table_name,\n                        value_column=self.value_column,\n                    )\n                    cursor.execute(sql, (id, value))\n\n            self.cache[value] = id\n            return id",
+                    "func_fullName": "csvs_to_sqlite.utils.LookupTable.id_for_value(self, value)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "refactor_dataframes",
+                    "func_desc": "Refactor the dataframes to match the foreign keys .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def refactor_dataframes(conn, dataframes, foreign_keys, index_fts):\n    lookup_tables = {}\n    for column, (table_name, value_column) in foreign_keys.items():\n        # Now apply this to the dataframes\n        for dataframe in dataframes:\n            if column in dataframe.columns:\n                lookup_table = lookup_tables.get(table_name)\n                if lookup_table is None:\n                    lookup_table = LookupTable(\n                        conn=conn,\n                        table_name=table_name,\n                        value_column=value_column,\n                        index_fts=index_fts,\n                    )\n                    lookup_tables[table_name] = lookup_table\n                dataframe[column] = dataframe[column].apply(lookup_table.id_for_value)\n    return dataframes",
+                    "func_fullName": "csvs_to_sqlite.utils.refactor_dataframes(conn, dataframes, foreign_keys, index_fts)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "table_exists",
+                    "func_desc": "Check if a table exists in sqlite_master_\n        .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def table_exists(conn, table):\n    return conn.execute(\n        \"\"\"\n        select count(*) from sqlite_master\n        where type=\"table\" and name=?\n    \"\"\",\n        [table],\n    ).fetchone()[0]",
+                    "func_fullName": "csvs_to_sqlite.utils.table_exists(conn, table)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "drop_table",
+                    "func_desc": "Drop a table from the database .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def drop_table(conn, table):\n    conn.execute(\"DROP TABLE [{}]\".format(table))",
+                    "func_fullName": "csvs_to_sqlite.utils.drop_table(conn, table)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "get_create_table_sql",
+                    "func_desc": "Returns the SQL to create a new table .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_create_table_sql(\n    table_name, df, index=True, sql_type_overrides=None, primary_keys=None",
+                    "func_fullName": "csvs_to_sqlite.utils.get_create_table_sql(table_name, df, index, sql_type_overrides, primary_keys)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "to_sql_with_foreign_keys",
+                    "func_desc": "Generate a SQL statement with foreign keys .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def to_sql_with_foreign_keys(\n    conn,\n    df,\n    name,\n    foreign_keys,\n    sql_type_overrides=None,\n    primary_keys=None,\n    index_fks=False,",
+                    "func_fullName": "csvs_to_sqlite.utils.to_sql_with_foreign_keys(conn, df, name, foreign_keys, sql_type_overrides, primary_keys, index_fks)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "best_fts_version",
+                    "func_desc": "Discovers the most advanced supported SQLite FTS version",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def best_fts_version():\n    \"Discovers the most advanced supported SQLite FTS version\"\n    conn = sqlite3.connect(\":memory:\")\n    for fts in (\"FTS5\", \"FTS4\", \"FTS3\"):\n        try:\n            conn.execute(\"CREATE VIRTUAL TABLE v USING {} (t);\".format(fts))\n            return fts\n        except sqlite3.OperationalError:\n            continue\n    return None",
+                    "func_fullName": "csvs_to_sqlite.utils.best_fts_version()"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "generate_and_populate_fts",
+                    "func_desc": "Generate and populate FTS table .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def generate_and_populate_fts(conn, created_tables, cols, foreign_keys):\n    fts_version = best_fts_version()\n    sql = []\n    fts_cols = \", \".join('\"{}\"'.format(c) for c in cols)\n    for table in created_tables:\n        sql.append(\n            'CREATE VIRTUAL TABLE \"{content_table}_fts\" USING {fts_version} ({cols}, content=\"{content_table}\")'.format(\n                cols=fts_cols, content_table=table, fts_version=fts_version\n            )\n        )\n        if not foreign_keys:\n            # Select is simple:\n            select = \"SELECT rowid, {cols} FROM [{content_table}]\".format(\n                cols=fts_cols, content_table=table\n            )\n        else:\n            # Select is complicated:\n            # select\n            #     county, precinct, office.value, district.value,\n            #     party.value, candidate.value, votes\n            # from content_table\n            #     left join office on content_table.office = office.id\n            #     left join district on content_table.district = district.id\n            #     left join party on content_table.party = party.id\n            #     left join candidate on content_table.candidate = candidate.id\n            # order by content_table.rowid\n            select_cols = []\n            joins = []\n            table_seen_count = {}\n            for col in cols:\n                if col in foreign_keys:\n                    other_table, label_column = foreign_keys[col]\n                    seen_count = table_seen_count.get(other_table, 0) + 1\n                    table_seen_count[other_table] = seen_count\n                    alias = \"\"\n                    if seen_count > 1:\n                        alias = \"table_alias_{}_{}\".format(\n                            hashlib.md5(other_table.encode(\"utf8\")).hexdigest(),\n                            seen_count,\n                        )\n                    select_cols.append(\n                        '[{}].\"{}\"'.format(alias or other_table, label_column)\n                    )\n                    joins.append(\n                        'left join [{other_table}] {alias} on [{table}].\"{column}\" = [{alias_or_other_table}].id'.format(\n                            other_table=other_table,\n                            alias_or_other_table=alias or other_table,\n                            alias=alias,\n                            table=table,\n                            column=col,\n                        )\n                    )\n                else:\n                    select_cols.append('\"{}\"'.format(col))\n            select = \"SELECT [{content_table}].rowid, {select_cols} FROM [{content_table}] {joins}\".format(\n                select_cols=\", \".join(\"{}\".format(c) for c in select_cols),\n                content_table=table,\n                joins=\"\\n\".join(joins),\n            )\n        sql.append(\n            'INSERT INTO \"{content_table}_fts\" (rowid, {cols}) {select}'.format(\n                cols=fts_cols, content_table=table, select=select\n            )\n        )\n    conn.executescript(\";\\n\".join(sql))",
+                    "func_fullName": "csvs_to_sqlite.utils.generate_and_populate_fts(conn, created_tables, cols, foreign_keys)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "add_index",
+                    "func_desc": "Add an index to a table .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def add_index(conn, table_name, index):\n    columns_to_index = [b.strip() for b in index.split(\",\")]\n    # Figure out columns in table so we can sanity check this\n    cursor = conn.execute(\"select * from [{}] limit 0\".format(table_name))\n    columns = [r[0] for r in cursor.description]\n    if all([(c in columns) for c in columns_to_index]):\n        sql = 'CREATE INDEX [\"{}_{}\"] ON [{}](\"{}\");'.format(\n            table_name,\n            \"_\".join(columns_to_index),\n            table_name,\n            '\", \"'.join(columns_to_index),\n        )\n        conn.execute(sql)",
+                    "func_fullName": "csvs_to_sqlite.utils.add_index(conn, table_name, index)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1363; k=3; a=0.25; combined=0.792; stability(ARI)=1.000; sep=0.223",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "load_csv",
+                    "func_desc": "Load a CSV file into a sequence of strings .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def load_csv(\n    filepath,\n    separator,\n    skip_errors,\n    quoting,\n    shape,\n    encodings_to_try=(\"utf8\", \"latin-1\"),\n    just_strings=False,",
+                    "func_fullName": "csvs_to_sqlite.utils.load_csv(filepath, separator, skip_errors, quoting, shape, encodings_to_try, just_strings)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(\n        self,\n        exists=False,\n        file_okay=True,\n        dir_okay=True,\n        writable=False,\n        readable=True,\n        resolve_path=False,\n        allow_dash=False,\n        path_type=None,",
+                    "func_fullName": "csvs_to_sqlite.utils.PathOrURL.__init__(self, exists, file_okay, dir_okay, writable, readable, resolve_path, allow_dash, path_type)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "__repr__",
+                    "func_desc": "Return a string representation of the sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence sequence",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return \"<{}: {} rows>\".format(\n            self.table_name,\n            self.conn.execute(\n                'select count(*) from \"{}\"'.format(self.table_name)\n            ).fetchone()[0],\n        )",
+                    "func_fullName": "csvs_to_sqlite.utils.LookupTable.__repr__(self)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "parse_shape",
+                    "func_desc": "Parse a string of shape string into a list of dicts .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_shape(shape):\n    # Shape is format 'county:Cty,votes:Vts(REAL)'\n    defs = [b.strip() for b in shape.split(\",\")]\n    defns = []\n    for defn in defs:\n        # Is there a type defined?\n        type_override = None\n        m = type_re.search(defn)\n        if m:\n            type_override = m.group(1)\n            defn = type_re.sub(\"\", defn)\n            # In Python 2 type_override needs to be a bytestring\n            if six.PY2:\n                type_override = str(type_override)\n        # Is this a rename?\n        if \":\" in defn:\n            csv_name, db_name = defn.split(\":\", 1)\n        else:\n            csv_name, db_name = defn, defn\n        defns.append(\n            {\"csv_name\": csv_name, \"db_name\": db_name, \"type_override\": type_override}\n        )\n    return defns",
+                    "func_fullName": "csvs_to_sqlite.utils.parse_shape(shape)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "apply_shape",
+                    "func_desc": "Apply a shape to a DataFrame .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def apply_shape(df, shape):\n    # Shape is format 'county:Cty,votes:Vts(REAL)'\n    # Applies changes in place, returns dtype= arg for to_sql\n    if not shape:\n        return None\n    defns = parse_shape(shape)\n    # Drop any columns we don't want\n    cols_to_keep = [d[\"csv_name\"] for d in defns]\n    cols_to_drop = [c for c in df.columns if c not in cols_to_keep]\n    if cols_to_drop:\n        df.drop(cols_to_drop, axis=1, inplace=True)\n    # Apply column renames\n    renames = {\n        d[\"csv_name\"]: d[\"db_name\"] for d in defns if d[\"csv_name\"] != d[\"db_name\"]\n    }\n    if renames:\n        df.rename(columns=renames, inplace=True)\n    # Return type overrides, if any\n    return {d[\"db_name\"]: d[\"type_override\"] for d in defns if d[\"type_override\"]}",
+                    "func_fullName": "csvs_to_sqlite.utils.apply_shape(df, shape)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1363; k=3; a=0.25; combined=0.792; stability(ARI)=1.000; sep=0.223",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "csvs_from_paths",
+                    "func_desc": "Get CSVs from paths .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def csvs_from_paths(paths):\n    csvs = {}\n\n    def add_item(filepath, full_path=None):\n        name = os.path.splitext(os.path.basename(filepath))[0]\n        if name in csvs:\n            i = 1\n            while True:\n                name_plus_suffix = \"{}-{}\".format(name, i)\n                if name_plus_suffix not in csvs:\n                    name = name_plus_suffix\n                    break\n                else:\n                    i += 1\n        if full_path is None:\n            csvs[name] = filepath\n        else:\n            csvs[name] = full_path\n\n    for path in paths:\n        if os.path.isfile(path):\n            add_item(path)\n        elif _is_url(path):\n            add_item(urlparse(path).path, path)\n        elif os.path.isdir(path):\n            # Recursively seek out ALL csvs in directory\n            for root, dirnames, filenames in os.walk(path):\n                for filename in fnmatch.filter(filenames, \"*.csv\"):\n                    relpath = os.path.relpath(root, path)\n                    namepath = os.path.join(relpath, os.path.splitext(filename)[0])\n                    csvs[namepath] = os.path.join(root, filename)\n\n    return csvs",
+                    "func_fullName": "csvs_to_sqlite.utils.csvs_from_paths(paths)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "_is_url",
+                    "func_desc": "Check if a URL is a valid URL .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _is_url(possible_url):\n    valid_schemes = set(uses_relative + uses_netloc + uses_params)\n    valid_schemes.discard(\"\")\n\n    try:\n        return urlparse(possible_url).scheme in valid_schemes\n    except:\n        return False",
+                    "func_fullName": "csvs_to_sqlite.utils._is_url(possible_url)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "convert",
+                    "func_desc": "Convert path or url to path or url .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def convert(self, value, param, ctx):\n        if _is_url(value):\n            return self.coerce_path_result(value)\n        else:\n            return super(PathOrURL, self).convert(value, param, ctx)",
+                    "func_fullName": "csvs_to_sqlite.utils.PathOrURL.convert(self, value, param, ctx)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "apply_dates_and_datetimes",
+                    "func_desc": "Applies dates and datetimes to a DataFrame .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def apply_dates_and_datetimes(df, date_cols, datetime_cols, datetime_formats):\n    def parse_datetime(datestring, force_date=False):\n        if pd.isnull(datestring):\n            return datestring\n        dt = dateparser.parse(datestring, date_formats=datetime_formats)\n        if force_date:\n            return dt.date().isoformat()\n        else:\n            return dt.isoformat()\n\n    for date_col in date_cols:\n        df[date_col] = df[date_col].apply(lambda s: parse_datetime(s, force_date=True))\n    for datetime_col in datetime_cols:\n        df[datetime_col] = df[datetime_col].apply(parse_datetime)",
+                    "func_fullName": "csvs_to_sqlite.utils.apply_dates_and_datetimes(df, date_cols, datetime_cols, datetime_formats)"
+                },
+                {
+                    "func_id": 21,
+                    "func_name": "add_item",
+                    "func_desc": "Adds a new item to the CSV .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_item(filepath, full_path=None):\n        name = os.path.splitext(os.path.basename(filepath))[0]\n        if name in csvs:\n            i = 1\n            while True:\n                name_plus_suffix = \"{}-{}\".format(name, i)\n                if name_plus_suffix not in csvs:\n                    name = name_plus_suffix\n                    break\n                else:\n                    i += 1\n        if full_path is None:\n            csvs[name] = filepath\n        else:\n            csvs[name] = full_path",
+                    "func_fullName": "csvs_to_sqlite.utils.csvs_from_paths.add_item(filepath, full_path)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "parse_datetime",
+                    "func_desc": "Parse a string of the form YYYY - MM - DD or YYYY - MM - DD into an ISO - 8601 string .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def parse_datetime(datestring, force_date=False):\n        if pd.isnull(datestring):\n            return datestring\n        dt = dateparser.parse(datestring, date_formats=datetime_formats)\n        if force_date:\n            return dt.date().isoformat()\n        else:\n            return dt.isoformat()",
+                    "func_fullName": "csvs_to_sqlite.utils.apply_dates_and_datetimes.parse_datetime(datestring, force_date)"
+                }
+            ]
+        }
+    ]
+}

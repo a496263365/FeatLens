@@ -1,0 +1,107 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 460,
+  "namespace": "falcon.routing.util.map_http_methods",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9163,
+      "input_estimate_after": 9163,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies that would be needed to implement `map_http_methods`:\n\n```\nfalcon/constants.py\nline: 161\nconstants: _META_METHODS\nconstants: COMBINED_METHODS\n\nfalcon/responders.py\nfunction: create_default_options\nfunction: create_method_not_allowed\n\nfalcon/routing/compiled.py\nline: 120\nfunction: CompiledRouter.map_http_methods\n\nfalcon/routing/util.py\nline: 149\nfunction: set_default_responders\n```",
+  "final_locations": {
+    "files": [
+      "falcon/constants.py",
+      "falcon/responders.py",
+      "falcon/routing/compiled.py",
+      "falcon/routing/util.py"
+    ],
+    "entities": [
+      {
+        "file": "falcon/responders.py",
+        "name": "create_default_options",
+        "kind": "function",
+        "symbol": "falcon.responders.create_default_options",
+        "start": 66,
+        "end": 91,
+        "code": "def create_default_options(allowed_methods, asgi=False):\n    \"\"\"Create a default responder for the OPTIONS method.\n\n    Args:\n        allowed_methods (iterable): An iterable of HTTP methods (uppercase)\n            that should be returned in the Allow header.\n        asgi (bool): ``True`` if using an ASGI app, ``False`` otherwise\n            (default ``False``).\n    \"\"\"\n    allowed = ', '.join(allowed_methods)\n\n    if asgi:\n\n        async def options_responder_async(req, resp, **kwargs):\n            resp.status = HTTP_200\n            resp.set_header('Allow', allowed)\n            resp.set_header('Content-Length', '0')\n\n        return options_responder_async\n\n    def options_responder(req, resp, **kwargs):\n        resp.status = HTTP_200\n        resp.set_header('Allow', allowed)\n        resp.set_header('Content-Length', '0')\n\n    return options_responder"
+      },
+      {
+        "file": "falcon/responders.py",
+        "name": "create_method_not_allowed",
+        "kind": "function",
+        "symbol": "falcon.responders.create_method_not_allowed",
+        "start": 43,
+        "end": 63,
+        "code": "def create_method_not_allowed(allowed_methods, asgi=False):\n    \"\"\"Create a responder for \"405 Method Not Allowed\".\n\n    Args:\n        allowed_methods: A list of HTTP methods (uppercase) that should be\n            returned in the Allow header.\n        asgi (bool): ``True`` if using an ASGI app, ``False`` otherwise\n            (default ``False``).\n    \"\"\"\n\n    if asgi:\n\n        async def method_not_allowed_responder_async(req, resp, **kwargs):\n            raise HTTPMethodNotAllowed(allowed_methods)\n\n        return method_not_allowed_responder_async\n\n    def method_not_allowed(req, resp, **kwargs):\n        raise HTTPMethodNotAllowed(allowed_methods)\n\n    return method_not_allowed"
+      },
+      {
+        "file": "falcon/routing/compiled.py",
+        "name": "CompiledRouter.map_http_methods",
+        "kind": "function",
+        "symbol": "falcon.routing.compiled.CompiledRouter.map_http_methods",
+        "start": 120,
+        "end": 147,
+        "code": "    def map_http_methods(self, resource, **kwargs):\n        \"\"\"Map HTTP methods (e.g., GET, POST) to methods of a resource object.\n\n        This method is called from :meth:`~.add_route` and may be overridden to\n        provide a custom mapping strategy.\n\n        Args:\n            resource (instance): Object which represents a REST resource.\n                The default maps the HTTP method ``GET`` to ``on_get()``,\n                ``POST`` to ``on_post()``, etc. If any HTTP methods are not\n                supported by your resource, simply don't define the\n                corresponding request handlers, and Falcon will do the right\n                thing.\n\n        Keyword Args:\n            suffix (str): Optional responder name suffix for this route. If\n                a suffix is provided, Falcon will map GET requests to\n                ``on_get_{suffix}()``, POST requests to ``on_post_{suffix}()``,\n                etc. In this way, multiple closely-related routes can be\n                mapped to the same resource. For example, a single resource\n                class can use suffixed responders to distinguish requests\n                for a single item vs. a collection of those same items.\n                Another class might use a suffixed responder to handle\n                a shortlink route in addition to the regular route for the\n                resource.\n        \"\"\"\n\n        return map_http_methods(resource, suffix=kwargs.get('suffix', None))"
+      },
+      {
+        "file": "falcon/routing/util.py",
+        "name": "set_default_responders",
+        "kind": "function",
+        "symbol": "falcon.routing.util.set_default_responders",
+        "start": 149,
+        "end": 174,
+        "code": "def set_default_responders(method_map, asgi=False):\n    \"\"\"Map HTTP methods not explicitly defined on a resource to default responders.\n\n    Args:\n        method_map: A dict with HTTP methods mapped to responders explicitly\n            defined in a resource.\n        asgi (bool): ``True`` if using an ASGI app, ``False`` otherwise\n            (default ``False``).\n    \"\"\"\n\n    # Attach a resource for unsupported HTTP methods\n    allowed_methods = [\n        m for m in sorted(list(method_map.keys())) if m not in constants._META_METHODS\n    ]\n\n    if 'OPTIONS' not in method_map:\n        # OPTIONS itself is intentionally excluded from the Allow header\n        opt_responder = responders.create_default_options(allowed_methods, asgi=asgi)\n        method_map['OPTIONS'] = opt_responder\n        allowed_methods.append('OPTIONS')\n\n    na_responder = responders.create_method_not_allowed(allowed_methods, asgi=asgi)\n\n    for method in constants.COMBINED_METHODS:\n        if method not in method_map:\n            method_map[method] = na_responder"
+      }
+    ],
+    "unresolved": [
+      "falcon/constants.py:line: 161"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.25,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "falcon.constants.COMBINED_METHODS"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 4,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4056
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26048,
+    "completion_tokens": 414,
+    "total_tokens": 26462,
+    "seconds": 62.477312088012695,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 95.104736328125,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

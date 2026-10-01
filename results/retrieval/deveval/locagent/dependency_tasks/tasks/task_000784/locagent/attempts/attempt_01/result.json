@@ -1,0 +1,118 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 784,
+  "namespace": "ydata_profiling.model.pandas.correlations_pandas.pandas_auto_compute",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 15436,
+      "input_estimate_after": 15436,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `pandas_auto_compute` function:\n\n```\nsrc/ydata_profiling/model/pandas/correlations_pandas.py\nline: 43\nfunction: _cramers_corrected_stat\n\nsrc/ydata_profiling/model/pandas/correlations_pandas.py\nline: 76\nfunction: _pairwise_spearman\n\nsrc/ydata_profiling/model/pandas/correlations_pandas.py\nline: 80\nfunction: _pairwise_cramers\n\nsrc/ydata_profiling/model/pandas/correlations_pandas.py\nline: 84\nfunction: pandas_cramers_compute\nline: 88\nline: 92-99\n\nsrc/ydata_profiling/model/pandas/correlations_pandas.py\nline: 22\nfunction: pandas_spearman_compute\nline: 26\n```",
+  "final_locations": {
+    "files": [
+      "src/ydata_profiling/model/pandas/correlations_pandas.py"
+    ],
+    "entities": [
+      {
+        "file": "src/ydata_profiling/model/pandas/correlations_pandas.py",
+        "name": "_cramers_corrected_stat",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.pandas.correlations_pandas._cramers_corrected_stat",
+        "start": 43,
+        "end": 73,
+        "code": "def _cramers_corrected_stat(confusion_matrix: pd.DataFrame, correction: bool) -> float:\n    \"\"\"Calculate the Cramer's V corrected stat for two variables.\n\n    Args:\n        confusion_matrix: Crosstab between two variables.\n        correction: Should the correction be applied?\n\n    Returns:\n        The Cramer's V corrected stat for the two variables.\n    \"\"\"\n    # handles empty crosstab\n    if confusion_matrix.empty:\n        return 0\n\n    chi2 = stats.chi2_contingency(confusion_matrix, correction=correction)[0]\n    n = confusion_matrix.sum().sum()\n    phi2 = chi2 / n\n    r = confusion_matrix.shape[0]\n    k = confusion_matrix.shape[1] if len(confusion_matrix.shape) > 1 else 1\n\n    # Deal with NaNs later on\n    with np.errstate(divide=\"ignore\", invalid=\"ignore\"):\n        phi2corr = max(0.0, phi2 - ((k - 1.0) * (r - 1.0)) / (n - 1.0))\n        rcorr = r - ((r - 1.0) ** 2.0) / (n - 1.0)\n        kcorr = k - ((k - 1.0) ** 2.0) / (n - 1.0)\n        rkcorr = min((kcorr - 1.0), (rcorr - 1.0))\n        if rkcorr == 0.0:\n            corr = 1.0\n        else:\n            corr = np.sqrt(phi2corr / rkcorr)\n    return corr"
+      },
+      {
+        "file": "src/ydata_profiling/model/pandas/correlations_pandas.py",
+        "name": "_pairwise_spearman",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.pandas.correlations_pandas._pairwise_spearman",
+        "start": 76,
+        "end": 77,
+        "code": "def _pairwise_spearman(col_1: pd.Series, col_2: pd.Series) -> float:\n    return col_1.corr(col_2, method=\"spearman\")"
+      },
+      {
+        "file": "src/ydata_profiling/model/pandas/correlations_pandas.py",
+        "name": "_pairwise_cramers",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.pandas.correlations_pandas._pairwise_cramers",
+        "start": 80,
+        "end": 81,
+        "code": "def _pairwise_cramers(col_1: pd.Series, col_2: pd.Series) -> float:\n    return _cramers_corrected_stat(pd.crosstab(col_1, col_2), correction=True)"
+      },
+      {
+        "file": "src/ydata_profiling/model/pandas/correlations_pandas.py",
+        "name": "pandas_cramers_compute",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.pandas.correlations_pandas.pandas_cramers_compute",
+        "start": 85,
+        "end": 121,
+        "code": "def pandas_cramers_compute(\n    config: Settings, df: pd.DataFrame, summary: dict\n) -> Optional[pd.DataFrame]:\n    threshold = config.categorical_maximum_correlation_distinct\n\n    # `index` and `columns` must not be a set since Pandas 1.5,\n    # so convert it to a list. The order of the list is arbitrary.\n    categoricals = list(\n        {\n            key\n            for key, value in summary.items()\n            if value[\"type\"] in {\"Categorical\", \"Boolean\"}\n            and 1 < value[\"n_distinct\"] <= threshold\n        }\n    )\n\n    if len(categoricals) <= 1:\n        return None\n\n    matrix = np.zeros((len(categoricals), len(categoricals)))\n    np.fill_diagonal(matrix, 1.0)\n    correlation_matrix = pd.DataFrame(\n        matrix,\n        index=categoricals,\n        columns=categoricals,\n    )\n\n    for name1, name2 in itertools.combinations(categoricals, 2):\n        confusion_matrix = pd.crosstab(df[name1], df[name2])\n        if confusion_matrix.empty:\n            correlation_matrix.loc[name2, name1] = np.nan\n        else:\n            correlation_matrix.loc[name2, name1] = _cramers_corrected_stat(\n                confusion_matrix, correction=True\n            )\n        correlation_matrix.loc[name1, name2] = correlation_matrix.loc[name2, name1]\n    return correlation_matrix"
+      },
+      {
+        "file": "src/ydata_profiling/model/pandas/correlations_pandas.py",
+        "name": "pandas_spearman_compute",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.pandas.correlations_pandas.pandas_spearman_compute",
+        "start": 23,
+        "end": 26,
+        "code": "def pandas_spearman_compute(\n    config: Settings, df: pd.DataFrame, summary: dict\n) -> Optional[pd.DataFrame]:\n    return df.corr(method=\"spearman\")"
+      }
+    ],
+    "unresolved": [
+      "src/ydata_profiling/model/pandas/correlations_pandas.py:line: 84",
+      "src/ydata_profiling/model/pandas/correlations_pandas.py:line: 22"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.2222222222222222,
+    "exact_entity_dr": 0.2222222222222222,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "ydata_profiling.model.pandas.correlations_pandas._pairwise_cramers",
+      "ydata_profiling.model.pandas.correlations_pandas._pairwise_spearman"
+    ],
+    "exact_hit_dependencies": [
+      "ydata_profiling.model.pandas.correlations_pandas._pairwise_cramers",
+      "ydata_profiling.model.pandas.correlations_pandas._pairwise_spearman"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 2818
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 51497,
+    "completion_tokens": 580,
+    "total_tokens": 52077,
+    "seconds": 43.882960081100464,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 47.00687003135681,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

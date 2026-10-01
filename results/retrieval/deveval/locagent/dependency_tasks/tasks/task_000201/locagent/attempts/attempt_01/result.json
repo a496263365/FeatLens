@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 201,
+  "namespace": "bplustree.memory.WAL.rollback",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6986,
+      "input_estimate_after": 6986,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, here are the verified locations containing reusable dependencies for implementing the WAL rollback functionality:\n\n```\nbplustree/memory.py\nline: 371\nfunction: WAL._index_frame\n\nbplustree/memory.py\nline: 382\nfunction: WAL._add_frame\n\nbplustree/memory.py\nline: 282\nclass: FrameType\n\nbplustree/memory.py\nline: 192\nvariable: FileMemory._cache\n\nbplustree/memory.py\nline: 351\nvariable: WAL._not_committed_pages\n```",
+  "final_locations": {
+    "files": [
+      "bplustree/memory.py"
+    ],
+    "entities": [
+      {
+        "file": "bplustree/memory.py",
+        "name": "WAL._index_frame",
+        "kind": "function",
+        "symbol": "bplustree.memory.WAL._index_frame",
+        "start": 371,
+        "end": 380,
+        "code": "    def _index_frame(self, frame_type: FrameType, page: int, page_start: int):\n        if frame_type is FrameType.PAGE:\n            self._not_committed_pages[page] = page_start\n        elif frame_type is FrameType.COMMIT:\n            self._committed_pages.update(self._not_committed_pages)\n            self._not_committed_pages = dict()\n        elif frame_type is FrameType.ROLLBACK:\n            self._not_committed_pages = dict()\n        else:\n            assert False"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "WAL._add_frame",
+        "kind": "function",
+        "symbol": "bplustree.memory.WAL._add_frame",
+        "start": 382,
+        "end": 400,
+        "code": "    def _add_frame(self, frame_type: FrameType, page: Optional[int]=None,\n                   page_data: Optional[bytes]=None):\n        if frame_type is FrameType.PAGE and (not page or not page_data):\n            raise ValueError('PAGE frame without page data')\n        if page_data and len(page_data) != self._page_size:\n            raise ValueError('Page data is different from page size')\n        if not page:\n            page = 0\n        if frame_type is not FrameType.PAGE:\n            page_data = b''\n        data = (\n            frame_type.value.to_bytes(FRAME_TYPE_BYTES, ENDIAN) +\n            page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +\n            page_data\n        )\n        self._fd.seek(0, io.SEEK_END)\n        write_to_file(self._fd, self._dir_fd, data,\n                      fsync=frame_type != FrameType.PAGE)\n        self._index_frame(frame_type, page, self._fd.tell() - self._page_size)"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "FrameType",
+        "kind": "class",
+        "symbol": "bplustree.memory.FrameType",
+        "start": 282,
+        "end": 285,
+        "code": "class FrameType(enum.Enum):\n    PAGE = 1\n    COMMIT = 2\n    ROLLBACK = 3"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "FileMemory.write_transaction.WriteTransaction.__exit__",
+        "kind": "function",
+        "symbol": "bplustree.memory.FileMemory.write_transaction.WriteTransaction.__exit__",
+        "start": 187,
+        "end": 196,
+        "code": "            def __exit__(self2, exc_type, exc_val, exc_tb):\n                if exc_type:\n                    # When an error happens in the middle of a write\n                    # transaction we must roll it back and clear the cache\n                    # because the writer may have partially modified the Nodes\n                    self._wal.rollback()\n                    self._cache.clear()\n                else:\n                    self._wal.commit()\n                self._lock.writer_lock.release()"
+      },
+      {
+        "file": "bplustree/memory.py",
+        "name": "WAL._load_wal",
+        "kind": "function",
+        "symbol": "bplustree.memory.WAL._load_wal",
+        "start": 340,
+        "end": 352,
+        "code": "    def _load_wal(self):\n        self._fd.seek(0)\n        header_data = read_from_file(self._fd, 0, OTHERS_BYTES)\n        assert int.from_bytes(header_data, ENDIAN) == self._page_size\n\n        while True:\n            try:\n                self._load_next_frame()\n            except ReachedEndOfFile:\n                break\n        if self._not_committed_pages:\n            logger.warning('WAL has uncommitted data, discarding it')\n            self._not_committed_pages = dict()"
+      }
+    ],
+    "unresolved": [
+      "bplustree/memory.py:variable: FileMemory._cache",
+      "bplustree/memory.py:variable: WAL._not_committed_pages"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.75,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "bplustree.memory.FrameType",
+      "bplustree.memory.WAL._add_frame",
+      "bplustree.memory.WAL._not_committed_pages"
+    ],
+    "exact_hit_dependencies": [
+      "bplustree.memory.FrameType",
+      "bplustree.memory.WAL._add_frame"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 2423
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 27331,
+    "completion_tokens": 508,
+    "total_tokens": 27839,
+    "seconds": 50.68953800201416,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 51.40033435821533,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

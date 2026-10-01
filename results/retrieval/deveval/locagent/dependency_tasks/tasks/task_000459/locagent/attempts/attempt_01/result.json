@@ -1,0 +1,94 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 459,
+  "namespace": "falcon.routing.static._BoundedFile.read",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nfalcon/routing/static.py\nline: 77\nclass: _BoundedFile\nfunction: read\n\nfalcon/routing/static.py\nline: 43\nfunction: _open_range\n\nfalcon/routing/static.py\nline: 54\nfunction: _open_range\n\nfalcon/routing/static.py\nline: 201\nclass: StaticRoute\nfunction: __call__\n\nfalcon/util/sync.py\nline: 1\nfunction: get_running_loop\n```",
+  "final_locations": {
+    "files": [
+      "falcon/routing/static.py",
+      "falcon/util/sync.py"
+    ],
+    "entities": [
+      {
+        "file": "falcon/routing/static.py",
+        "name": "_BoundedFile",
+        "kind": "class",
+        "symbol": "falcon.routing.static._BoundedFile",
+        "start": 62,
+        "end": 78,
+        "code": "class _BoundedFile:\n    \"\"\"Wrap a file to only allow part of it to be read.\n\n    Args:\n        fh: The file object to wrap. Should be opened in binary mode,\n            and already seeked to an appropriate position. The object must\n            expose a ``.close()`` method.\n        length (int): Number of bytes that may be read.\n    \"\"\"\n\n    def __init__(self, fh, length):\n        self.fh = fh\n        self.close = fh.close\n        self.remaining = length\n\n    def read(self, size=-1):\n        pass"
+      },
+      {
+        "file": "falcon/routing/static.py",
+        "name": "_open_range",
+        "kind": "function",
+        "symbol": "falcon.routing.static._open_range",
+        "start": 11,
+        "end": 59,
+        "code": "def _open_range(file_path, req_range):\n    \"\"\"Open a file for a ranged request.\n\n    Args:\n        file_path (str): Path to the file to open.\n        req_range (Optional[Tuple[int, int]]): Request.range value.\n    Returns:\n        tuple: Three-member tuple of (stream, content-length, content-range).\n            If req_range is ``None`` or ignored, content-range will be\n            ``None``; otherwise, the stream will be appropriately seeked and\n            possibly bounded, and the content-range will be a tuple of\n            (start, end, size).\n    \"\"\"\n    fh = io.open(file_path, 'rb')\n    size = os.fstat(fh.fileno()).st_size\n    if req_range is None:\n        return fh, size, None\n\n    start, end = req_range\n    if size == 0:\n        # NOTE(tipabu): Ignore Range headers for zero-byte files; just serve\n        #   the empty body since Content-Range can't be used to express a\n        #   zero-byte body.\n        return fh, 0, None\n\n    if start < 0 and end == -1:\n        # NOTE(tipabu): Special case: only want the last N bytes.\n        start = max(start, -size)\n        fh.seek(start, os.SEEK_END)\n        # NOTE(vytas): Wrap in order to prevent sendfile from being used, as\n        #   its implementation was found to be buggy in many popular WSGI\n        #   servers for open files with a non-zero offset.\n        return _BoundedFile(fh, -start), -start, (size + start, size - 1, size)\n\n    if start >= size:\n        fh.close()\n        raise falcon.HTTPRangeNotSatisfiable(size)\n\n    fh.seek(start)\n    if end == -1:\n        # NOTE(vytas): Wrap in order to prevent sendfile from being used, as\n        #   its implementation was found to be buggy in many popular WSGI\n        #   servers for open files with a non-zero offset.\n        length = size - start\n        return _BoundedFile(fh, length), length, (start, size - 1, size)\n\n    end = min(end, size - 1)\n    length = end - start + 1\n    return _BoundedFile(fh, length), length, (start, end, size)"
+      },
+      {
+        "file": "falcon/routing/static.py",
+        "name": "StaticRoute.__call__",
+        "kind": "function",
+        "symbol": "falcon.routing.static.StaticRoute.__call__",
+        "start": 165,
+        "end": 225,
+        "code": "    def __call__(self, req, resp):\n        \"\"\"Resource responder for this route.\"\"\"\n\n        without_prefix = req.path[len(self._prefix) :]\n\n        # NOTE(kgriffs): Check surrounding whitespace and strip trailing\n        # periods, which are illegal on windows\n        # NOTE(CaselIT): An empty filename is allowed when fallback_filename is provided\n        if (\n            not (without_prefix or self._fallback_filename is not None)\n            or without_prefix.strip().rstrip('.') != without_prefix\n            or self._DISALLOWED_CHARS_PATTERN.search(without_prefix)\n            or '\\\\' in without_prefix\n            or '//' in without_prefix\n            or len(without_prefix) > self._MAX_NON_PREFIXED_LEN\n        ):\n\n            raise falcon.HTTPNotFound()\n\n        normalized = os.path.normpath(without_prefix)\n\n        if normalized.startswith(self._DISALLOWED_NORMALIZED_PREFIXES):\n            raise falcon.HTTPNotFound()\n\n        file_path = os.path.join(self._directory, normalized)\n\n        # NOTE(kgriffs): Final sanity-check just to be safe. This check\n        # should never succeed, but this should guard against us having\n        # overlooked something.\n        if '..' in file_path or not file_path.startswith(self._directory):\n            raise falcon.HTTPNotFound()\n\n        req_range = req.range\n        if req.range_unit != 'bytes':\n            req_range = None\n        try:\n            stream, length, content_range = _open_range(file_path, req_range)\n            resp.set_stream(stream, length)\n        except IOError:\n            if self._fallback_filename is None:\n                raise falcon.HTTPNotFound()\n            try:\n                stream, length, content_range = _open_range(\n                    self._fallback_filename, req_range\n                )\n                resp.set_stream(stream, length)\n                file_path = self._fallback_filename\n            except IOError:\n                raise falcon.HTTPNotFound()\n\n        suffix = os.path.splitext(file_path)[1]\n        resp.content_type = resp.options.static_media_types.get(\n            suffix, 'application/octet-stream'\n        )\n        resp.accept_ranges = 'bytes'\n\n        if self._downloadable:\n            resp.downloadable_as = os.path.basename(file_path)\n        if content_range:\n            resp.status = falcon.HTTP_206\n            resp.content_range = content_range"
+      },
+      {
+        "file": "falcon/routing/static.py",
+        "name": "StaticRoute",
+        "kind": "class",
+        "symbol": "falcon.routing.static.StaticRoute",
+        "start": 88,
+        "end": 225,
+        "code": "class StaticRoute:\n    \"\"\"Represents a static route.\n\n    Args:\n        prefix (str): The path prefix to match for this route. If the\n            path in the requested URI starts with this string, the remainder\n            of the path will be appended to the source directory to\n            determine the file to serve. This is done in a secure manner\n            to prevent an attacker from requesting a file outside the\n            specified directory.\n\n            Note that static routes are matched in LIFO order, and are only\n            attempted after checking dynamic routes and sinks.\n\n        directory (Union[str, pathlib.Path]): The source directory from which to\n            serve files. Must be an absolute path.\n        downloadable (bool): Set to ``True`` to include a\n            Content-Disposition header in the response. The \"filename\"\n            directive is simply set to the name of the requested file.\n        fallback_filename (str): Fallback filename used when the requested file\n            is not found. Can be a relative path inside the prefix folder or\n            any valid absolute path.\n\n            Note:\n                If the fallback file is served instead of the requested file,\n                the response Content-Type header, as well as the\n                Content-Disposition header (provided it was requested with the\n                `downloadable` parameter described above), are derived from the\n                fallback filename, as opposed to the requested filename.\n    \"\"\"\n\n    # NOTE(kgriffs): Don't allow control characters and reserved chars\n    _DISALLOWED_CHARS_PATTERN = re.compile('[\\x00-\\x1f\\x80-\\x9f\\ufffd~?<>:*|\\'\"]')\n\n    # NOTE(vytas): Match the behavior of the underlying os.path.normpath.\n    _DISALLOWED_NORMALIZED_PREFIXES = ('..' + os.path.sep, os.path.sep)\n\n    # NOTE(kgriffs): If somehow an executable code exploit is triggerable, this\n    # minimizes how much can be included in the payload.\n    _MAX_NON_PREFIXED_LEN = 512\n\n    def __init__(self, prefix, directory, downloadable=False, fallback_filename=None):\n        if not prefix.startswith('/'):\n            raise ValueError(\"prefix must start with '/'\")\n\n        # TODO(vgerak): Remove the check when py3.5 is dropped.\n        if isinstance(directory, pathlib.Path):\n            directory = str(directory)\n\n        self._directory = os.path.normpath(directory)\n        if not os.path.isabs(self._directory):\n            raise ValueError('directory must be an absolute path')\n\n        if fallback_filename is None:\n            self._fallback_filename = None\n        else:\n            self._fallback_filename = os.path.normpath(\n                os.path.join(self._directory, fallback_filename)\n            )\n            if not os.path.isfile(self._fallback_filename):\n                raise ValueError('fallback_filename is not a file')\n\n        # NOTE(kgriffs): Ensure it ends with a path separator to ensure\n        # we only match on the complete segment. Don't raise an error\n        # because most people won't expect to have to append a slash.\n        if not prefix.endswith('/'):\n            prefix += '/'\n\n        self._prefix = prefix\n        self._downloadable = downloadable\n\n    def match(self, path):\n        \"\"\"Check whether the given path matches this route.\"\"\"\n        if self._fallback_filename is None:\n            return path.startswith(self._prefix)\n        return path.startswith(self._prefix) or path == self._prefix[:-1]\n\n    def __call__(self, req, resp):\n        \"\"\"Resource responder for this route.\"\"\"\n\n        without_prefix = req.path[len(self._prefix) :]\n\n        # NOTE(kgriffs): Check surrounding whitespace and strip trailing\n        # periods, which are illegal on windows\n        # NOTE(CaselIT): An empty filename is allowed when fallback_filename is provided\n        if (\n            not (without_prefix or self._fallback_filename is not None)\n            or without_prefix.strip().rstrip('.') != without_prefix\n            or self._DISALLOWED_CHARS_PATTERN.search(without_prefix)\n            or '\\\\' in without_prefix\n            or '//' in without_prefix\n            or len(without_prefix) > self._MAX_NON_PREFIXED_LEN\n        ):\n\n            raise falcon.HTTPNotFound()\n\n        normalized = os.path.normpath(without_prefix)\n\n        if normalized.startswith(self._DISALLOWED_NORMALIZED_PREFIXES):\n            raise falcon.HTTPNotFound()\n\n        file_path = os.path.join(self._directory, normalized)\n\n        # NOTE(kgriffs): Final sanity-check just to be safe. This check\n        # should never succeed, but this should guard against us having\n        # overlooked something.\n        if '..' in file_path or not file_path.startswith(self._directory):\n            raise falcon.HTTPNotFound()\n\n        req_range = req.range\n        if req.range_unit != 'bytes':\n            req_range = None\n        try:\n            stream, length, content_range = _open_range(file_path, req_range)\n            resp.set_stream(stream, length)\n        except IOError:\n            if self._fallback_filename is None:\n                raise falcon.HTTPNotFound()\n            try:\n                stream, length, content_range = _open_range(\n                    self._fallback_filename, req_range\n                )\n                resp.set_stream(stream, length)\n                file_path = self._fallback_filename\n            except IOError:\n                raise falcon.HTTPNotFound()\n\n        suffix = os.path.splitext(file_path)[1]\n        resp.content_type = resp.options.static_media_types.get(\n            suffix, 'application/octet-stream'\n        )\n        resp.accept_ranges = 'bytes'\n\n        if self._downloadable:\n            resp.downloadable_as = os.path.basename(file_path)\n        if content_range:\n            resp.status = falcon.HTTP_206\n            resp.content_range = content_range"
+      }
+    ],
+    "unresolved": [
+      "falcon/routing/static.py:function: read",
+      "falcon/routing/static.py:function: __call__",
+      "falcon/util/sync.py:line: 1",
+      "falcon/util/sync.py:function: get_running_loop"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 10692
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 21414,
+    "completion_tokens": 1214,
+    "total_tokens": 22628,
+    "seconds": 48.48482656478882,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 68.10765600204468,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

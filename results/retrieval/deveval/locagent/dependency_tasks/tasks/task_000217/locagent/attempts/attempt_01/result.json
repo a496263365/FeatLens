@@ -1,0 +1,105 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 217,
+  "namespace": "datasette.facets.ColumnFacet.facet_results",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "\n\n```\ndatasette/facets.py\nline: 210\nclass: ColumnFacet\nfunction: facet_results\n\ndatasette/facets.py\nline: 156\nclass: ColumnFacet\n\ndatasette/views/table.py\nfunction: TableView._data_traced.execute_facets\n\ndatasette/facets.py\nfunction: Facet.get_columns\nfunction: Facet.get_row_count\n\ndatasette/facets.py\nfunction: Facet.facet_results\n```\n\n",
+  "final_locations": {
+    "files": [
+      "datasette/facets.py",
+      "datasette/views/table.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/facets.py",
+        "name": "ColumnFacet",
+        "kind": "class",
+        "symbol": "datasette.facets.ColumnFacet",
+        "start": 156,
+        "end": 211,
+        "code": "class ColumnFacet(Facet):\n    type = \"column\"\n\n    async def suggest(self):\n        row_count = await self.get_row_count()\n        columns = await self.get_columns(self.sql, self.params)\n        facet_size = self.get_facet_size()\n        suggested_facets = []\n        already_enabled = [c[\"config\"][\"simple\"] for c in self.get_configs()]\n        for column in columns:\n            if column in already_enabled:\n                continue\n            suggested_facet_sql = \"\"\"\n                select {column} as value, count(*) as n from (\n                    {sql}\n                ) where value is not null\n                group by value\n                limit {limit}\n            \"\"\".format(\n                column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1\n            )\n            distinct_values = None\n            try:\n                distinct_values = await self.ds.execute(\n                    self.database,\n                    suggested_facet_sql,\n                    self.params,\n                    truncate=False,\n                    custom_time_limit=self.ds.setting(\"facet_suggest_time_limit_ms\"),\n                )\n                num_distinct_values = len(distinct_values)\n                if (\n                    1 < num_distinct_values < row_count\n                    and num_distinct_values <= facet_size\n                    # And at least one has n > 1\n                    and any(r[\"n\"] > 1 for r in distinct_values)\n                ):\n                    suggested_facets.append(\n                        {\n                            \"name\": column,\n                            \"toggle_url\": self.ds.absolute_url(\n                                self.request,\n                                self.ds.urls.path(\n                                    path_with_added_args(\n                                        self.request, {\"_facet\": column}\n                                    )\n                                ),\n                            ),\n                        }\n                    )\n            except QueryInterrupted:\n                continue\n        return suggested_facets\n\n    async def facet_results(self):\n        pass"
+      },
+      {
+        "file": "datasette/views/table.py",
+        "name": "TableView._data_traced.execute_facets",
+        "kind": "function",
+        "symbol": "datasette.views.table.TableView._data_traced.execute_facets",
+        "start": 525,
+        "end": 542,
+        "code": "        async def execute_facets():\n            if not nofacet:\n                # Run them in parallel\n                facet_awaitables = [facet.facet_results() for facet in facet_instances]\n                facet_awaitable_results = await gather(*facet_awaitables)\n                for (\n                    instance_facet_results,\n                    instance_facets_timed_out,\n                ) in facet_awaitable_results:\n                    for facet_info in instance_facet_results:\n                        base_key = facet_info[\"name\"]\n                        key = base_key\n                        i = 1\n                        while key in facet_results:\n                            i += 1\n                            key = f\"{base_key}_{i}\"\n                        facet_results[key] = facet_info\n                    facets_timed_out.extend(instance_facets_timed_out)"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "Facet.get_columns",
+        "kind": "function",
+        "symbol": "datasette.facets.Facet.get_columns",
+        "start": 136,
+        "end": 142,
+        "code": "    async def get_columns(self, sql, params=None):\n        # Detect column names using the \"limit 0\" trick\n        return (\n            await self.ds.execute(\n                self.database, f\"select * from ({sql}) limit 0\", params or []\n            )\n        ).columns"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "Facet.get_row_count",
+        "kind": "function",
+        "symbol": "datasette.facets.Facet.get_row_count",
+        "start": 144,
+        "end": 153,
+        "code": "    async def get_row_count(self):\n        if self.row_count is None:\n            self.row_count = (\n                await self.ds.execute(\n                    self.database,\n                    f\"select count(*) from ({self.sql})\",\n                    self.params,\n                )\n            ).rows[0][0]\n        return self.row_count"
+      },
+      {
+        "file": "datasette/facets.py",
+        "name": "Facet.facet_results",
+        "kind": "function",
+        "symbol": "datasette.facets.Facet.facet_results",
+        "start": 130,
+        "end": 134,
+        "code": "    async def facet_results(self):\n        # returns ([results], [timed_out])\n        # TODO: Include \"hideable\" with each one somehow, which indicates if it was\n        # defined in metadata (in which case you cannot turn it off)\n        raise NotImplementedError"
+      }
+    ],
+    "unresolved": [
+      "datasette/facets.py:function: facet_results"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.2,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 20,
+    "hit_dependencies": [
+      "datasette.facets.Facet.database",
+      "datasette.facets.Facet.ds",
+      "datasette.facets.Facet.params",
+      "datasette.facets.Facet.sql"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 3915
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 14294,
+    "completion_tokens": 2552,
+    "total_tokens": 16846,
+    "seconds": 89.57643628120422,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 96.55931258201599,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

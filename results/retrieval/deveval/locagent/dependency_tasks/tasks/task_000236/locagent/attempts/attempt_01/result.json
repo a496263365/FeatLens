@@ -1,0 +1,81 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 236,
+  "namespace": "datasette.utils.parse_metadata",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10066,
+      "input_estimate_after": 10066,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndatasette/utils/__init__.py\nline: 8\nfunction: parse_metadata\n\ndatasette/utils/__init__.py\nline: 21\nclass: yaml\n\ndatasette/utils/__init__.py\nline: 8\nclass: json\n\ndatasette/cli.py\nline: 501\nfunction: parse_metadata\n\ndatasette/utils/__init__.py\nline: 977\nfunction: parse_metadata\n```",
+  "final_locations": {
+    "files": [
+      "datasette/utils/__init__.py",
+      "datasette/cli.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/cli.py",
+        "name": "serve",
+        "kind": "function",
+        "symbol": "datasette.cli.serve",
+        "start": 492,
+        "end": 650,
+        "code": "def serve(\n    files,\n    immutable,\n    host,\n    port,\n    uds,\n    reload,\n    cors,\n    sqlite_extensions,\n    inspect_file,\n    metadata,\n    template_dir,\n    plugins_dir,\n    static,\n    memory,\n    config,\n    settings,\n    secret,\n    root,\n    get,\n    version_note,\n    help_settings,\n    pdb,\n    open_browser,\n    create,\n    crossdb,\n    nolock,\n    ssl_keyfile,\n    ssl_certfile,\n    return_instance=False,\n):\n    \"\"\"Serve up specified SQLite database files with a web UI\"\"\"\n    if help_settings:\n        formatter = formatting.HelpFormatter()\n        with formatter.section(\"Settings\"):\n            formatter.write_dl(\n                [\n                    (option.name, f\"{option.help} (default={option.default})\")\n                    for option in SETTINGS\n                ]\n            )\n        click.echo(formatter.getvalue())\n        sys.exit(0)\n    if reload:\n        import hupper\n\n        reloader = hupper.start_reloader(\"datasette.cli.serve\")\n        if immutable:\n            reloader.watch_files(immutable)\n        if metadata:\n            reloader.watch_files([metadata.name])\n\n    inspect_data = None\n    if inspect_file:\n        with open(inspect_file) as fp:\n            inspect_data = json.load(fp)\n\n    metadata_data = None\n    if metadata:\n        metadata_data = parse_metadata(metadata.read())\n\n    combined_settings = {}\n    if config:\n        click.echo(\n            \"--config name:value will be deprecated in Datasette 1.0, use --setting name value instead\",\n            err=True,\n        )\n        combined_settings.update(config)\n    combined_settings.update(settings)\n\n    kwargs = dict(\n        immutables=immutable,\n        cache_headers=not reload,\n        cors=cors,\n        inspect_data=inspect_data,\n        metadata=metadata_data,\n        sqlite_extensions=sqlite_extensions,\n        template_dir=template_dir,\n        plugins_dir=plugins_dir,\n        static_mounts=static,\n        settings=combined_settings,\n        memory=memory,\n        secret=secret,\n        version_note=version_note,\n        pdb=pdb,\n        crossdb=crossdb,\n        nolock=nolock,\n    )\n\n    # if files is a single directory, use that as config_dir=\n    if 1 == len(files) and os.path.isdir(files[0]):\n        kwargs[\"config_dir\"] = pathlib.Path(files[0])\n        files = []\n\n    # Verify list of files, create if needed (and --create)\n    for file in files:\n        if not pathlib.Path(file).exists():\n            if create:\n                sqlite3.connect(file).execute(\"vacuum\")\n            else:\n                raise click.ClickException(\n                    \"Invalid value for '[FILES]...': Path '{}' does not exist.\".format(\n                        file\n                    )\n                )\n\n    # De-duplicate files so 'datasette db.db db.db' only attaches one /db\n    files = list(dict.fromkeys(files))\n\n    try:\n        ds = Datasette(files, **kwargs)\n    except SpatialiteNotFound:\n        raise click.ClickException(\"Could not find SpatiaLite extension\")\n    except StartupError as e:\n        raise click.ClickException(e.args[0])\n\n    if return_instance:\n        # Private utility mechanism for writing unit tests\n        return ds\n\n    # Run the \"startup\" plugin hooks\n    asyncio.get_event_loop().run_until_complete(ds.invoke_startup())\n\n    # Run async soundness checks - but only if we're not under pytest\n    asyncio.get_event_loop().run_until_complete(check_databases(ds))\n\n    if get:\n        client = TestClient(ds)\n        response = client.get(get)\n        click.echo(response.text)\n        exit_code = 0 if response.status == 200 else 1\n        sys.exit(exit_code)\n        return\n\n    # Start the server\n    url = None\n    if root:\n        url = \"http://{}:{}{}?token={}\".format(\n            host, port, ds.urls.path(\"-/auth-token\"), ds._root_token\n        )\n        click.echo(url)\n    if open_browser:\n        if url is None:\n            # Figure out most convenient URL - to table, database or homepage\n            path = asyncio.get_event_loop().run_until_complete(\n                initial_path_for_datasette(ds)\n            )\n            url = f\"http://{host}:{port}{path}\"\n        webbrowser.open(url)\n    uvicorn_kwargs = dict(\n        host=host, port=port, log_level=\"info\", lifespan=\"on\", workers=1\n    )\n    if uds:\n        uvicorn_kwargs[\"uds\"] = uds\n    if ssl_keyfile:\n        uvicorn_kwargs[\"ssl_keyfile\"] = ssl_keyfile\n    if ssl_certfile:\n        uvicorn_kwargs[\"ssl_certfile\"] = ssl_certfile\n    uvicorn.run(ds.app(), **uvicorn_kwargs)"
+      }
+    ],
+    "unresolved": [
+      "datasette/utils/__init__.py:line: 8",
+      "datasette/utils/__init__.py:line: 21",
+      "datasette/utils/__init__.py:class: yaml",
+      "datasette/utils/__init__.py:line: 8",
+      "datasette/utils/__init__.py:class: json",
+      "datasette/cli.py:function: parse_metadata"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 1,
+    "returned_files": 2,
+    "unresolved_locations": 6,
+    "returned_code_chars": 4505
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26000,
+    "completion_tokens": 913,
+    "total_tokens": 26913,
+    "seconds": 125.17940139770508,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 136.9066424369812,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

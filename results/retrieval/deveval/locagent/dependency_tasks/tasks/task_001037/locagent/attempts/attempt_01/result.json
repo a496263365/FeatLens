@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1037,
+  "namespace": "boltons.iterutils.research",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 25135,
+      "input_estimate_after": 25135,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the analysis of `boltons/iterutils.py`, here are the key reusable dependencies for implementing the `research` function:\n\n```\nboltons/iterutils.py\nline: 1035\nfunction: remap\n\nboltons/iterutils.py\nline: 989\nfunction: default_visit\n\nboltons/iterutils.py\nline: 996\nfunction: default_enter\n\nboltons/iterutils.py\nline: 1012\nfunction: default_exit\n\nboltons/iterutils.py\nline: 1221\nclass: PathAccessError\n```\n\nThese components provide the core traversal and path handling functionality that would be needed to implement a recursive search function like `research`. The `remap` function and its supporting default handlers demonstrate the nested structure traversal pattern, while `PathAccessError` provides error handling for path-based operations.",
+  "final_locations": {
+    "files": [
+      "boltons/iterutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/iterutils.py",
+        "name": "remap",
+        "kind": "function",
+        "symbol": "boltons.iterutils.remap",
+        "start": 1035,
+        "end": 1199,
+        "code": "def remap(root, visit=default_visit, enter=default_enter, exit=default_exit,\n          **kwargs):\n    \"\"\"The remap (\"recursive map\") function is used to traverse and\n    transform nested structures. Lists, tuples, sets, and dictionaries\n    are just a few of the data structures nested into heterogeneous\n    tree-like structures that are so common in programming.\n    Unfortunately, Python's built-in ways to manipulate collections\n    are almost all flat. List comprehensions may be fast and succinct,\n    but they do not recurse, making it tedious to apply quick changes\n    or complex transforms to real-world data.\n\n    remap goes where list comprehensions cannot.\n\n    Here's an example of removing all Nones from some data:\n\n    >>> from pprint import pprint\n    >>> reviews = {'Star Trek': {'TNG': 10, 'DS9': 8.5, 'ENT': None},\n    ...            'Babylon 5': 6, 'Dr. Who': None}\n    >>> pprint(remap(reviews, lambda p, k, v: v is not None))\n    {'Babylon 5': 6, 'Star Trek': {'DS9': 8.5, 'TNG': 10}}\n\n    Notice how both Nones have been removed despite the nesting in the\n    dictionary. Not bad for a one-liner, and that's just the beginning.\n    See `this remap cookbook`_ for more delicious recipes.\n\n    .. _this remap cookbook: http://sedimental.org/remap.html\n\n    remap takes four main arguments: the object to traverse and three\n    optional callables which determine how the remapped object will be\n    created.\n\n    Args:\n\n        root: The target object to traverse. By default, remap\n            supports iterables like :class:`list`, :class:`tuple`,\n            :class:`dict`, and :class:`set`, but any object traversable by\n            *enter* will work.\n        visit (callable): This function is called on every item in\n            *root*. It must accept three positional arguments, *path*,\n            *key*, and *value*. *path* is simply a tuple of parents'\n            keys. *visit* should return the new key-value pair. It may\n            also return ``True`` as shorthand to keep the old item\n            unmodified, or ``False`` to drop the item from the new\n            structure. *visit* is called after *enter*, on the new parent.\n\n            The *visit* function is called for every item in root,\n            including duplicate items. For traversable values, it is\n            called on the new parent object, after all its children\n            have been visited. The default visit behavior simply\n            returns the key-value pair unmodified.\n        enter (callable): This function controls which items in *root*\n            are traversed. It accepts the same arguments as *visit*: the\n            path, the key, and the value of the current item. It returns a\n            pair of the blank new parent, and an iterator over the items\n            which should be visited. If ``False`` is returned instead of\n            an iterator, the value will not be traversed.\n\n            The *enter* function is only called once per unique value. The\n            default enter behavior support mappings, sequences, and\n            sets. Strings and all other iterables will not be traversed.\n        exit (callable): This function determines how to handle items\n            once they have been visited. It gets the same three\n            arguments as the other functions -- *path*, *key*, *value*\n            -- plus two more: the blank new parent object returned\n            from *enter*, and a list of the new items, as remapped by\n            *visit*.\n\n            Like *enter*, the *exit* function is only called once per\n            unique value. The default exit behavior is to simply add\n            all new items to the new parent, e.g., using\n            :meth:`list.extend` and :meth:`dict.update` to add to the\n            new parent. Immutable objects, such as a :class:`tuple` or\n            :class:`namedtuple`, must be recreated from scratch, but\n            use the same type as the new parent passed back from the\n            *enter* function.\n        reraise_visit (bool): A pragmatic convenience for the *visit*\n            callable. When set to ``False``, remap ignores any errors\n            raised by the *visit* callback. Items causing exceptions\n            are kept. See examples for more details.\n\n    remap is designed to cover the majority of cases with just the\n    *visit* callable. While passing in multiple callables is very\n    empowering, remap is designed so very few cases should require\n    passing more than one function.\n\n    When passing *enter* and *exit*, it's common and easiest to build\n    on the default behavior. Simply add ``from boltons.iterutils import\n    default_enter`` (or ``default_exit``), and have your enter/exit\n    function call the default behavior before or after your custom\n    logic. See `this example`_.\n\n    Duplicate and self-referential objects (aka reference loops) are\n    automatically handled internally, `as shown here`_.\n\n    .. _this example: http://sedimental.org/remap.html#sort_all_lists\n    .. _as shown here: http://sedimental.org/remap.html#corner_cases\n\n    \"\"\"\n    # TODO: improve argument formatting in sphinx doc\n    # TODO: enter() return (False, items) to continue traverse but cancel copy?\n    if not callable(visit):\n        raise TypeError('visit expected callable, not: %r' % visit)\n    if not callable(enter):\n        raise TypeError('enter expected callable, not: %r' % enter)\n    if not callable(exit):\n        raise TypeError('exit expected callable, not: %r' % exit)\n    reraise_visit = kwargs.pop('reraise_visit', True)\n    if kwargs:\n        raise TypeError('unexpected keyword arguments: %r' % kwargs.keys())\n\n    path, registry, stack = (), {}, [(None, root)]\n    new_items_stack = []\n    while stack:\n        key, value = stack.pop()\n        id_value = id(value)\n        if key is _REMAP_EXIT:\n            key, new_parent, old_parent = value\n            id_value = id(old_parent)\n            path, new_items = new_items_stack.pop()\n            value = exit(path, key, old_parent, new_parent, new_items)\n            registry[id_value] = value\n            if not new_items_stack:\n                continue\n        elif id_value in registry:\n            value = registry[id_value]\n        else:\n            res = enter(path, key, value)\n            try:\n                new_parent, new_items = res\n            except TypeError:\n                # TODO: handle False?\n                raise TypeError('enter should return a tuple of (new_parent,'\n                                ' items_iterator), not: %r' % res)\n            if new_items is not False:\n                # traverse unless False is explicitly passed\n                registry[id_value] = new_parent\n                new_items_stack.append((path, []))\n                if value is not root:\n                    path += (key,)\n                stack.append((_REMAP_EXIT, (key, new_parent, value)))\n                if new_items:\n                    stack.extend(reversed(list(new_items)))\n                continue\n        if visit is _orig_default_visit:\n            # avoid function call overhead by inlining identity operation\n            visited_item = (key, value)\n        else:\n            try:\n                visited_item = visit(path, key, value)\n            except Exception:\n                if reraise_visit:\n                    raise\n                visited_item = True\n            if visited_item is False:\n                continue  # drop\n            elif visited_item is True:\n                visited_item = (key, value)\n            # TODO: typecheck?\n            #    raise TypeError('expected (key, value) from visit(),'\n            #                    ' not: %r' % visited_item)\n        try:\n            new_items_stack[-1][1].append(visited_item)\n        except IndexError:\n            raise TypeError('expected remappable root, not: %r' % root)\n    return value"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "default_visit",
+        "kind": "function",
+        "symbol": "boltons.iterutils.default_visit",
+        "start": 988,
+        "end": 990,
+        "code": "def default_visit(path, key, value):\n    # print('visit(%r, %r, %r)' % (path, key, value))\n    return key, value"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "default_enter",
+        "kind": "function",
+        "symbol": "boltons.iterutils.default_enter",
+        "start": 996,
+        "end": 1009,
+        "code": "def default_enter(path, key, value):\n    # print('enter(%r, %r)' % (key, value))\n    if isinstance(value, basestring):\n        return value, False\n    elif isinstance(value, Mapping):\n        return value.__class__(), ItemsView(value)\n    elif isinstance(value, Sequence):\n        return value.__class__(), enumerate(value)\n    elif isinstance(value, Set):\n        return value.__class__(), enumerate(value)\n    else:\n        # files, strings, other iterables, and scalars are not\n        # traversed\n        return value, False"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "default_exit",
+        "kind": "function",
+        "symbol": "boltons.iterutils.default_exit",
+        "start": 1012,
+        "end": 1032,
+        "code": "def default_exit(path, key, old_parent, new_parent, new_items):\n    # print('exit(%r, %r, %r, %r, %r)'\n    #       % (path, key, old_parent, new_parent, new_items))\n    ret = new_parent\n    if isinstance(new_parent, Mapping):\n        new_parent.update(new_items)\n    elif isinstance(new_parent, Sequence):\n        vals = [v for i, v in new_items]\n        try:\n            new_parent.extend(vals)\n        except AttributeError:\n            ret = new_parent.__class__(vals)  # tuples\n    elif isinstance(new_parent, Set):\n        vals = [v for i, v in new_items]\n        try:\n            new_parent.update(vals)\n        except AttributeError:\n            ret = new_parent.__class__(vals)  # frozensets\n    else:\n        raise RuntimeError('unexpected iterable type: %r' % type(new_parent))\n    return ret"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "get_path",
+        "kind": "function",
+        "symbol": "boltons.iterutils.get_path",
+        "start": 1221,
+        "end": 1278,
+        "code": "def get_path(root, path, default=_UNSET):\n    \"\"\"Retrieve a value from a nested object via a tuple representing the\n    lookup path.\n\n    >>> root = {'a': {'b': {'c': [[1], [2], [3]]}}}\n    >>> get_path(root, ('a', 'b', 'c', 2, 0))\n    3\n\n    The path format is intentionally consistent with that of\n    :func:`remap`.\n\n    One of get_path's chief aims is improved error messaging. EAFP is\n    great, but the error messages are not.\n\n    For instance, ``root['a']['b']['c'][2][1]`` gives back\n    ``IndexError: list index out of range``\n\n    What went out of range where? get_path currently raises\n    ``PathAccessError: could not access 2 from path ('a', 'b', 'c', 2,\n    1), got error: IndexError('list index out of range',)``, a\n    subclass of IndexError and KeyError.\n\n    You can also pass a default that covers the entire operation,\n    should the lookup fail at any level.\n\n    Args:\n       root: The target nesting of dictionaries, lists, or other\n          objects supporting ``__getitem__``.\n       path (tuple): A list of strings and integers to be successively\n          looked up within *root*.\n       default: The value to be returned should any\n          ``PathAccessError`` exceptions be raised.\n    \"\"\"\n    if isinstance(path, basestring):\n        path = path.split('.')\n    cur = root\n    try:\n        for seg in path:\n            try:\n                cur = cur[seg]\n            except (KeyError, IndexError) as exc:\n                raise PathAccessError(exc, seg, path)\n            except TypeError as exc:\n                # either string index in a list, or a parent that\n                # doesn't support indexing\n                try:\n                    seg = int(seg)\n                    cur = cur[seg]\n                except (ValueError, KeyError, IndexError, TypeError):\n                    if not is_iterable(cur):\n                        exc = TypeError('%r object is not indexable'\n                                        % type(cur).__name__)\n                    raise PathAccessError(exc, seg, path)\n    except PathAccessError:\n        if default is _UNSET:\n            raise\n        return default\n    return cur"
+      },
+      {
+        "file": "boltons/iterutils.py",
+        "name": "PathAccessError",
+        "kind": "class",
+        "symbol": "boltons.iterutils.PathAccessError",
+        "start": 1202,
+        "end": 1218,
+        "code": "class PathAccessError(KeyError, IndexError, TypeError):\n    \"\"\"An amalgamation of KeyError, IndexError, and TypeError,\n    representing what can occur when looking up a path in a nested\n    object.\n    \"\"\"\n    def __init__(self, exc, seg, path):\n        self.exc = exc\n        self.seg = seg\n        self.path = path\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        return '%s(%r, %r, %r)' % (cn, self.exc, self.seg, self.path)\n\n    def __str__(self):\n        return ('could not access %r from path %r, got error: %r'\n                % (self.seg, self.path, self.exc))"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "boltons.iterutils.remap"
+    ],
+    "exact_hit_dependencies": [
+      "boltons.iterutils.remap"
+    ],
+    "returned_entities": 6,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 12042
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 42120,
+    "completion_tokens": 363,
+    "total_tokens": 42483,
+    "seconds": 33.449930906295776,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 39.85763072967529,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

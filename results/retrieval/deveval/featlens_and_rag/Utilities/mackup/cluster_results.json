@@ -1,0 +1,576 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "header",
+                    "func_desc": "Returns a header color string .",
+                    "func_file": "main",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def header(str):\n    return ColorFormatCodes.BLUE + str + ColorFormatCodes.NORMAL",
+                    "func_fullName": "mackup.main.header(str)"
+                },
+                {
+                    "func_id": 1,
+                    "func_name": "bold",
+                    "func_desc": "Returns a string with ANSI bold codes .",
+                    "func_file": "main",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def bold(str):\n    return ColorFormatCodes.BOLD + str + ColorFormatCodes.NORMAL",
+                    "func_fullName": "mackup.main.bold(str)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "printAppHeader",
+                    "func_desc": "Prints the header for an app .",
+                    "func_file": "main",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def printAppHeader(app_name):\n        if verbose:\n            print((\"\\n{0} {1} {0}\").format(header(\"---\"), bold(app_name)))",
+                    "func_fullName": "mackup.main.main.printAppHeader(app_name)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for the grammar .",
+                    "func_file": "application",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, mackup, files, dry_run, verbose):\n        \"\"\"\n        Create an ApplicationProfile instance.\n\n        Args:\n            mackup (Mackup)\n            files (list)\n        \"\"\"\n        assert isinstance(mackup, Mackup)\n        assert isinstance(files, set)\n\n        self.mackup = mackup\n        self.files = list(files)\n        self.dry_run = dry_run\n        self.verbose = verbose",
+                    "func_fullName": "mackup.application.ApplicationProfile.__init__(self, mackup, files, dry_run, verbose)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "main",
+                    "func_desc": "Mackup main function .",
+                    "func_file": "main",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def main():\n    \"\"\"Main function.\"\"\"\n    # Get the command line arg\n    args = docopt(__doc__, version=\"Mackup {}\".format(VERSION))\n\n    mckp = Mackup()\n    app_db = ApplicationsDatabase()\n\n    def printAppHeader(app_name):\n        if verbose:\n            print((\"\\n{0} {1} {0}\").format(header(\"---\"), bold(app_name)))\n\n    # If we want to answer mackup with \"yes\" for each question\n    if args[\"--force\"]:\n        utils.FORCE_YES = True\n\n    # Allow mackup to be run as root\n    if args[\"--root\"]:\n        utils.CAN_RUN_AS_ROOT = True\n\n    dry_run = args[\"--dry-run\"]\n\n    verbose = args[\"--verbose\"]\n\n    if args[\"backup\"]:\n        # Check the env where the command is being run\n        mckp.check_for_usable_backup_env()\n\n        # Backup each application\n        for app_name in sorted(mckp.get_apps_to_backup()):\n            app = ApplicationProfile(mckp, app_db.get_files(app_name), dry_run, verbose)\n            printAppHeader(app_name)\n            app.backup()\n\n    elif args[\"restore\"]:\n        # Check the env where the command is being run\n        mckp.check_for_usable_restore_env()\n\n        # Restore the Mackup config before any other config, as we might need\n        # it to know about custom settings\n        mackup_app = ApplicationProfile(\n            mckp, app_db.get_files(MACKUP_APP_NAME), dry_run, verbose\n        )\n        printAppHeader(MACKUP_APP_NAME)\n        mackup_app.restore()\n\n        # Initialize again the apps db, as the Mackup config might have changed\n        # it\n        mckp = Mackup()\n        app_db = ApplicationsDatabase()\n\n        # Restore the rest of the app configs, using the restored Mackup config\n        app_names = mckp.get_apps_to_backup()\n        # Mackup has already been done\n        app_names.discard(MACKUP_APP_NAME)\n\n        for app_name in sorted(app_names):\n            app = ApplicationProfile(mckp, app_db.get_files(app_name), dry_run, verbose)\n            printAppHeader(app_name)\n            app.restore()\n\n    elif args[\"uninstall\"]:\n        # Check the env where the command is being run\n        mckp.check_for_usable_restore_env()\n\n        if dry_run or (\n            utils.confirm(\n                \"You are going to uninstall Mackup.\\n\"\n                \"Every configuration file, setting and dotfile\"\n                \" managed by Mackup will be unlinked and copied back\"\n                \" to their original place, in your home folder.\\n\"\n                \"Are you sure?\"\n            )\n        ):\n            # Uninstall the apps except Mackup, which we'll uninstall last, to\n            # keep the settings as long as possible\n            app_names = mckp.get_apps_to_backup()\n            app_names.discard(MACKUP_APP_NAME)\n\n            for app_name in sorted(app_names):\n                app = ApplicationProfile(\n                    mckp, app_db.get_files(app_name), dry_run, verbose\n                )\n                printAppHeader(app_name)\n                app.uninstall()\n\n            # Restore the Mackup config before any other config, as we might\n            # need it to know about custom settings\n            mackup_app = ApplicationProfile(\n                mckp, app_db.get_files(MACKUP_APP_NAME), dry_run, verbose\n            )\n            mackup_app.uninstall()\n\n            # Delete the Mackup folder in Dropbox\n            # Don't delete this as there might be other Macs that aren't\n            # uninstalled yet\n            # delete(mckp.mackup_folder)\n\n            print(\n                \"\\n\"\n                \"All your files have been put back into place. You can now\"\n                \" safely uninstall Mackup.\\n\"\n                \"\\n\"\n                \"Thanks for using Mackup!\"\n            )\n\n    elif args[\"list\"]:\n        # Display the list of supported applications\n        mckp.check_for_usable_environment()\n        output = \"Supported applications:\\n\"\n        for app_name in sorted(app_db.get_app_names()):\n            output += \" - {}\\n\".format(app_name)\n        output += \"\\n\"\n        output += \"{} applications supported in Mackup v{}\".format(\n            len(app_db.get_app_names()), VERSION\n        )\n        print(output)\n\n    elif args[\"show\"]:\n        mckp.check_for_usable_environment()\n        app_name = args[\"<application>\"]\n\n        # Make sure the app exists\n        if app_name not in app_db.get_app_names():\n            sys.exit(\"Unsupported application: {}\".format(app_name))\n        print(\"Name: {}\".format(app_db.get_name(app_name)))\n        print(\"Configuration files:\")\n        for file in app_db.get_files(app_name):\n            print(\" - {}\".format(file))\n\n    # Delete the tmp folder\n    mckp.clean_temp_folder()",
+                    "func_fullName": "mackup.main.main()"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "check_for_usable_environment",
+                    "func_desc": "Check if the current environment is usable and has everything s required .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def check_for_usable_environment(self):\n        \"\"\"Check if the current env is usable and has everything's required.\"\"\"\n        # Allow only explicit superuser usage\n        if os.geteuid() == 0 and not utils.CAN_RUN_AS_ROOT:\n            utils.error(\n                \"Running Mackup as superuser can be dangerous.\"\n                \" Don't do it unless you know what you're doing!\"\n                \" Run mackup --help for guidance.\"\n            )\n\n        # Do we have a folder set to save Mackup content into?\n        if not os.path.isdir(self._config.path):\n            utils.error(\n                \"Unable to find the storage folder: {}\".format(self._config.path)\n            )\n\n        # Is Sublime Text running?\n        # if is_process_running('Sublime Text'):\n        #    error(\"Sublime Text is running. It is known to cause problems\"\n        #          \" when Sublime Text is running while I backup or restore\"\n        #          \" its configuration files. Please close Sublime Text and\"\n        #          \" run me again.\")",
+                    "func_fullName": "mackup.mackup.Mackup.check_for_usable_environment(self)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "check_for_usable_backup_env",
+                    "func_desc": "Check if the current env can be used to backup files .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def check_for_usable_backup_env(self):\n        \"\"\"Check if the current env can be used to back up files.\"\"\"\n        self.check_for_usable_environment()\n        self.create_mackup_home()",
+                    "func_fullName": "mackup.mackup.Mackup.check_for_usable_backup_env(self)"
+                },
+                {
+                    "func_id": 21,
+                    "func_name": "check_for_usable_restore_env",
+                    "func_desc": "Check if the current env can be used to restore files .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def check_for_usable_restore_env(self):\n        \"\"\"Check if the current env can be used to restore files.\"\"\"\n        self.check_for_usable_environment()\n\n        if not os.path.isdir(self.mackup_folder):\n            utils.error(\n                \"Unable to find the Mackup folder: {}\\n\"\n                \"You might want to back up some files or get your\"\n                \" storage directory synced first.\".format(self.mackup_folder)\n            )",
+                    "func_fullName": "mackup.mackup.Mackup.check_for_usable_restore_env(self)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "clean_temp_folder",
+                    "func_desc": "Delete the temp folder and files created while running .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def clean_temp_folder(self):\n        \"\"\"Delete the temp folder and files created while running.\"\"\"\n        shutil.rmtree(self.temp_folder)",
+                    "func_fullName": "mackup.mackup.Mackup.clean_temp_folder(self)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "create_mackup_home",
+                    "func_desc": "If the Mackup home folder does not exist create it .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def create_mackup_home(self):\n        \"\"\"If the Mackup home folder does not exist, create it.\"\"\"\n        if not os.path.isdir(self.mackup_folder):\n            if utils.confirm(\n                \"Mackup needs a directory to store your\"\n                \" configuration files\\n\"\n                \"Do you want to create it now? <{}>\".format(self.mackup_folder)\n            ):\n                os.makedirs(self.mackup_folder)\n            else:\n                utils.error(\"Mackup can't do anything without a home =(\")",
+                    "func_fullName": "mackup.mackup.Mackup.create_mackup_home(self)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "getFilepaths",
+                    "func_desc": "Get home and mackup filepaths for given file\n            .",
+                    "func_file": "application",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def getFilepaths(self, filename):\n        \"\"\"\n        Get home and mackup filepaths for given file\n\n        Args:\n            filename (str)\n\n        Returns:\n            home_filepath, mackup_filepath (str, str)\n        \"\"\"\n        return (\n            os.path.join(os.environ[\"HOME\"], filename),\n            os.path.join(self.mackup.mackup_folder, filename),\n        )",
+                    "func_fullName": "mackup.application.ApplicationProfile.getFilepaths(self, filename)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "backup",
+                    "func_desc": "Backup the application config files .",
+                    "func_file": "application",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def backup(self):\n        \"\"\"\n        Backup the application config files.\n\n        Algorithm:\n            if exists home/file\n              if home/file is a real file\n                if exists mackup/file\n                  are you sure?\n                  if sure\n                    rm mackup/file\n                    mv home/file mackup/file\n                    link mackup/file home/file\n                else\n                  mv home/file mackup/file\n                  link mackup/file home/file\n        \"\"\"\n        # For each file used by the application\n        for filename in self.files:\n            (home_filepath, mackup_filepath) = self.getFilepaths(filename)\n\n            # If the file exists and is not already a link pointing to Mackup\n            if (os.path.isfile(home_filepath) or os.path.isdir(home_filepath)) and not (\n                os.path.islink(home_filepath)\n                and (os.path.isfile(mackup_filepath) or os.path.isdir(mackup_filepath))\n                and os.path.samefile(home_filepath, mackup_filepath)\n            ):\n                if self.verbose:\n                    print(\n                        \"Backing up\\n  {}\\n  to\\n  {} ...\".format(\n                            home_filepath, mackup_filepath\n                        )\n                    )\n                else:\n                    print(\"Backing up {} ...\".format(filename))\n\n                if self.dry_run:\n                    continue\n\n                # Check if we already have a backup\n                if os.path.exists(mackup_filepath):\n                    # Name it right\n                    if os.path.isfile(mackup_filepath):\n                        file_type = \"file\"\n                    elif os.path.isdir(mackup_filepath):\n                        file_type = \"folder\"\n                    elif os.path.islink(mackup_filepath):\n                        file_type = \"link\"\n                    else:\n                        raise ValueError(\"Unsupported file: {}\".format(mackup_filepath))\n\n                    # Ask the user if he really wants to replace it\n                    if utils.confirm(\n                        \"A {} named {} already exists in the\"\n                        \" backup.\\nAre you sure that you want to\"\n                        \" replace it?\".format(file_type, mackup_filepath)\n                    ):\n                        # Delete the file in Mackup\n                        utils.delete(mackup_filepath)\n                        # Copy the file\n                        utils.copy(home_filepath, mackup_filepath)\n                        # Delete the file in the home\n                        utils.delete(home_filepath)\n                        # Link the backuped file to its original place\n                        utils.link(mackup_filepath, home_filepath)\n                else:\n                    # Copy the file\n                    utils.copy(home_filepath, mackup_filepath)\n                    # Delete the file in the home\n                    utils.delete(home_filepath)\n                    # Link the backuped file to its original place\n                    utils.link(mackup_filepath, home_filepath)\n            elif self.verbose:\n                if os.path.exists(home_filepath):\n                    print(\n                        \"Doing nothing\\n  {}\\n  \"\n                        \"is already backed up to\\n  {}\".format(\n                            home_filepath, mackup_filepath\n                        )\n                    )\n                elif os.path.islink(home_filepath):\n                    print(\n                        \"Doing nothing\\n  {}\\n  \"\n                        \"is a broken link, you might want to fix it.\".format(\n                            home_filepath\n                        )\n                    )\n                else:\n                    print(\"Doing nothing\\n  {}\\n  does not exist\".format(home_filepath))",
+                    "func_fullName": "mackup.application.ApplicationProfile.backup(self)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "restore",
+                    "func_desc": "Restore the application config files .",
+                    "func_file": "application",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def restore(self):\n        \"\"\"\n        Restore the application config files.\n\n        Algorithm:\n            if exists mackup/file\n              if exists home/file\n                are you sure?\n                if sure\n                  rm home/file\n                  link mackup/file home/file\n              else\n                link mackup/file home/file\n        \"\"\"\n        # For each file used by the application\n        for filename in self.files:\n            (home_filepath, mackup_filepath) = self.getFilepaths(filename)\n\n            # If the file exists and is not already pointing to the mackup file\n            # and the folder makes sense on the current platform (Don't sync\n            # any subfolder of ~/Library on GNU/Linux)\n            file_or_dir_exists = os.path.isfile(mackup_filepath) or os.path.isdir(\n                mackup_filepath\n            )\n            pointing_to_mackup = (\n                os.path.islink(home_filepath)\n                and os.path.exists(mackup_filepath)\n                and os.path.samefile(mackup_filepath, home_filepath)\n            )\n            supported = utils.can_file_be_synced_on_current_platform(filename)\n\n            if file_or_dir_exists and not pointing_to_mackup and supported:\n                if self.verbose:\n                    print(\n                        \"Restoring\\n  linking {}\\n  to      {} ...\".format(\n                            home_filepath, mackup_filepath\n                        )\n                    )\n                else:\n                    print(\"Restoring {} ...\".format(filename))\n\n                if self.dry_run:\n                    continue\n\n                # Check if there is already a file in the home folder\n                if os.path.exists(home_filepath):\n                    # Name it right\n                    if os.path.isfile(home_filepath):\n                        file_type = \"file\"\n                    elif os.path.isdir(home_filepath):\n                        file_type = \"folder\"\n                    elif os.path.islink(home_filepath):\n                        file_type = \"link\"\n                    else:\n                        raise ValueError(\"Unsupported file: {}\".format(mackup_filepath))\n\n                    if utils.confirm(\n                        \"You already have a {} named {} in your\"\n                        \" home.\\nDo you want to replace it with\"\n                        \" your backup?\".format(file_type, filename)\n                    ):\n                        utils.delete(home_filepath)\n                        utils.link(mackup_filepath, home_filepath)\n                else:\n                    utils.link(mackup_filepath, home_filepath)\n            elif self.verbose:\n                if os.path.exists(home_filepath):\n                    print(\n                        \"Doing nothing\\n  {}\\n  already linked by\\n  {}\".format(\n                            mackup_filepath, home_filepath\n                        )\n                    )\n                elif os.path.islink(home_filepath):\n                    print(\n                        \"Doing nothing\\n  {}\\n  \"\n                        \"is a broken link, you might want to fix it.\".format(\n                            home_filepath\n                        )\n                    )\n                else:\n                    print(\n                        \"Doing nothing\\n  {}\\n  does not exist\".format(mackup_filepath)\n                    )",
+                    "func_fullName": "mackup.application.ApplicationProfile.restore(self)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "uninstall",
+                    "func_desc": "Uninstall Mackup .",
+                    "func_file": "application",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def uninstall(self):\n        \"\"\"\n        Uninstall Mackup.\n\n        Restore any file where it was before the 1st Mackup backup.\n\n        Algorithm:\n            for each file in config\n                if mackup/file exists\n                    if home/file exists\n                        delete home/file\n                    copy mackup/file home/file\n            delete the mackup folder\n            print how to delete mackup\n        \"\"\"\n        # For each file used by the application\n        for filename in self.files:\n            (home_filepath, mackup_filepath) = self.getFilepaths(filename)\n\n            # If the mackup file exists\n            if os.path.isfile(mackup_filepath) or os.path.isdir(mackup_filepath):\n                # Check if there is a corresponding file in the home folder\n                if os.path.exists(home_filepath):\n                    if self.verbose:\n                        print(\n                            \"Reverting {}\\n  at {} ...\".format(\n                                mackup_filepath, home_filepath\n                            )\n                        )\n                    else:\n                        print(\"Reverting {} ...\".format(filename))\n\n                    if self.dry_run:\n                        continue\n\n                    # If there is, delete it as we are gonna copy the Dropbox\n                    # one there\n                    utils.delete(home_filepath)\n\n                    # Copy the Dropbox file to the home folder\n                    utils.copy(mackup_filepath, home_filepath)\n            elif self.verbose:\n                print(\"Doing nothing, {} does not exist\".format(mackup_filepath))",
+                    "func_fullName": "mackup.application.ApplicationProfile.uninstall(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 4,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the class with the given configuration file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, filename=None):\n        \"\"\"\n        Create a Config instance.\n\n        Args:\n            filename (str): Optional filename of the config file. If empty,\n                            defaults to MACKUP_CONFIG_FILE\n        \"\"\"\n        assert isinstance(filename, str) or filename is None\n\n        # Initialize the parser\n        self._parser = self._setup_parser(filename)\n\n        # Do we have an old config file?\n        self._warn_on_old_config()\n\n        # Get the storage engine\n        self._engine = self._parse_engine()\n\n        # Get the path where the Mackup folder is\n        self._path = self._parse_path()\n\n        # Get the directory replacing 'Mackup', if any\n        self._directory = self._parse_directory()\n\n        # Get the list of apps to ignore\n        self._apps_to_ignore = self._parse_apps_to_ignore()\n\n        # Get the list of apps to allow\n        self._apps_to_sync = self._parse_apps_to_sync()",
+                    "func_fullName": "mackup.config.Config.__init__(self, filename)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "_setup_parser",
+                    "func_desc": "Setup ConfigParser instance",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _setup_parser(self, filename=None):\n        \"\"\"\n        Configure the ConfigParser instance the way we want it.\n\n        Args:\n            filename (str) or None\n\n        Returns:\n            SafeConfigParser\n        \"\"\"\n        assert isinstance(filename, str) or filename is None\n\n        # If we are not overriding the config filename\n        if not filename:\n            filename = MACKUP_CONFIG_FILE\n\n        parser = configparser.SafeConfigParser(\n            allow_no_value=True, inline_comment_prefixes=(\";\", \"#\")\n        )\n        parser.read(os.path.join(os.path.join(os.environ[\"HOME\"], filename)))\n\n        return parser",
+                    "func_fullName": "mackup.config.Config._setup_parser(self, filename)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "_warn_on_old_config",
+                    "func_desc": "Warn the user if an old config format is detected .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _warn_on_old_config(self):\n        \"\"\"Warn the user if an old config format is detected.\"\"\"\n        # Is an old section in the config file?\n        old_sections = [\"Allowed Applications\", \"Ignored Applications\"]\n        for old_section in old_sections:\n            if self._parser.has_section(old_section):\n                error(\n                    \"Old config file detected. Aborting.\\n\"\n                    \"\\n\"\n                    \"An old section (e.g. [Allowed Applications]\"\n                    \" or [Ignored Applications] has been detected\"\n                    \" in your {} file.\\n\"\n                    \"I'd rather do nothing than do something you\"\n                    \" do not want me to do.\\n\"\n                    \"\\n\"\n                    \"Please read the up to date documentation on\"\n                    \" <https://github.com/lra/mackup> and migrate\"\n                    \" your configuration file.\".format(MACKUP_CONFIG_FILE)\n                )",
+                    "func_fullName": "mackup.config.Config._warn_on_old_config(self)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "_parse_engine",
+                    "func_desc": "Parse the storage engine in the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_engine(self):\n        \"\"\"\n        Parse the storage engine in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self._parser.has_option(\"storage\", \"engine\"):\n            engine = str(self._parser.get(\"storage\", \"engine\"))\n        else:\n            engine = ENGINE_DROPBOX\n\n        assert isinstance(engine, str)\n\n        if engine not in [\n            ENGINE_DROPBOX,\n            ENGINE_GDRIVE,\n            ENGINE_COPY,\n            ENGINE_ICLOUD,\n            ENGINE_FS,\n        ]:\n            raise ConfigError(\"Unknown storage engine: {}\".format(engine))\n\n        return str(engine)",
+                    "func_fullName": "mackup.config.Config._parse_engine(self)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "_parse_directory",
+                    "func_desc": "Parse the storage directory in the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_directory(self):\n        \"\"\"\n        Parse the storage directory in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self._parser.has_option(\"storage\", \"directory\"):\n            directory = self._parser.get(\"storage\", \"directory\")\n            # Don't allow CUSTOM_APPS_DIR as a storage directory\n            if directory == CUSTOM_APPS_DIR:\n                raise ConfigError(\n                    \"{} cannot be used as a storage directory.\".format(CUSTOM_APPS_DIR)\n                )\n        else:\n            directory = MACKUP_BACKUP_PATH\n\n        return str(directory)",
+                    "func_fullName": "mackup.config.Config._parse_directory(self)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "_parse_apps_to_ignore",
+                    "func_desc": "Parse the applications to ignore in the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_apps_to_ignore(self):\n        \"\"\"\n        Parse the applications to ignore in the config.\n\n        Returns:\n            set\n        \"\"\"\n        # We ignore nothing by default\n        apps_to_ignore = set()\n\n        # Is the \"[applications_to_ignore]\" in the cfg file?\n        section_title = \"applications_to_ignore\"\n        if self._parser.has_section(section_title):\n            apps_to_ignore = set(self._parser.options(section_title))\n\n        return apps_to_ignore",
+                    "func_fullName": "mackup.config.Config._parse_apps_to_ignore(self)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "_parse_apps_to_sync",
+                    "func_desc": "Parse the applications to backup in the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_apps_to_sync(self):\n        \"\"\"\n        Parse the applications to backup in the config.\n\n        Returns:\n            set\n        \"\"\"\n        # We allow nothing by default\n        apps_to_sync = set()\n\n        # Is the \"[applications_to_sync]\" section in the cfg file?\n        section_title = \"applications_to_sync\"\n        if self._parser.has_section(section_title):\n            apps_to_sync = set(self._parser.options(section_title))\n\n        return apps_to_sync",
+                    "func_fullName": "mackup.config.Config._parse_apps_to_sync(self)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "get_files",
+                    "func_desc": "Return the list of config files of an application .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_files(self, name):\n        \"\"\"\n        Return the list of config files of an application.\n\n        Args:\n            name (str)\n\n        Returns:\n            set of str.\n        \"\"\"\n        return self.apps[name][\"configuration_files\"]",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.get_files(self, name)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 5,
+                    "func_name": "engine",
+                    "func_desc": "Returns the engine used by the storage .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def engine(self):\n        \"\"\"\n        The engine used by the storage.\n\n        ENGINE_DROPBOX, ENGINE_GDRIVE, ENGINE_COPY, ENGINE_ICLOUD or ENGINE_FS.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._engine)",
+                    "func_fullName": "mackup.config.Config.engine(self)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "_parse_path",
+                    "func_desc": "Parse the storage path in the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _parse_path(self):\n        \"\"\"\n        Parse the storage path in the config.\n\n        Returns:\n            str\n        \"\"\"\n        if self.engine == ENGINE_DROPBOX:\n            path = get_dropbox_folder_location()\n        elif self.engine == ENGINE_GDRIVE:\n            path = get_google_drive_folder_location()\n        elif self.engine == ENGINE_COPY:\n            path = get_copy_folder_location()\n        elif self.engine == ENGINE_ICLOUD:\n            path = get_icloud_folder_location()\n        elif self.engine == ENGINE_FS:\n            if self._parser.has_option(\"storage\", \"path\"):\n                cfg_path = self._parser.get(\"storage\", \"path\")\n                path = os.path.join(os.environ[\"HOME\"], cfg_path)\n            else:\n                raise ConfigError(\n                    \"The required 'path' can't be found while\"\n                    \" the 'file_system' engine is used.\"\n                )\n\n        return str(path)",
+                    "func_fullName": "mackup.config.Config._parse_path(self)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "error",
+                    "func_desc": "Throw an error with the given message and immediately quit .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def error(message):\n    \"\"\"\n    Throw an error with the given message and immediately quit.\n\n    Args:\n        message(str): The message to display.\n    \"\"\"\n    fail = \"\\033[91m\"\n    end = \"\\033[0m\"\n    sys.exit(fail + \"Error: {}\".format(message) + end)",
+                    "func_fullName": "mackup.utils.error(message)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "get_dropbox_folder_location",
+                    "func_desc": "Try to locate the Dropbox folder .\n    Try to locate the Dropbox folder .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_dropbox_folder_location():\n    \"\"\"\n    Try to locate the Dropbox folder.\n\n    Returns:\n        (str) Full path to the current Dropbox folder\n    \"\"\"\n    host_db_path = os.path.join(os.environ[\"HOME\"], \".dropbox/host.db\")\n    try:\n        with open(host_db_path, \"r\") as f_hostdb:\n            data = f_hostdb.read().split()\n    except IOError:\n        error(constants.ERROR_UNABLE_TO_FIND_STORAGE.format(provider=\"Dropbox install\"))\n    dropbox_home = base64.b64decode(data[1]).decode()\n\n    return dropbox_home",
+                    "func_fullName": "mackup.utils.get_dropbox_folder_location()"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "get_google_drive_folder_location",
+                    "func_desc": "Try to locate the Google Drive folder .\n    Try to locate the Google Drive folder .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_google_drive_folder_location():\n    \"\"\"\n    Try to locate the Google Drive folder.\n\n    Returns:\n        (str) Full path to the current Google Drive folder\n    \"\"\"\n    gdrive_db_path = \"Library/Application Support/Google/Drive/sync_config.db\"\n    yosemite_gdrive_db_path = (\n        \"Library/Application Support/Google/Drive/\" \"user_default/sync_config.db\"\n    )\n    yosemite_gdrive_db = os.path.join(os.environ[\"HOME\"], yosemite_gdrive_db_path)\n    if os.path.isfile(yosemite_gdrive_db):\n        gdrive_db_path = yosemite_gdrive_db\n\n    googledrive_home = None\n\n    gdrive_db = os.path.join(os.environ[\"HOME\"], gdrive_db_path)\n    if os.path.isfile(gdrive_db):\n        con = sqlite3.connect(gdrive_db)\n        if con:\n            cur = con.cursor()\n            query = (\n                \"SELECT data_value \"\n                \"FROM data \"\n                \"WHERE entry_key = 'local_sync_root_path';\"\n            )\n            cur.execute(query)\n            data = cur.fetchone()\n            googledrive_home = str(data[0])\n            con.close()\n\n    if not googledrive_home:\n        error(\n            constants.ERROR_UNABLE_TO_FIND_STORAGE.format(\n                provider=\"Google Drive install\"\n            )\n        )\n\n    return googledrive_home",
+                    "func_fullName": "mackup.utils.get_google_drive_folder_location()"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "get_copy_folder_location",
+                    "func_desc": "Try to locate the Copy folder .\n\n    Try to locate the Copy folder .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_copy_folder_location():\n    \"\"\"\n    Try to locate the Copy folder.\n\n    Returns:\n        (str) Full path to the current Copy folder\n    \"\"\"\n    copy_settings_path = \"Library/Application Support/Copy Agent/config.db\"\n    copy_home = None\n\n    copy_settings = os.path.join(os.environ[\"HOME\"], copy_settings_path)\n\n    if os.path.isfile(copy_settings):\n        database = sqlite3.connect(copy_settings)\n        if database:\n            cur = database.cursor()\n            query = \"SELECT value \" \"FROM config2 \" \"WHERE option = 'csmRootPath';\"\n            cur.execute(query)\n            data = cur.fetchone()\n            copy_home = str(data[0])\n            cur.close()\n\n    if not copy_home:\n        error(constants.ERROR_UNABLE_TO_FIND_STORAGE.format(provider=\"Copy install\"))\n\n    return copy_home",
+                    "func_fullName": "mackup.utils.get_copy_folder_location()"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "get_icloud_folder_location",
+                    "func_desc": "Try to locate the iCloud folder .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_icloud_folder_location():\n    \"\"\"\n    Try to locate the iCloud Drive folder.\n\n    Returns:\n        (str) Full path to the iCloud Drive folder.\n    \"\"\"\n    yosemite_icloud_path = \"~/Library/Mobile Documents/com~apple~CloudDocs/\"\n\n    icloud_home = os.path.expanduser(yosemite_icloud_path)\n\n    if not os.path.isdir(icloud_home):\n        error(constants.ERROR_UNABLE_TO_FIND_STORAGE.format(provider=\"iCloud Drive\"))\n\n    return str(icloud_home)",
+                    "func_fullName": "mackup.utils.get_icloud_folder_location()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 6,
+                    "func_name": "path",
+                    "func_desc": "Path to the Mackup configuration files .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def path(self):\n        \"\"\"\n        Path to the Mackup configuration files.\n\n        The path to the directory where Mackup is gonna create and store his\n        directory.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._path)",
+                    "func_fullName": "mackup.config.Config.path(self)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "directory",
+                    "func_desc": "Returns the name of the Mackup directory named Mackup by default .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def directory(self):\n        \"\"\"\n        The name of the Mackup directory, named Mackup by default.\n\n        Returns:\n            str\n        \"\"\"\n        return str(self._directory)",
+                    "func_fullName": "mackup.config.Config.directory(self)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "fullpath",
+                    "func_desc": "Full path to the Mackup configuration files .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def fullpath(self):\n        \"\"\"\n        Full path to the Mackup configuration files.\n\n        The full path to the directory when Mackup is storing the configuration\n        files.\n\n        Returns:\n            str\n        \"\"\"\n        return str(os.path.join(self.path, self.directory))",
+                    "func_fullName": "mackup.config.Config.fullpath(self)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "__init__",
+                    "func_desc": "Mackup Constructor .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self):\n        \"\"\"Mackup Constructor.\"\"\"\n        self._config = config.Config()\n\n        self.mackup_folder = self._config.fullpath\n        self.temp_folder = tempfile.mkdtemp(prefix=\"mackup_tmp_\")",
+                    "func_fullName": "mackup.mackup.Mackup.__init__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 9,
+                    "func_name": "apps_to_ignore",
+                    "func_desc": "Get the list of applications to ignore in the config file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def apps_to_ignore(self):\n        \"\"\"\n        Get the list of applications ignored in the config file.\n\n        Returns:\n            set. Set of application names to ignore, lowercase\n        \"\"\"\n        return set(self._apps_to_ignore)",
+                    "func_fullName": "mackup.config.Config.apps_to_ignore(self)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "apps_to_sync",
+                    "func_desc": "Get the list of applications to allow in the config file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def apps_to_sync(self):\n        \"\"\"\n        Get the list of applications allowed in the config file.\n\n        Returns:\n            set. Set of application names to allow, lowercase\n        \"\"\"\n        return set(self._apps_to_sync)",
+                    "func_fullName": "mackup.config.Config.apps_to_sync(self)"
+                },
+                {
+                    "func_id": 24,
+                    "func_name": "get_apps_to_backup",
+                    "func_desc": "Get the list of applications that should be backed up by Mackup .",
+                    "func_file": "mackup",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_apps_to_backup(self):\n        \"\"\"\n        Get the list of applications that should be backed up by Mackup.\n\n        It's the list of allowed apps minus the list of ignored apps.\n\n        Returns:\n            (set) List of application names to back up\n        \"\"\"\n        # Instantiate the app db\n        app_db = appsdb.ApplicationsDatabase()\n\n        # If a list of apps to sync is specify, we only allow those\n        # Or we allow every supported app by default\n        apps_to_backup = self._config.apps_to_sync or app_db.get_app_names()\n\n        # Remove the specified apps to ignore\n        for app_name in self._config.apps_to_ignore:\n            apps_to_backup.discard(app_name)\n\n        return apps_to_backup",
+                    "func_fullName": "mackup.mackup.Mackup.get_apps_to_backup(self)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the application sequence number cache .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self):\n        \"\"\"Create a ApplicationsDatabase instance.\"\"\"\n        # Build the dict that will contain the properties of each application\n        self.apps = dict()\n\n        for config_file in ApplicationsDatabase.get_config_files():\n            config = configparser.SafeConfigParser(allow_no_value=True)\n\n            # Needed to not lowercase the configuration_files in the ini files\n            config.optionxform = str\n\n            if config.read(config_file):\n                # Get the filename without the directory name\n                filename = os.path.basename(config_file)\n                # The app name is the cfg filename with the extension\n                app_name = filename[: -len(\".cfg\")]\n\n                # Start building a dict for this app\n                self.apps[app_name] = dict()\n\n                # Add the fancy name for the app, for display purpose\n                app_pretty_name = config.get(\"application\", \"name\")\n                self.apps[app_name][\"name\"] = app_pretty_name\n\n                # Add the configuration files to sync\n                self.apps[app_name][\"configuration_files\"] = set()\n                if config.has_section(\"configuration_files\"):\n                    for path in config.options(\"configuration_files\"):\n                        if path.startswith(\"/\"):\n                            raise ValueError(\n                                \"Unsupported absolute path: {}\".format(path)\n                            )\n                        self.apps[app_name][\"configuration_files\"].add(path)\n\n                # Add the XDG configuration files to sync\n                home = os.path.expanduser(\"~/\")\n                failobj = \"{}.config\".format(home)\n                xdg_config_home = os.environ.get(\"XDG_CONFIG_HOME\", failobj)\n                if not xdg_config_home.startswith(home):\n                    raise ValueError(\n                        \"$XDG_CONFIG_HOME: {} must be \"\n                        \"somewhere within your home \"\n                        \"directory: {}\".format(xdg_config_home, home)\n                    )\n                if config.has_section(\"xdg_configuration_files\"):\n                    for path in config.options(\"xdg_configuration_files\"):\n                        if path.startswith(\"/\"):\n                            raise ValueError(\n                                \"Unsupported absolute path: \" \"{}\".format(path)\n                            )\n                        path = os.path.join(xdg_config_home, path)\n                        path = path.replace(home, \"\")\n                        (self.apps[app_name][\"configuration_files\"].add(path))",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.__init__(self)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "get_config_files",
+                    "func_desc": "Get the list of configuration files describing the apps supported by Mackup .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_config_files():\n        \"\"\"\n        Return the application configuration files.\n\n        Return a list of configuration files describing the apps supported by\n        Mackup. The files returned are absolute full path to those files.\n        e.g. /usr/lib/mackup/applications/bash.cfg\n\n        Only one config file per application should be returned, custom config\n        having a priority over stock config.\n\n        Returns:\n            set of strings.\n        \"\"\"\n        # Configure the config parser\n        apps_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), APPS_DIR)\n        custom_apps_dir = os.path.join(os.environ[\"HOME\"], CUSTOM_APPS_DIR)\n\n        # List of stock application config files\n        config_files = set()\n\n        # Temp list of user added app config file names\n        custom_files = set()\n\n        # Get the list of custom application config files first\n        if os.path.isdir(custom_apps_dir):\n            for filename in os.listdir(custom_apps_dir):\n                if filename.endswith(\".cfg\"):\n                    config_files.add(os.path.join(custom_apps_dir, filename))\n                    # Also add it to the set of custom apps, so that we don't\n                    # add the stock config for the same app too\n                    custom_files.add(filename)\n\n        # Add the default provided app config files, but only if those are not\n        # customized, as we don't want to overwrite custom app config.\n        for filename in os.listdir(apps_dir):\n            if filename.endswith(\".cfg\") and filename not in custom_files:\n                config_files.add(os.path.join(apps_dir, filename))\n\n        return config_files",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.get_config_files()"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "get_name",
+                    "func_desc": "Return the fancy name of an application .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_name(self, name):\n        \"\"\"\n        Return the fancy name of an application.\n\n        Args:\n            name (str)\n\n        Returns:\n            str\n        \"\"\"\n        return self.apps[name][\"name\"]",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.get_name(self, name)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "get_app_names",
+                    "func_desc": "Return the list of application names that are available in the the database .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_app_names(self):\n        \"\"\"\n        Return application names.\n\n        Return the list of application names that are available in the\n        database.\n\n        Returns:\n            set of str.\n        \"\"\"\n        app_names = set()\n        for name in self.apps:\n            app_names.add(name)\n\n        return app_names",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.get_app_names(self)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "get_pretty_app_names",
+                    "func_desc": "Return the list of pretty app names that are available in the database .",
+                    "func_file": "appsdb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_pretty_app_names(self):\n        \"\"\"\n        Return the list of pretty app names that are available in the database.\n\n        Returns:\n            set of str.\n        \"\"\"\n        pretty_app_names = set()\n        for app_name in self.get_app_names():\n            pretty_app_names.add(self.get_name(app_name))\n\n        return pretty_app_names",
+                    "func_fullName": "mackup.appsdb.ApplicationsDatabase.get_pretty_app_names(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 36,
+                    "func_name": "confirm",
+                    "func_desc": "Ask the user if the user really wants something to happen or not .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def confirm(question):\n    \"\"\"\n    Ask the user if he really wants something to happen.\n\n    Args:\n        question(str): What can happen\n\n    Returns:\n        (boolean): Confirmed or not\n    \"\"\"\n    if FORCE_YES:\n        return True\n\n    while True:\n        answer = input(question + \" <Yes|No> \").lower()\n\n        if answer == \"yes\" or answer == \"y\":\n            confirmed = True\n            break\n        if answer == \"no\" or answer == \"n\":\n            confirmed = False\n            break\n\n    return confirmed",
+                    "func_fullName": "mackup.utils.confirm(question)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "is_process_running",
+                    "func_desc": "Check if a process with the given name is running .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def is_process_running(process_name):\n    \"\"\"\n    Check if a process with the given name is running.\n\n    Args:\n        (str): Process name, e.g. \"Sublime Text\"\n\n    Returns:\n        (bool): True if the process is running\n    \"\"\"\n    is_running = False\n\n    # On systems with pgrep, check if the given process is running\n    if os.path.isfile(\"/usr/bin/pgrep\"):\n        dev_null = open(os.devnull, \"wb\")\n        returncode = subprocess.call([\"/usr/bin/pgrep\", process_name], stdout=dev_null)\n        is_running = bool(returncode == 0)\n\n    return is_running",
+                    "func_fullName": "mackup.utils.is_process_running(process_name)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "can_file_be_synced_on_current_platform",
+                    "func_desc": "Checks if a given file can be synced locally on the current platform .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def can_file_be_synced_on_current_platform(path):\n    \"\"\"\n    Check if the given path can be synced locally.\n\n    Check if it makes sense to sync the file at the given path on the current\n    platform.\n    For now we don't sync any file in the ~/Library folder on GNU/Linux.\n    There might be other exceptions in the future.\n\n    Args:\n        (str): Path to the file or folder to check. If relative, prepend it\n               with the home folder.\n               'abc' becomes '~/abc'\n               '/def' stays '/def'\n\n    Returns:\n        (bool): True if given file can be synced\n    \"\"\"\n    can_be_synced = True\n\n    # If the given path is relative, prepend home\n    fullpath = os.path.join(os.environ[\"HOME\"], path)\n\n    # Compute the ~/Library path on macOS\n    # End it with a slash because we are looking for this specific folder and\n    # not any file/folder named LibrarySomething\n    library_path = os.path.join(os.environ[\"HOME\"], \"Library/\")\n\n    if platform.system() == constants.PLATFORM_LINUX:\n        if fullpath.startswith(library_path):\n            can_be_synced = False\n\n    return can_be_synced",
+                    "func_fullName": "mackup.utils.can_file_be_synced_on_current_platform(path)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1363; k=8; a=0.25; combined=0.729; stability(ARI)=1.000; sep=0.328",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 37,
+                    "func_name": "delete",
+                    "func_desc": "Delete a file directory or link .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def delete(filepath):\n    \"\"\"\n    Delete the given file, directory or link.\n\n    It Should support undelete later on.\n\n    Args:\n        filepath (str): Absolute full path to a file. e.g. /path/to/file\n    \"\"\"\n    # Some files have ACLs, let's remove them recursively\n    remove_acl(filepath)\n\n    # Some files have immutable attributes, let's remove them recursively\n    remove_immutable_attribute(filepath)\n\n    # Finally remove the files and folders\n    if os.path.isfile(filepath) or os.path.islink(filepath):\n        os.remove(filepath)\n    elif os.path.isdir(filepath):\n        shutil.rmtree(filepath)",
+                    "func_fullName": "mackup.utils.delete(filepath)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "copy",
+                    "func_desc": "Copy a file or folder from src to dst .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def copy(src, dst):\n    \"\"\"\n    Copy a file or a folder (recursively) from src to dst.\n\n    For the sake of simplicity, both src and dst must be absolute path and must\n    include the filename of the file or folder.\n    Also do not include any trailing slash.\n\n    e.g. copy('/path/to/src_file', '/path/to/dst_file')\n    or copy('/path/to/src_folder', '/path/to/dst_folder')\n\n    But not: copy('/path/to/src_file', 'path/to/')\n    or copy('/path/to/src_folder/', '/path/to/dst_folder')\n\n    Args:\n        src (str): Source file or folder\n        dst (str): Destination file or folder\n    \"\"\"\n    assert isinstance(src, str)\n    assert os.path.exists(src)\n    assert isinstance(dst, str)\n\n    # Create the path to the dst file if it does not exist\n    abs_path = os.path.dirname(os.path.abspath(dst))\n    if not os.path.isdir(abs_path):\n        os.makedirs(abs_path)\n\n    # We need to copy a single file\n    if os.path.isfile(src):\n        # Copy the src file to dst\n        shutil.copy(src, dst)\n\n    # We need to copy a whole folder\n    elif os.path.isdir(src):\n        shutil.copytree(src, dst)\n\n    # What the heck is this?\n    else:\n        raise ValueError(\"Unsupported file: {}\".format(src))\n\n    # Set the good mode to the file or folder recursively\n    chmod(dst)",
+                    "func_fullName": "mackup.utils.copy(src, dst)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "link",
+                    "func_desc": "Create a link to a target file or folder .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def link(target, link_to):\n    \"\"\"\n    Create a link to a target file or a folder.\n\n    For the sake of simplicity, both target and link_to must be absolute path and must\n    include the filename of the file or folder.\n    Also do not include any trailing slash.\n\n    e.g. link('/path/to/file', '/path/to/link')\n\n    But not: link('/path/to/file', 'path/to/')\n    or link('/path/to/folder/', '/path/to/link')\n\n    Args:\n        target (str): file or folder the link will point to\n        link_to (str): Link to create\n    \"\"\"\n    assert isinstance(target, str)\n    assert os.path.exists(target)\n    assert isinstance(link_to, str)\n\n    # Create the path to the link if it does not exist\n    abs_path = os.path.dirname(os.path.abspath(link_to))\n    if not os.path.isdir(abs_path):\n        os.makedirs(abs_path)\n\n    # Make sure the file or folder recursively has the good mode\n    chmod(target)\n\n    # Create the link to target\n    os.symlink(target, link_to)",
+                    "func_fullName": "mackup.utils.link(target, link_to)"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "chmod",
+                    "func_desc": "Recursively set the chmod for files and folders to 0600 and 0700 for folders .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def chmod(target):\n    \"\"\"\n    Recursively set the chmod for files to 0600 and 0700 for folders.\n\n    It's ok unless we need something more specific.\n\n    Args:\n        target (str): Root file or folder\n    \"\"\"\n    assert isinstance(target, str)\n    assert os.path.exists(target)\n\n    file_mode = stat.S_IRUSR | stat.S_IWUSR\n    folder_mode = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR\n\n    # Remove the immutable attribute recursively if there is one\n    remove_immutable_attribute(target)\n\n    if os.path.isfile(target):\n        os.chmod(target, file_mode)\n\n    elif os.path.isdir(target):\n        # chmod the root item\n        os.chmod(target, folder_mode)\n\n        # chmod recursively in the folder it it's one\n        for root, dirs, files in os.walk(target):\n            for cur_dir in dirs:\n                os.chmod(os.path.join(root, cur_dir), folder_mode)\n            for cur_file in files:\n                os.chmod(os.path.join(root, cur_file), file_mode)\n\n    else:\n        raise ValueError(\"Unsupported file type: {}\".format(target))",
+                    "func_fullName": "mackup.utils.chmod(target)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "remove_acl",
+                    "func_desc": "Remove the ACL of a given file or folder on a given path .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def remove_acl(path):\n    \"\"\"\n    Remove the ACL of the file or folder located on the given path.\n\n    Also remove the ACL of any file and folder below the given one,\n    recursively.\n\n    Args:\n        path (str): Path to the file or folder to remove the ACL for,\n                    recursively.\n    \"\"\"\n    # Some files have ACLs, let's remove them recursively\n    if platform.system() == constants.PLATFORM_DARWIN and os.path.isfile(\"/bin/chmod\"):\n        subprocess.call([\"/bin/chmod\", \"-R\", \"-N\", path])\n    elif (platform.system() == constants.PLATFORM_LINUX) and os.path.isfile(\n        \"/bin/setfacl\"\n    ):\n        subprocess.call([\"/bin/setfacl\", \"-R\", \"-b\", path])",
+                    "func_fullName": "mackup.utils.remove_acl(path)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "remove_immutable_attribute",
+                    "func_desc": "Remove the immutable attribute of the given path .",
+                    "func_file": "utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def remove_immutable_attribute(path):\n    \"\"\"\n    Remove the immutable attribute of the given path.\n\n    Remove the immutable attribute of the file or folder located on the given\n    path. Also remove the immutable attribute of any file and folder below the\n    given one, recursively.\n\n    Args:\n        path (str): Path to the file or folder to remove the immutable\n                    attribute for, recursively.\n    \"\"\"\n    # Some files have ACLs, let's remove them recursively\n    if (platform.system() == constants.PLATFORM_DARWIN) and os.path.isfile(\n        \"/usr/bin/chflags\"\n    ):\n        subprocess.call([\"/usr/bin/chflags\", \"-R\", \"nouchg\", path])\n    elif platform.system() == constants.PLATFORM_LINUX and os.path.isfile(\n        \"/usr/bin/chattr\"\n    ):\n        subprocess.call([\"/usr/bin/chattr\", \"-R\", \"-f\", \"-i\", path])",
+                    "func_fullName": "mackup.utils.remove_immutable_attribute(path)"
+                }
+            ]
+        }
+    ]
+}

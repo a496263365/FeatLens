@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 231,
+  "namespace": "datasette.utils.check_connection",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "\n\n```\ndatasette/utils/__init__.py\nline: 953\nfunction: check_connection\n\ndatasette/utils/internal_db.py\nline: 80\nfunction: populate_schema_tables\n\ndatasette/utils/__init__.py\nline: 631\nfunction: table_column_details\n\ndatasette/database.py\nline: 514\nclass: Results\n\ndatasette/utils/sqlite.py\nline: 15\nfunction: sqlite_version\n\ndatasette/database.py\nline: 343\nfunction: execute\n\ndatasette/utils/__init__.py\nline: 204\nclass: InvalidSql\n```\n\n",
+  "final_locations": {
+    "files": [
+      "datasette/utils/__init__.py",
+      "datasette/utils/internal_db.py",
+      "datasette/database.py",
+      "datasette/utils/sqlite.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/utils/internal_db.py",
+        "name": "populate_schema_tables",
+        "kind": "function",
+        "symbol": "datasette.utils.internal_db.populate_schema_tables",
+        "start": 68,
+        "end": 170,
+        "code": "async def populate_schema_tables(internal_db, db):\n    database_name = db.name\n\n    def delete_everything(conn):\n        conn.execute(\"DELETE FROM tables WHERE database_name = ?\", [database_name])\n        conn.execute(\"DELETE FROM columns WHERE database_name = ?\", [database_name])\n        conn.execute(\n            \"DELETE FROM foreign_keys WHERE database_name = ?\", [database_name]\n        )\n        conn.execute(\"DELETE FROM indexes WHERE database_name = ?\", [database_name])\n\n    await internal_db.execute_write_fn(delete_everything)\n\n    tables = (await db.execute(\"select * from sqlite_master WHERE type = 'table'\")).rows\n\n    def collect_info(conn):\n        tables_to_insert = []\n        columns_to_insert = []\n        foreign_keys_to_insert = []\n        indexes_to_insert = []\n\n        for table in tables:\n            table_name = table[\"name\"]\n            tables_to_insert.append(\n                (database_name, table_name, table[\"rootpage\"], table[\"sql\"])\n            )\n            columns = table_column_details(conn, table_name)\n            columns_to_insert.extend(\n                {\n                    **{\"database_name\": database_name, \"table_name\": table_name},\n                    **column._asdict(),\n                }\n                for column in columns\n            )\n            foreign_keys = conn.execute(\n                f\"PRAGMA foreign_key_list([{table_name}])\"\n            ).fetchall()\n            foreign_keys_to_insert.extend(\n                {\n                    **{\"database_name\": database_name, \"table_name\": table_name},\n                    **dict(foreign_key),\n                }\n                for foreign_key in foreign_keys\n            )\n            indexes = conn.execute(f\"PRAGMA index_list([{table_name}])\").fetchall()\n            indexes_to_insert.extend(\n                {\n                    **{\"database_name\": database_name, \"table_name\": table_name},\n                    **dict(index),\n                }\n                for index in indexes\n            )\n        return (\n            tables_to_insert,\n            columns_to_insert,\n            foreign_keys_to_insert,\n            indexes_to_insert,\n        )\n\n    (\n        tables_to_insert,\n        columns_to_insert,\n        foreign_keys_to_insert,\n        indexes_to_insert,\n    ) = await db.execute_fn(collect_info)\n\n    await internal_db.execute_write_many(\n        \"\"\"\n        INSERT INTO tables (database_name, table_name, rootpage, sql)\n        values (?, ?, ?, ?)\n    \"\"\",\n        tables_to_insert,\n    )\n    await internal_db.execute_write_many(\n        \"\"\"\n        INSERT INTO columns (\n            database_name, table_name, cid, name, type, \"notnull\", default_value, is_pk, hidden\n        ) VALUES (\n            :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden\n        )\n    \"\"\",\n        columns_to_insert,\n    )\n    await internal_db.execute_write_many(\n        \"\"\"\n        INSERT INTO foreign_keys (\n            database_name, table_name, \"id\", seq, \"table\", \"from\", \"to\", on_update, on_delete, match\n        ) VALUES (\n            :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match\n        )\n    \"\"\",\n        foreign_keys_to_insert,\n    )\n    await internal_db.execute_write_many(\n        \"\"\"\n        INSERT INTO indexes (\n            database_name, table_name, seq, name, \"unique\", origin, partial\n        ) VALUES (\n            :database_name, :table_name, :seq, :name, :unique, :origin, :partial\n        )\n    \"\"\",\n        indexes_to_insert,\n    )"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "table_column_details",
+        "kind": "function",
+        "symbol": "datasette.utils.table_column_details",
+        "start": 631,
+        "end": 647,
+        "code": "def table_column_details(conn, table):\n    if supports_table_xinfo():\n        # table_xinfo was added in 3.26.0\n        return [\n            Column(*r)\n            for r in conn.execute(\n                f\"PRAGMA table_xinfo({escape_sqlite(table)});\"\n            ).fetchall()\n        ]\n    else:\n        # Treat hidden as 0 for all columns\n        return [\n            Column(*(list(r) + [0]))\n            for r in conn.execute(\n                f\"PRAGMA table_info({escape_sqlite(table)});\"\n            ).fetchall()\n        ]"
+      },
+      {
+        "file": "datasette/database.py",
+        "name": "Results",
+        "kind": "class",
+        "symbol": "datasette.database.Results",
+        "start": 514,
+        "end": 540,
+        "code": "class Results:\n    def __init__(self, rows, truncated, description):\n        self.rows = rows\n        self.truncated = truncated\n        self.description = description\n\n    @property\n    def columns(self):\n        return [d[0] for d in self.description]\n\n    def first(self):\n        if self.rows:\n            return self.rows[0]\n        else:\n            return None\n\n    def single_value(self):\n        if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):\n            return self.rows[0][0]\n        else:\n            raise MultipleValues\n\n    def __iter__(self):\n        return iter(self.rows)\n\n    def __len__(self):\n        return len(self.rows)"
+      },
+      {
+        "file": "datasette/utils/sqlite.py",
+        "name": "sqlite_version",
+        "kind": "function",
+        "symbol": "datasette.utils.sqlite.sqlite_version",
+        "start": 15,
+        "end": 19,
+        "code": "def sqlite_version():\n    global _cached_sqlite_version\n    if _cached_sqlite_version is None:\n        _cached_sqlite_version = _sqlite_version()\n    return _cached_sqlite_version"
+      },
+      {
+        "file": "datasette/database.py",
+        "name": "Database.table_names",
+        "kind": "function",
+        "symbol": "datasette.database.Database.table_names",
+        "start": 341,
+        "end": 345,
+        "code": "    async def table_names(self):\n        results = await self.execute(\n            \"select name from sqlite_master where type='table'\"\n        )\n        return [r[0] for r in results.rows]"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "InvalidSql",
+        "kind": "class",
+        "symbol": "datasette.utils.InvalidSql",
+        "start": 204,
+        "end": 205,
+        "code": "class InvalidSql(Exception):\n    pass"
+      }
+    ],
+    "unresolved": [
+      "datasette/database.py:function: execute"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 4,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5139
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 26021,
+    "completion_tokens": 1692,
+    "total_tokens": 27713,
+    "seconds": 61.54671001434326,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 74.50019884109497,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

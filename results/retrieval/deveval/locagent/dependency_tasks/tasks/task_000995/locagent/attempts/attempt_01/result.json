@@ -1,0 +1,138 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 995,
+  "namespace": "boltons.cacheutils.LRI._get_flattened_ll",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 19205,
+      "input_estimate_after": 19205,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `_get_flattened_ll` function in the `LRI` class. The function should return a flattened version of the linked list. Looking at the code structure, I can identify the key components that need to be understood and reused:\n\n1. The linked list structure uses constants `PREV`, `NEXT`, `KEY`, `VALUE` defined at line 99\n2. The linked list is circular with an anchor node\n3. The `_print_ll` function at line 159 shows how `_get_flattened_ll` should be used\n4. The linked list manipulation methods show how to traverse the list\n\nHere are the key locations containing reusable dependencies:\n\n```\nboltons/cacheutils.py\nline: 99\nconstant: PREV, NEXT, KEY, VALUE\n\nboltons/cacheutils.py\nline: 151-157\nclass: LRI\nfunction: _init_ll\n\nboltons/cacheutils.py\nline: 159-164\nclass: LRI\nfunction: _print_ll\n\nboltons/cacheutils.py\nline: 176-192\nclass: LRI\nfunction: _get_link_and_move_to_front_of_ll\n\nboltons/cacheutils.py\nline: 194-201\nclass: LRI\nfunction: _set_key_and_add_to_front_of_ll\n\nboltons/cacheutils.py\nline: 203-219\nclass: LRI\nfunction: _set_key_and_evict_last_in_ll\n```",
+  "final_locations": {
+    "files": [
+      "boltons/cacheutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "PREV",
+        "kind": "variable",
+        "symbol": "boltons.cacheutils.PREV",
+        "start": 99,
+        "end": 99,
+        "code": "PREV, NEXT, KEY, VALUE = range(4)   # names for the link fields"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI._init_ll",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI._init_ll",
+        "start": 151,
+        "end": 157,
+        "code": "    def _init_ll(self):\n        anchor = []\n        anchor[:] = [anchor, anchor, _MISSING, _MISSING]\n        # a link lookup table for finding linked list links in O(1)\n        # time.\n        self._link_lookup = {}\n        self._anchor = anchor"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI",
+        "kind": "class",
+        "symbol": "boltons.cacheutils.LRI",
+        "start": 103,
+        "end": 337,
+        "code": "class LRI(dict):\n    \"\"\"The ``LRI`` implements the basic *Least Recently Inserted* strategy to\n    caching. One could also think of this as a ``SizeLimitedDefaultDict``.\n\n    *on_miss* is a callable that accepts the missing key (as opposed\n    to :class:`collections.defaultdict`'s \"default_factory\", which\n    accepts no arguments.) Also note that, like the :class:`LRI`,\n    the ``LRI`` is instrumented with statistics tracking.\n\n    >>> cap_cache = LRI(max_size=2)\n    >>> cap_cache['a'], cap_cache['b'] = 'A', 'B'\n    >>> from pprint import pprint as pp\n    >>> pp(dict(cap_cache))\n    {'a': 'A', 'b': 'B'}\n    >>> [cap_cache['b'] for i in range(3)][0]\n    'B'\n    >>> cap_cache['c'] = 'C'\n    >>> print(cap_cache.get('a'))\n    None\n    >>> cap_cache.hit_count, cap_cache.miss_count, cap_cache.soft_miss_count\n    (3, 1, 1)\n    \"\"\"\n    def __init__(self, max_size=DEFAULT_MAX_SIZE, values=None,\n                 on_miss=None):\n        if max_size <= 0:\n            raise ValueError('expected max_size > 0, not %r' % max_size)\n        self.hit_count = self.miss_count = self.soft_miss_count = 0\n        self.max_size = max_size\n        self._lock = RLock()\n        self._init_ll()\n\n        if on_miss is not None and not callable(on_miss):\n            raise TypeError('expected on_miss to be a callable'\n                            ' (or None), not %r' % on_miss)\n        self.on_miss = on_miss\n\n        if values:\n            self.update(values)\n\n    # TODO: fromkeys()?\n\n    # linked list manipulation methods.\n    #\n    # invariants:\n    # 1) 'anchor' is the sentinel node in the doubly linked list.  there is\n    #    always only one, and its KEY and VALUE are both _MISSING.\n    # 2) the most recently accessed node comes immediately before 'anchor'.\n    # 3) the least recently accessed node comes immediately after 'anchor'.\n    def _init_ll(self):\n        anchor = []\n        anchor[:] = [anchor, anchor, _MISSING, _MISSING]\n        # a link lookup table for finding linked list links in O(1)\n        # time.\n        self._link_lookup = {}\n        self._anchor = anchor\n\n    def _print_ll(self):\n        print('***')\n        for (key, val) in self._get_flattened_ll():\n            print(key, val)\n        print('***')\n        return\n\n    def _get_flattened_ll(self):\n        pass\n\n\n\n\n\n\n\n\n    def _get_link_and_move_to_front_of_ll(self, key):\n        # find what will become the newest link. this may raise a\n        # KeyError, which is useful to __getitem__ and __setitem__\n        newest = self._link_lookup[key]\n\n        # splice out what will become the newest link.\n        newest[PREV][NEXT] = newest[NEXT]\n        newest[NEXT][PREV] = newest[PREV]\n\n        # move what will become the newest link immediately before\n        # anchor (invariant 2)\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        second_newest[NEXT] = anchor[PREV] = newest\n        newest[PREV] = second_newest\n        newest[NEXT] = anchor\n        return newest\n\n    def _set_key_and_add_to_front_of_ll(self, key, value):\n        # create a new link and place it immediately before anchor\n        # (invariant 2).\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        newest = [second_newest, anchor, key, value]\n        second_newest[NEXT] = anchor[PREV] = newest\n        self._link_lookup[key] = newest\n\n    def _set_key_and_evict_last_in_ll(self, key, value):\n        # the link after anchor is the oldest in the linked list\n        # (invariant 3).  the current anchor becomes a link that holds\n        # the newest key, and the oldest link becomes the new anchor\n        # (invariant 1).  now the newest link comes before anchor\n        # (invariant 2).  no links are moved; only their keys\n        # and values are changed.\n        oldanchor = self._anchor\n        oldanchor[KEY] = key\n        oldanchor[VALUE] = value\n\n        self._anchor = anchor = oldanchor[NEXT]\n        evicted = anchor[KEY]\n        anchor[KEY] = anchor[VALUE] = _MISSING\n        del self._link_lookup[evicted]\n        self._link_lookup[key] = oldanchor\n        return evicted\n\n    def _remove_from_ll(self, key):\n        # splice a link out of the list and drop it from our lookup\n        # table.\n        link = self._link_lookup.pop(key)\n        link[PREV][NEXT] = link[NEXT]\n        link[NEXT][PREV] = link[PREV]\n\n    def __setitem__(self, key, value):\n        with self._lock:\n            try:\n                link = self._get_link_and_move_to_front_of_ll(key)\n            except KeyError:\n                if len(self) < self.max_size:\n                    self._set_key_and_add_to_front_of_ll(key, value)\n                else:\n                    evicted = self._set_key_and_evict_last_in_ll(key, value)\n                    super(LRI, self).__delitem__(evicted)\n                super(LRI, self).__setitem__(key, value)\n            else:\n                link[VALUE] = value\n\n    def __getitem__(self, key):\n        with self._lock:\n            try:\n                link = self._link_lookup[key]\n            except KeyError:\n                self.miss_count += 1\n                if not self.on_miss:\n                    raise\n                ret = self[key] = self.on_miss(key)\n                return ret\n\n            self.hit_count += 1\n            return link[VALUE]\n\n    def get(self, key, default=None):\n        try:\n            return self[key]\n        except KeyError:\n            self.soft_miss_count += 1\n            return default\n\n    def __delitem__(self, key):\n        with self._lock:\n            super(LRI, self).__delitem__(key)\n            self._remove_from_ll(key)\n\n    def pop(self, key, default=_MISSING):\n        # NB: hit/miss counts are bypassed for pop()\n        with self._lock:\n            try:\n                ret = super(LRI, self).pop(key)\n            except KeyError:\n                if default is _MISSING:\n                    raise\n                ret = default\n            else:\n                self._remove_from_ll(key)\n            return ret\n\n    def popitem(self):\n        with self._lock:\n            item = super(LRI, self).popitem()\n            self._remove_from_ll(item[0])\n            return item\n\n    def clear(self):\n        with self._lock:\n            super(LRI, self).clear()\n            self._init_ll()\n\n    def copy(self):\n        return self.__class__(max_size=self.max_size, values=self)\n\n    def setdefault(self, key, default=None):\n        with self._lock:\n            try:\n                return self[key]\n            except KeyError:\n                self.soft_miss_count += 1\n                self[key] = default\n                return default\n\n    def update(self, E, **F):\n        # E and F are throwback names to the dict() __doc__\n        with self._lock:\n            if E is self:\n                return\n            setitem = self.__setitem__\n            if callable(getattr(E, 'keys', None)):\n                for k in E.keys():\n                    setitem(k, E[k])\n            else:\n                for k, v in E:\n                    setitem(k, v)\n            for k in F:\n                setitem(k, F[k])\n            return\n\n    def __eq__(self, other):\n        with self._lock:\n            if self is other:\n                return True\n            if len(other) != len(self):\n                return False\n            if not isinstance(other, LRI):\n                return other == self\n            return super(LRI, self).__eq__(other)\n\n    def __ne__(self, other):\n        return not (self == other)\n\n    def __repr__(self):\n        cn = self.__class__.__name__\n        val_map = super(LRI, self).__repr__()\n        return ('%s(max_size=%r, on_miss=%r, values=%s)'\n                % (cn, self.max_size, self.on_miss, val_map))"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI._print_ll",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI._print_ll",
+        "start": 159,
+        "end": 164,
+        "code": "    def _print_ll(self):\n        print('***')\n        for (key, val) in self._get_flattened_ll():\n            print(key, val)\n        print('***')\n        return"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI._get_link_and_move_to_front_of_ll",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI._get_link_and_move_to_front_of_ll",
+        "start": 176,
+        "end": 192,
+        "code": "    def _get_link_and_move_to_front_of_ll(self, key):\n        # find what will become the newest link. this may raise a\n        # KeyError, which is useful to __getitem__ and __setitem__\n        newest = self._link_lookup[key]\n\n        # splice out what will become the newest link.\n        newest[PREV][NEXT] = newest[NEXT]\n        newest[NEXT][PREV] = newest[PREV]\n\n        # move what will become the newest link immediately before\n        # anchor (invariant 2)\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        second_newest[NEXT] = anchor[PREV] = newest\n        newest[PREV] = second_newest\n        newest[NEXT] = anchor\n        return newest"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI._set_key_and_add_to_front_of_ll",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI._set_key_and_add_to_front_of_ll",
+        "start": 194,
+        "end": 201,
+        "code": "    def _set_key_and_add_to_front_of_ll(self, key, value):\n        # create a new link and place it immediately before anchor\n        # (invariant 2).\n        anchor = self._anchor\n        second_newest = anchor[PREV]\n        newest = [second_newest, anchor, key, value]\n        second_newest[NEXT] = anchor[PREV] = newest\n        self._link_lookup[key] = newest"
+      },
+      {
+        "file": "boltons/cacheutils.py",
+        "name": "LRI._set_key_and_evict_last_in_ll",
+        "kind": "function",
+        "symbol": "boltons.cacheutils.LRI._set_key_and_evict_last_in_ll",
+        "start": 203,
+        "end": 219,
+        "code": "    def _set_key_and_evict_last_in_ll(self, key, value):\n        # the link after anchor is the oldest in the linked list\n        # (invariant 3).  the current anchor becomes a link that holds\n        # the newest key, and the oldest link becomes the new anchor\n        # (invariant 1).  now the newest link comes before anchor\n        # (invariant 2).  no links are moved; only their keys\n        # and values are changed.\n        oldanchor = self._anchor\n        oldanchor[KEY] = key\n        oldanchor[VALUE] = value\n\n        self._anchor = anchor = oldanchor[NEXT]\n        evicted = anchor[KEY]\n        anchor[KEY] = anchor[VALUE] = _MISSING\n        del self._link_lookup[evicted]\n        self._link_lookup[key] = oldanchor\n        return evicted"
+      }
+    ],
+    "unresolved": [
+      "boltons/cacheutils.py:function: _init_ll",
+      "boltons/cacheutils.py:function: _print_ll",
+      "boltons/cacheutils.py:function: _get_link_and_move_to_front_of_ll",
+      "boltons/cacheutils.py:function: _set_key_and_add_to_front_of_ll",
+      "boltons/cacheutils.py:function: _set_key_and_evict_last_in_ll"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "boltons.cacheutils.KEY",
+      "boltons.cacheutils.LRI._anchor",
+      "boltons.cacheutils.NEXT",
+      "boltons.cacheutils.VALUE"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 9951
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 55002,
+    "completion_tokens": 770,
+    "total_tokens": 55772,
+    "seconds": 50.81670308113098,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 66.413015127182,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

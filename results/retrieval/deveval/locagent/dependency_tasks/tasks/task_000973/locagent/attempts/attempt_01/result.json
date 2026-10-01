@@ -1,0 +1,109 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 973,
+  "namespace": "pycorrector.en_spell.EnSpell.check_init",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7857,
+      "input_estimate_after": 7857,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\npycorrector/en_spell.py\nline: 15\nclass: EnSpell\nfunction: check_init\n\npycorrector/en_spell.py\nline: 23\nfunction: __init__\n\npycorrector/en_spell.py\nline: 143\nfunction: correct\n\npycorrector/corrector.py\nline: 267\nfunction: correct\n\npycorrector/utils/io_utils.py\nline: 11\nfunction: load_pkl\n```",
+  "final_locations": {
+    "files": [
+      "pycorrector/en_spell.py",
+      "pycorrector/corrector.py",
+      "pycorrector/utils/io_utils.py"
+    ],
+    "entities": [
+      {
+        "file": "pycorrector/en_spell.py",
+        "name": "EnSpell",
+        "kind": "class",
+        "symbol": "pycorrector.en_spell.EnSpell",
+        "start": 25,
+        "end": 174,
+        "code": "class EnSpell(object):\n    def __init__(self, word_freq_dict={}):\n        # Word freq dict, k=word, v=int(freq)\n        self.word_freq_dict = word_freq_dict\n        self.custom_confusion = {}\n\n    def _init(self):\n        with gzip.open(config.en_dict_path, \"rb\") as f:\n            all_word_freq_dict = json.loads(f.read())\n            word_freq = {}\n            for k, v in all_word_freq_dict.items():\n                # 英语常用单词3万个，取词频高于400\n                if v > 400:\n                    word_freq[k] = v\n            self.word_freq_dict = word_freq\n            logger.debug(\"load en spell data: %s, size: %d\" % (config.en_dict_path,\n                                                               len(self.word_freq_dict)))\n\n    def check_init(self):\n        pass\n\n\n    @staticmethod\n    def edits1(word):\n        \"\"\"\n        all edits that are one edit away from 'word'\n        :param word:\n        :return:\n        \"\"\"\n        letters = 'abcdefghijklmnopqrstuvwxyz'\n        splits = [(word[:i], word[i:]) for i in range(len(word) + 1)]\n        deletes = [L + R[1:] for L, R in splits if R]\n        transposes = [L + R[1] + R[0] + R[2:] for L, R in splits if len(R) > 1]\n        replaces = [L + c + R[1:] for L, R in splits if R for c in letters]\n        inserts = [L + c + R for L, R in splits for c in letters]\n        return set(deletes + transposes + replaces + inserts)\n\n    def edits2(self, word):\n        \"\"\"\n        all edit that are two edits away from 'word'\n        :param word:\n        :return:\n        \"\"\"\n        return (e2 for e1 in self.edits1(word) for e2 in self.edits1(e1))\n\n    def known(self, word_freq_dict):\n        \"\"\"\n        the subset of 'word_freq_dict' that appear in the dictionary of word_freq_dict\n        :param word_freq_dict:\n        :param limit_count:\n        :return:\n        \"\"\"\n        self.check_init()\n        return set(w for w in word_freq_dict if w in self.word_freq_dict)\n\n    def probability(self, word):\n        \"\"\"\n        probability of word\n        :param word:\n        :return:float\n        \"\"\"\n        self.check_init()\n        N = sum(self.word_freq_dict.values())\n        return self.word_freq_dict.get(word, 0) / N\n\n    def candidates(self, word):\n        \"\"\"\n        generate possible spelling corrections for word.\n        :param word:\n        :return:\n        \"\"\"\n        self.check_init()\n        return self.known([word]) or self.known(self.edits1(word)) or self.known(self.edits2(word)) or {word}\n\n    def correct_word(self, word):\n        \"\"\"\n        most probable spelling correction for word\n        :param word:\n        :param mini_prob:\n        :return:\n        \"\"\"\n        self.check_init()\n        candi_prob = {i: self.probability(i) for i in self.candidates(word)}\n        sort_candi_prob = sorted(candi_prob.items(), key=operator.itemgetter(1))\n        return sort_candi_prob[-1][0]\n\n    @staticmethod\n    def _get_custom_confusion_dict(path):\n        \"\"\"\n        取自定义困惑集\n        :param path:\n        :return: dict, {variant: origin}, eg: {\"交通先行\": \"交通限行\"}\n        \"\"\"\n        confusion = {}\n        if path and os.path.exists(path):\n            with open(path, 'r', encoding='utf-8') as f:\n                for line in f:\n                    line = line.strip()\n                    if line.startswith('#'):\n                        continue\n                    terms = line.split()\n                    if len(terms) < 2:\n                        continue\n                    wrong = terms[0]\n                    right = terms[1]\n                    confusion[wrong] = right\n        return confusion\n\n    def set_en_custom_confusion_dict(self, path):\n        \"\"\"\n        设置混淆纠错词典\n        :param path:\n        :return:\n        \"\"\"\n        self.check_init()\n        self.custom_confusion = self._get_custom_confusion_dict(path)\n        logger.debug('Loaded en spell confusion path: %s, size: %d' % (path, len(self.custom_confusion)))\n\n    def correct(self, text, include_symbol=True):\n        \"\"\"\n        most probable spelling correction for text\n        :param text: input query\n        :param include_symbol: True, default\n        :return: corrected_text, details [(wrong_word, right_word, begin_idx, end_idx), ...]\n        example:\n        cann you speling it? [['cann', 'can'], ['speling', 'spelling']]\n        \"\"\"\n        from pycorrector.utils.text_utils import is_alphabet_string\n        from pycorrector.utils.tokenizer import split_2_short_text\n        self.check_init()\n        text_new = ''\n        details = []\n        blocks = split_2_short_text(text, include_symbol=include_symbol)\n        for w, idx in blocks:\n            # 大于1个字符的英文词\n            if len(w) > 1 and is_alphabet_string(w):\n                if w in self.custom_confusion:\n                    corrected_item = self.custom_confusion[w]\n                else:\n                    corrected_item = self.correct_word(w)\n                if corrected_item != w:\n                    begin_idx = idx\n                    end_idx = idx + len(w)\n                    detail_word = (w, corrected_item, begin_idx, end_idx)\n                    details.append(detail_word)\n                    w = corrected_item\n            text_new += w\n        # 以begin_idx排序\n        details = sorted(details, key=operator.itemgetter(2))\n        return text_new, details"
+      },
+      {
+        "file": "pycorrector/en_spell.py",
+        "name": "EnSpell.correct",
+        "kind": "function",
+        "symbol": "pycorrector.en_spell.EnSpell.correct",
+        "start": 143,
+        "end": 174,
+        "code": "    def correct(self, text, include_symbol=True):\n        \"\"\"\n        most probable spelling correction for text\n        :param text: input query\n        :param include_symbol: True, default\n        :return: corrected_text, details [(wrong_word, right_word, begin_idx, end_idx), ...]\n        example:\n        cann you speling it? [['cann', 'can'], ['speling', 'spelling']]\n        \"\"\"\n        from pycorrector.utils.text_utils import is_alphabet_string\n        from pycorrector.utils.tokenizer import split_2_short_text\n        self.check_init()\n        text_new = ''\n        details = []\n        blocks = split_2_short_text(text, include_symbol=include_symbol)\n        for w, idx in blocks:\n            # 大于1个字符的英文词\n            if len(w) > 1 and is_alphabet_string(w):\n                if w in self.custom_confusion:\n                    corrected_item = self.custom_confusion[w]\n                else:\n                    corrected_item = self.correct_word(w)\n                if corrected_item != w:\n                    begin_idx = idx\n                    end_idx = idx + len(w)\n                    detail_word = (w, corrected_item, begin_idx, end_idx)\n                    details.append(detail_word)\n                    w = corrected_item\n            text_new += w\n        # 以begin_idx排序\n        details = sorted(details, key=operator.itemgetter(2))\n        return text_new, details"
+      },
+      {
+        "file": "pycorrector/corrector.py",
+        "name": "Corrector.correct",
+        "kind": "function",
+        "symbol": "pycorrector.corrector.Corrector.correct",
+        "start": 267,
+        "end": 319,
+        "code": "    def correct(self, text, include_symbol=True, num_fragment=1, threshold=57, **kwargs):\n        \"\"\"\n        文本改错\n\n        改错逻辑：\n        1. 自定义混淆集\n        2. 专名错误\n        3. 字词错误\n        :param text: str, query 文本\n        :param include_symbol: bool, 是否包含标点符号\n        :param num_fragment: 纠错候选集分段数, 1 / (num_fragment + 1)\n        :param threshold: 语言模型纠错ppl阈值\n        :param kwargs: ...\n        :return: text (str)改正后的句子, list(wrong, right, begin_idx, end_idx)\n        \"\"\"\n        text_new = ''\n        details = []\n        self.check_corrector_initialized()\n        # 文本切分为句子\n        sentences = split_2_short_text(text, include_symbol=include_symbol)\n        for sentence, idx in sentences:\n            maybe_errors, proper_details = self.detect_sentence(sentence, idx, **kwargs)\n            for cur_item, begin_idx, end_idx, err_type in maybe_errors:\n                # 纠错，逐个处理\n                before_sent = sentence[:(begin_idx - idx)]\n                after_sent = sentence[(end_idx - idx):]\n\n                # 困惑集中指定的词，直接取结果\n                if err_type == ErrorType.confusion:\n                    corrected_item = self.custom_confusion[cur_item]\n                elif err_type == ErrorType.proper:\n                    # 专名错误 proper_details format: (error_word, corrected_word, begin_idx, end_idx)\n                    corrected_item = [i[1] for i in proper_details if cur_item == i[0] and begin_idx == i[2]][0]\n                else:\n                    # 字词错误，找所有可能正确的词\n                    candidates = self.generate_items(cur_item, fragment=num_fragment)\n                    if not candidates:\n                        continue\n                    corrected_item = self.get_lm_correct_item(\n                        cur_item,\n                        candidates,\n                        before_sent,\n                        after_sent,\n                        threshold=threshold\n                    )\n                # output\n                if corrected_item != cur_item:\n                    sentence = before_sent + corrected_item + after_sent\n                    detail_word = (cur_item, corrected_item, begin_idx, end_idx)\n                    details.append(detail_word)\n            text_new += sentence\n        details = sorted(details, key=operator.itemgetter(2))\n        return text_new, details"
+      },
+      {
+        "file": "pycorrector/utils/io_utils.py",
+        "name": "load_pkl",
+        "kind": "function",
+        "symbol": "pycorrector.utils.io_utils.load_pkl",
+        "start": 11,
+        "end": 19,
+        "code": "def load_pkl(pkl_path):\n    \"\"\"\n    加载词典文件\n    :param pkl_path:\n    :return:\n    \"\"\"\n    with open(pkl_path, 'rb') as f:\n        result = pickle.load(f)\n    return result"
+      }
+    ],
+    "unresolved": [
+      "pycorrector/en_spell.py:line: 15",
+      "pycorrector/en_spell.py:function: check_init",
+      "pycorrector/en_spell.py:line: 23",
+      "pycorrector/en_spell.py:function: __init__",
+      "pycorrector/en_spell.py:function: correct",
+      "pycorrector/corrector.py:function: correct"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 6,
+    "returned_code_chars": 9139
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18694,
+    "completion_tokens": 2443,
+    "total_tokens": 21137,
+    "seconds": 83.00748753547668,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 97.47885751724243,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

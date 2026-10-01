@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 53,
+  "namespace": "easyvolcap.utils.gl_utils.Mesh.offscreen_render",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 51641,
+      "input_estimate_after": 27493,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 395,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 21472,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 7,
+          "role": "tool",
+          "original_content_tokens": 26635,
+          "retained_content_tokens": 24401
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `offscreen_render` function in `easyvolcap/utils/gl_utils.py`. The function needs to perform offscreen rendering of a Mesh instance using a specified camera configuration and EGL context manager.\n\n```\neasyvolcap/utils/gl_utils.py\nline: 320\nclass: Mesh\nfunction: offscreen_render (stub implementation)\n\neasyvolcap/utils/gl_utils.py\nline: 324\nclass: Mesh\nfunction: render (existing rendering logic)\n\neasyvolcap/utils/gl_utils.py\nline: 370\nclass: Mesh\nfunction: upload_gl_uniforms (camera parameter upload)\n\neasyvolcap/utils/gl_utils.py\nline: 336\nline: 338\nclass: Mesh\nfunction: render (OpenGL draw calls)\n\neasyvolcap/utils/egl_utils.py\nline: 4\nline: 45\nmodule: eglContextManager (imported type)\n```",
+  "final_locations": {
+    "files": [
+      "easyvolcap/utils/gl_utils.py",
+      "easyvolcap/utils/egl_utils.py"
+    ],
+    "entities": [
+      {
+        "file": "easyvolcap/utils/gl_utils.py",
+        "name": "Mesh",
+        "kind": "class",
+        "symbol": "easyvolcap.utils.gl_utils.Mesh",
+        "start": 132,
+        "end": 488,
+        "code": "class Mesh:\n    class RenderType(Enum):\n        POINTS = 1\n        LINES = 2\n        TRIS = 3\n        QUADS = 4  # TODO: Support quad loading\n        STRIPS = 5\n\n    # Helper class to render a mesh on opengl\n    # This implementation should only be used for debug visualization\n    # Since no differentiable mechanism will be added\n    # We recommend using nvdiffrast and pytorch3d's point renderer directly if you will to optimize these structures directly\n\n    def __init__(self,\n                 verts: torch.Tensor = torch.tensor([[0, 0, 0], [0, 1, 0], [0, 0, 1]]),  # need to call update after update\n                 faces: torch.Tensor = torch.tensor([[0, 1, 2]]),  # need to call update after update\n                 colors: torch.Tensor = None,\n                 normals: torch.Tensor = None,\n                 scalars: dotdict[str, torch.Tensor] = dotdict(),\n                 render_type: RenderType = RenderType.TRIS,\n\n                 # Misc info\n                 name: str = 'mesh',\n                 filename: str = '',\n                 visible: bool = True,\n\n                 # Render options\n                 shade_flat: bool = False,  # smooth shading\n                 point_radius: float = 0.015,\n                 render_normal: bool = False,\n\n                 # Storage options\n                 store_device: str = 'cpu',\n                 compute_device: str = 'cuda',\n                 vert_sizes=[3, 3, 3],  # pos + color + norm\n\n                 # Init options\n                 est_normal_thresh: int = 100000,\n\n                 # Ignore unused input\n                 **kwargs,\n                 ) -> None:\n        super().__init__()\n        self.name = name\n        self.visible = visible\n        self.render_type = render_type\n\n        self.shade_flat = shade_flat\n        self.point_radius = point_radius\n        self.render_normal = render_normal\n\n        self.store_device = store_device\n        self.compute_device = compute_device\n        self.vert_sizes = vert_sizes\n\n        self.est_normal_thresh = est_normal_thresh\n\n        # Uniform and program\n        self.compile_shaders()\n        self.uniforms = dotdict()  # uniform values\n\n        # Before initialization\n        self.max_verts = 0\n        self.max_faces = 0\n\n        # OpenGL data\n        if filename: self.load_from_file(filename)\n        else: self.load_from_data(verts, faces, colors, normals, scalars)\n\n    def compile_shaders(self):\n        try:\n            self.mesh_program = shaders.compileProgram(\n                shaders.compileShader(load_shader_source('mesh.vert'), gl.GL_VERTEX_SHADER),\n                shaders.compileShader(load_shader_source('mesh.frag'), gl.GL_FRAGMENT_SHADER)\n            )\n            self.point_program = shaders.compileProgram(\n                shaders.compileShader(load_shader_source('point.vert'), gl.GL_VERTEX_SHADER),\n                shaders.compileShader(load_shader_source('point.frag'), gl.GL_FRAGMENT_SHADER)\n            )\n        except Exception as e:\n            print(str(e).encode('utf-8').decode('unicode_escape'))\n            raise e\n\n    @property\n    def n_verts_bytes(self):\n        return len(self.verts) * self.vert_size * self.verts.element_size()\n\n    @property\n    def n_faces_bytes(self):\n        return len(self.faces) * self.face_size * self.faces.element_size()\n\n    @property\n    def verts_data(self):  # a heavy copy operation\n        verts = torch.cat([self.verts, self.colors, self.normals], dim=-1).ravel().numpy()  # MARK: Maybe sync\n        verts = np.asarray(verts, dtype=np.float32, order='C')\n        return verts\n\n    @property\n    def faces_data(self):  # a heavy copy operation\n        faces = self.faces.ravel().numpy()  # N, 3\n        faces = np.asarray(faces, dtype=np.uint32, order='C')\n        return faces\n\n    @property\n    def face_size(self):\n        return self.render_type.value\n\n    @property\n    def vert_size(self):\n        return sum(self.vert_sizes)\n\n    def load_from_file(self, filename: str = 'assets/meshes/bunny.ply'):\n        verts, faces, colors, normals, scalars = self.load_data_from_file(filename)\n        self.load_from_data(verts, faces, colors, normals, scalars)\n\n    def load_data_from_file(self, filename: str = 'assets/meshes/bunny.ply'):\n        self.name = os.path.split(filename)[-1]\n        verts, faces, colors, normals, scalars = None, None, None, None, None\n        verts, faces = load_mesh(filename, device=self.store_device)\n        if not len(faces):\n            verts, colors, normals, scalars = load_pts(filename)\n            self.render_type = Mesh.RenderType.POINTS\n        else:\n            self.render_type = Mesh.RenderType(faces.shape[-1])  # use value\n        return verts, faces, colors, normals, scalars\n\n    def load_from_data(self, verts: torch.Tensor, faces: torch.Tensor, colors: torch.Tensor = None, normals: torch.Tensor = None, scalars: dotdict[str, torch.Tensor] = dotdict()):\n        # Data type conversion\n        verts = torch.as_tensor(verts)  # convert to tensor if input is of other types\n        if verts.dtype == torch.float32:\n            pass  # supports this for now\n        elif verts.dtype == torch.float16:\n            pass  # supports this for now\n        else:\n            verts = verts.type(torch.float)  # convert to float32 if input is of higher precision\n        gl_dtype = gl.GL_FLOAT if verts.dtype == torch.float else gl.GL_HALF_FLOAT\n        self.vert_gl_types = [gl_dtype] * len(self.vert_sizes)\n\n        # Prepare main mesh data: vertices and faces\n        self.verts = torch.as_tensor(verts, device=self.store_device)\n        self.faces = torch.as_tensor(faces, device=self.store_device, dtype=torch.int32)  # NOTE: No uint32 support\n\n        # Prepare colors and normals\n        if colors is not None:\n            self.colors = torch.as_tensor(colors, device=self.store_device, dtype=self.verts.dtype)\n        else:\n            bounds = get_bounds(self.verts[None])[0]\n            self.colors = (self.verts - bounds[0]) / (bounds[1] - bounds[0])\n        if normals is not None:\n            self.normals = torch.as_tensor(normals, device=self.store_device, dtype=self.verts.dtype)\n        else:\n            self.estimate_vertex_normals()\n\n        # Prepare other scalars\n        if scalars is not None:\n            for k, v in scalars.items():\n                setattr(self, k, torch.as_tensor(v, device=self.store_device, dtype=self.verts.dtype))  # is this ok?\n\n        # Prepare OpenGL related buffer\n        self.update_gl_buffers()\n\n    def estimate_vertex_normals(self):\n        def est_pcd_norms():\n            if self.verts.dtype == torch.half:\n                self.normals = self.verts\n            else:\n                from pytorch3d.structures import Pointclouds, Meshes\n                pcd = Pointclouds([self.verts]).to(self.compute_device)\n                self.normals = pcd.estimate_normals()[0].cpu().to(self.verts.dtype)  # no batch dim\n\n        def est_tri_norms():\n            if self.verts.dtype == torch.half:\n                self.normals = self.verts\n            else:\n                from pytorch3d.structures import Pointclouds, Meshes\n                mesh = Meshes([self.verts], [self.faces]).to(self.compute_device)\n                self.normals = mesh.verts_normals_packed().cpu().to(self.verts.dtype)  # no batch dim\n\n        if not len(self.verts) > self.est_normal_thresh:\n            if self.render_type == Mesh.RenderType.TRIS: est_tri_norms()\n            elif self.render_type == Mesh.RenderType.POINTS: est_pcd_norms()\n            else:\n                # log(yellow(f'Unsupported mesh type: {self.render_type} for normal estimation, skipping'))\n                self.normals = self.verts\n        else:\n            # log(yellow(f'Number of points for mesh too large: {len(self.verts)} > {self.est_normal_thresh}, skipping normal estimation'))\n            self.normals = self.verts\n\n    def offscreen_render(self, eglctx: \"eglContextManager\", camera: Camera):\n        pass\n\n\n    def render(self, camera: Camera):\n        if not self.visible: return\n\n        # For point rendering\n        if self.render_type == Mesh.RenderType.POINTS:\n            gl.glUseProgram(self.point_program)\n            self.use_gl_program(self.point_program)\n        else:\n            gl.glUseProgram(self.mesh_program)\n            self.use_gl_program(self.mesh_program)\n\n        self.upload_gl_uniforms(camera)\n        gl.glBindVertexArray(self.vao)\n\n        if self.render_type == Mesh.RenderType.POINTS:\n            gl.glDrawArrays(gl.GL_POINTS, 0, len(self.verts))  # number of vertices\n        elif self.render_type == Mesh.RenderType.LINES:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_LINES, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.TRIS:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_TRIANGLES, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.QUADS:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_QUADS, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.STRIPS:\n            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, len(self.verts))\n        else:\n            raise NotImplementedError\n\n        gl.glBindVertexArray(0)\n\n    def use_gl_program(self, program: shaders.ShaderProgram):\n        use_gl_program(program)\n        self.uniforms.shade_flat = gl.glGetUniformLocation(program, \"shade_flat\")\n        self.uniforms.point_radius = gl.glGetUniformLocation(program, \"point_radius\")\n        self.uniforms.render_normal = gl.glGetUniformLocation(program, \"render_normal\")\n        self.uniforms.H = gl.glGetUniformLocation(program, \"H\")\n        self.uniforms.W = gl.glGetUniformLocation(program, \"W\")\n        self.uniforms.n = gl.glGetUniformLocation(program, \"n\")\n        self.uniforms.f = gl.glGetUniformLocation(program, \"f\")\n        self.uniforms.P = gl.glGetUniformLocation(program, \"P\")\n        self.uniforms.K = gl.glGetUniformLocation(program, \"K\")\n        self.uniforms.V = gl.glGetUniformLocation(program, \"V\")\n        self.uniforms.M = gl.glGetUniformLocation(program, \"M\")\n\n    def upload_gl_uniforms(self, camera: Camera):\n        K = camera.gl_ixt  # hold the reference\n        V = camera.gl_ext  # hold the reference\n        M = glm.identity(mat4)\n        P = K * V * M\n\n        gl.glUniform1i(self.uniforms.shade_flat, self.shade_flat)\n        gl.glUniform1f(self.uniforms.point_radius, self.point_radius)\n        gl.glUniform1i(self.uniforms.render_normal, self.render_normal)\n        gl.glUniform1i(self.uniforms.H, camera.H)  # o2w\n        gl.glUniform1i(self.uniforms.W, camera.W)  # o2w\n        gl.glUniform1f(self.uniforms.n, camera.n)  # o2w\n        gl.glUniform1f(self.uniforms.f, camera.f)  # o2w\n        gl.glUniformMatrix4fv(self.uniforms.P, 1, gl.GL_FALSE, glm.value_ptr(P))  # o2clip\n        gl.glUniformMatrix4fv(self.uniforms.K, 1, gl.GL_FALSE, glm.value_ptr(K))  # c2clip\n        gl.glUniformMatrix4fv(self.uniforms.V, 1, gl.GL_FALSE, glm.value_ptr(V))  # w2c\n        gl.glUniformMatrix4fv(self.uniforms.M, 1, gl.GL_FALSE, glm.value_ptr(M))  # o2w\n\n    def update_gl_buffers(self):\n        # Might be overwritten\n        self.resize_buffers(len(self.verts) if hasattr(self, 'verts') else 0,\n                            len(self.faces) if hasattr(self, 'faces') else 0)  # maybe repeated\n\n        if hasattr(self, 'verts'):\n            gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)\n            gl.glBufferSubData(gl.GL_ARRAY_BUFFER, 0, self.n_verts_bytes, self.verts_data)  # hold the reference\n        if hasattr(self, 'faces'):\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glBufferSubData(gl.GL_ELEMENT_ARRAY_BUFFER, 0, self.n_faces_bytes, self.faces_data)\n\n    def resize_buffers(self, v: int = 0, f: int = 0):\n        if v > self.max_verts or f > self.max_faces:\n            if v > self.max_verts: self.max_verts = v\n            if f > self.max_faces: self.max_faces = f\n            self.init_gl_buffers(v, f)\n\n    def init_gl_buffers(self, v: int = 0, f: int = 0):\n        # This will only init the corresponding buffer object\n        n_verts_bytes = v * self.vert_size * self.verts.element_size() if v > 0 else self.n_verts_bytes\n        n_faces_bytes = f * self.face_size * self.faces.element_size() if f > 0 else self.n_faces_bytes\n\n        # Housekeeping\n        if hasattr(self, 'vao'):\n            gl.glDeleteVertexArrays(1, [self.vao])\n            gl.glDeleteBuffers(2, [self.vbo, self.ebo])\n\n        self.vao = gl.glGenVertexArrays(1)\n        self.vbo = gl.glGenBuffers(1)\n        self.ebo = gl.glGenBuffers(1)\n\n        gl.glBindVertexArray(self.vao)\n        gl.glBindBuffer(gl.GL_ARRAY_BUFFER, self.vbo)\n        gl.glBufferData(gl.GL_ARRAY_BUFFER, n_verts_bytes, ctypes.c_void_p(0), gl.GL_DYNAMIC_DRAW)  # NOTE: Using pointers here won't work\n\n        # https://stackoverflow.com/questions/67195932/pyopengl-cannot-render-any-vao\n        cumsum = 0\n        for i, (s, t) in enumerate(zip(self.vert_sizes, self.vert_gl_types)):\n            gl.glVertexAttribPointer(i, s, t, gl.GL_FALSE, self.vert_size * self.verts.element_size(), ctypes.c_void_p(cumsum * self.verts.element_size()))  # we use 32 bit float\n            gl.glEnableVertexAttribArray(i)\n            cumsum += s\n\n        if n_faces_bytes > 0:\n            # Some implementation has no faces, we dangerously ignore ebo here, assuming they will never be used\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glBufferData(gl.GL_ELEMENT_ARRAY_BUFFER, n_faces_bytes, ctypes.c_void_p(0), gl.GL_DYNAMIC_DRAW)\n            gl.glBindVertexArray(0)\n\n    def render_imgui(mesh, viewer: 'VolumetricVideoViewer', batch: dotdict):\n        from imgui_bundle import imgui\n        from easyvolcap.utils.imgui_utils import push_button_color, pop_button_color\n\n        i = batch.i\n        will_delete = batch.will_delete\n        slider_width = batch.slider_width\n\n        imgui.push_item_width(slider_width * 0.5)\n        mesh.name = imgui.input_text(f'Mesh name##{i}', mesh.name)[1]\n\n        if imgui.begin_combo(f'Mesh type##{i}', mesh.render_type.name):\n            for t in Mesh.RenderType:\n                if imgui.selectable(t.name, mesh.render_type == t)[1]:\n                    mesh.render_type = t  # construct enum from name\n                if mesh.render_type == t:\n                    imgui.set_item_default_focus()\n            imgui.end_combo()\n        imgui.pop_item_width()\n\n        if hasattr(mesh, 'point_radius'):\n            mesh.point_radius = imgui.slider_float(f'Point radius##{i}', mesh.point_radius, 0.0005, 3.0)[1]  # 0.1mm\n\n        if hasattr(mesh, 'pts_per_pix'):\n            mesh.pts_per_pix = imgui.slider_int('Point per pixel', mesh.pts_per_pix, 0, 60)[1]  # 0.1mm\n\n        if hasattr(mesh, 'shade_flat'):\n            push_button_color(0x55cc33ff if not mesh.shade_flat else 0x8855aaff)\n            if imgui.button(f'Smooth##{i}' if not mesh.shade_flat else f' Flat ##{i}'):\n                mesh.shade_flat = not mesh.shade_flat\n            pop_button_color()\n\n        if hasattr(mesh, 'render_normal'):\n            imgui.same_line()\n            push_button_color(0x55cc33ff if not mesh.render_normal else 0x8855aaff)\n            if imgui.button(f'Color ##{i}' if not mesh.render_normal else f'Normal##{i}'):\n                mesh.render_normal = not mesh.render_normal\n            pop_button_color()\n\n        if hasattr(mesh, 'visible'):\n            imgui.same_line()\n            push_button_color(0x55cc33ff if not mesh.visible else 0x8855aaff)\n            if imgui.button(f'Show##{i}' if not mesh.visible else f'Hide##{i}'):\n                mesh.visible = not mesh.visible\n            pop_button_color()\n\n        # Render the delete button\n        imgui.same_line()\n        push_button_color(0xff5533ff)\n        if imgui.button(f'Delete##{i}'):\n            will_delete.append(i)\n        pop_button_color()"
+      },
+      {
+        "file": "easyvolcap/utils/gl_utils.py",
+        "name": "Mesh.render",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.gl_utils.Mesh.render",
+        "start": 324,
+        "end": 354,
+        "code": "    def render(self, camera: Camera):\n        if not self.visible: return\n\n        # For point rendering\n        if self.render_type == Mesh.RenderType.POINTS:\n            gl.glUseProgram(self.point_program)\n            self.use_gl_program(self.point_program)\n        else:\n            gl.glUseProgram(self.mesh_program)\n            self.use_gl_program(self.mesh_program)\n\n        self.upload_gl_uniforms(camera)\n        gl.glBindVertexArray(self.vao)\n\n        if self.render_type == Mesh.RenderType.POINTS:\n            gl.glDrawArrays(gl.GL_POINTS, 0, len(self.verts))  # number of vertices\n        elif self.render_type == Mesh.RenderType.LINES:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_LINES, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.TRIS:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_TRIANGLES, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.QUADS:\n            gl.glBindBuffer(gl.GL_ELEMENT_ARRAY_BUFFER, self.ebo)\n            gl.glDrawElements(gl.GL_QUADS, len(self.faces) * self.face_size, gl.GL_UNSIGNED_INT, ctypes.c_void_p(0))  # number of indices\n        elif self.render_type == Mesh.RenderType.STRIPS:\n            gl.glDrawArrays(gl.GL_TRIANGLE_STRIP, 0, len(self.verts))\n        else:\n            raise NotImplementedError\n\n        gl.glBindVertexArray(0)"
+      },
+      {
+        "file": "easyvolcap/utils/gl_utils.py",
+        "name": "Mesh.upload_gl_uniforms",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.gl_utils.Mesh.upload_gl_uniforms",
+        "start": 370,
+        "end": 386,
+        "code": "    def upload_gl_uniforms(self, camera: Camera):\n        K = camera.gl_ixt  # hold the reference\n        V = camera.gl_ext  # hold the reference\n        M = glm.identity(mat4)\n        P = K * V * M\n\n        gl.glUniform1i(self.uniforms.shade_flat, self.shade_flat)\n        gl.glUniform1f(self.uniforms.point_radius, self.point_radius)\n        gl.glUniform1i(self.uniforms.render_normal, self.render_normal)\n        gl.glUniform1i(self.uniforms.H, camera.H)  # o2w\n        gl.glUniform1i(self.uniforms.W, camera.W)  # o2w\n        gl.glUniform1f(self.uniforms.n, camera.n)  # o2w\n        gl.glUniform1f(self.uniforms.f, camera.f)  # o2w\n        gl.glUniformMatrix4fv(self.uniforms.P, 1, gl.GL_FALSE, glm.value_ptr(P))  # o2clip\n        gl.glUniformMatrix4fv(self.uniforms.K, 1, gl.GL_FALSE, glm.value_ptr(K))  # c2clip\n        gl.glUniformMatrix4fv(self.uniforms.V, 1, gl.GL_FALSE, glm.value_ptr(V))  # w2c\n        gl.glUniformMatrix4fv(self.uniforms.M, 1, gl.GL_FALSE, glm.value_ptr(M))  # o2w"
+      }
+    ],
+    "unresolved": [
+      "easyvolcap/utils/gl_utils.py:function: offscreen_render (stub implementation)",
+      "easyvolcap/utils/gl_utils.py:function: render (existing rendering logic)",
+      "easyvolcap/utils/gl_utils.py:function: upload_gl_uniforms (camera parameter upload)",
+      "easyvolcap/utils/gl_utils.py:function: render (OpenGL draw calls)",
+      "easyvolcap/utils/egl_utils.py:line: 4",
+      "easyvolcap/utils/egl_utils.py:line: 45"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.2,
+    "exact_entity_dr": 0.2,
+    "dependency_count": 5,
+    "hit_dependencies": [
+      "easyvolcap.utils.gl_utils.Mesh.render"
+    ],
+    "exact_hit_dependencies": [
+      "easyvolcap.utils.gl_utils.Mesh.render"
+    ],
+    "returned_entities": 3,
+    "returned_files": 2,
+    "unresolved_locations": 6,
+    "returned_code_chars": 18791
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 62614,
+    "completion_tokens": 495,
+    "total_tokens": 63109,
+    "seconds": 42.422725200653076,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 370.9235510826111,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

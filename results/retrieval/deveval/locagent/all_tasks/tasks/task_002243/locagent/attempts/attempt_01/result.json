@@ -1,0 +1,144 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2243,
+  "namespace": "boltons.gcutils.get_all",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 35762,
+      "input_estimate_after": 27038,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 472,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 1614,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 7,
+          "role": "tool",
+          "original_content_tokens": 16564,
+          "retained_content_tokens": 10573
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify several key reusable dependencies in the repository that would be relevant for implementing the `get_all` function in `boltons/gcutils.py`. The function needs to return all instances of a given type, potentially including subtypes, and should work with Python's garbage collector.\n\nHere are the most relevant reusable dependencies:\n\n```\nboltons/typeutils.py\nline: 106\nfunction: issubclass\n\nboltons/funcutils.py\nline: 166\nfunction: mro_items\n\nboltons/gcutils.py\nline: 122\nline: 123\nline: 124\nline: 125\nvariable: _IS_PYPY\n\nboltons/gcutils.py\nline: 65\nimport: gc\n\nboltons/gcutils.py\nline: 151\nline: 156\nclass: GCToggler\nfunction: GCToggler.__enter__\nfunction: GCToggler.__exit__\n```",
+  "final_locations": {
+    "files": [
+      "boltons/typeutils.py",
+      "boltons/funcutils.py",
+      "boltons/gcutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/typeutils.py",
+        "name": "issubclass",
+        "kind": "function",
+        "symbol": "boltons.typeutils.issubclass",
+        "start": 106,
+        "end": 128,
+        "code": "def issubclass(subclass, baseclass):\n    \"\"\"Just like the built-in :func:`issubclass`, this function checks\n    whether *subclass* is inherited from *baseclass*. Unlike the\n    built-in function, this ``issubclass`` will simply return\n    ``False`` if either argument is not suitable (e.g., if *subclass*\n    is not an instance of :class:`type`), instead of raising\n    :exc:`TypeError`.\n\n    Args:\n        subclass (type): The target class to check.\n        baseclass (type): The base class *subclass* will be checked against.\n\n    >>> class MyObject(object): pass\n    ...\n    >>> issubclass(MyObject, object)  # always a fun fact\n    True\n    >>> issubclass('hi', 'friend')\n    False\n    \"\"\"\n    try:\n        return _issubclass(subclass, baseclass)\n    except TypeError:\n        return False"
+      },
+      {
+        "file": "boltons/funcutils.py",
+        "name": "mro_items",
+        "kind": "function",
+        "symbol": "boltons.funcutils.mro_items",
+        "start": 166,
+        "end": 175,
+        "code": "def mro_items(type_obj):\n    \"\"\"Takes a type and returns an iterator over all class variables\n    throughout the type hierarchy (respecting the MRO).\n\n    >>> sorted(set([k for k, v in mro_items(int) if not k.startswith('__') and 'bytes' not in k and not callable(v)]))\n    ['denominator', 'imag', 'numerator', 'real']\n    \"\"\"\n    # TODO: handle slots?\n    return itertools.chain.from_iterable(ct.__dict__.items()\n                                         for ct in type_obj.__mro__)"
+      },
+      {
+        "file": "boltons/gcutils.py",
+        "name": "_IS_PYPY",
+        "kind": "variable",
+        "symbol": "boltons.gcutils._IS_PYPY",
+        "start": 122,
+        "end": 122,
+        "code": "_IS_PYPY = '__pypy__' in sys.builtin_module_names"
+      },
+      {
+        "file": "boltons/gcutils.py",
+        "name": "GCToggler.__enter__",
+        "kind": "function",
+        "symbol": "boltons.gcutils.GCToggler.__enter__",
+        "start": 151,
+        "end": 152,
+        "code": "    def __enter__(self):\n        gc.disable()"
+      },
+      {
+        "file": "boltons/gcutils.py",
+        "name": "GCToggler.__exit__",
+        "kind": "function",
+        "symbol": "boltons.gcutils.GCToggler.__exit__",
+        "start": 154,
+        "end": 157,
+        "code": "    def __exit__(self, exc_type, exc_val, exc_tb):\n        gc.enable()\n        if self.postcollect:\n            gc.collect()"
+      },
+      {
+        "file": "boltons/gcutils.py",
+        "name": "GCToggler",
+        "kind": "class",
+        "symbol": "boltons.gcutils.GCToggler",
+        "start": 128,
+        "end": 157,
+        "code": "class GCToggler(object):\n    \"\"\"The ``GCToggler`` is a context-manager that allows one to safely\n    take more control of your garbage collection schedule. Anecdotal\n    experience says certain object-creation-heavy tasks see speedups\n    of around 10% by simply doing one explicit collection at the very\n    end, especially if most of the objects will stay resident.\n\n    Two GCTogglers are already present in the ``gcutils`` module:\n\n    - :data:`toggle_gc` simply turns off GC at context entrance, and\n      re-enables at exit\n    - :data:`toggle_gc_postcollect` does the same, but triggers an\n      explicit collection after re-enabling.\n\n    >>> with toggle_gc:\n    ...     x = [object() for i in range(1000)]\n\n    Between those two instances, the ``GCToggler`` type probably won't\n    be used much directly, but is documented for inheritance purposes.\n    \"\"\"\n    def __init__(self, postcollect=False):\n        self.postcollect = postcollect\n\n    def __enter__(self):\n        gc.disable()\n\n    def __exit__(self, exc_type, exc_val, exc_tb):\n        gc.enable()\n        if self.postcollect:\n            gc.collect()"
+      }
+    ],
+    "unresolved": [
+      "boltons/gcutils.py:line: 123",
+      "boltons/gcutils.py:line: 124",
+      "boltons/gcutils.py:line: 125",
+      "boltons/gcutils.py:line: 65"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 3,
+    "unresolved_locations": 4,
+    "returned_code_chars": 2613
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 59124,
+    "completion_tokens": 630,
+    "total_tokens": 59754,
+    "seconds": 90.953204870224,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 112.7797019481659,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

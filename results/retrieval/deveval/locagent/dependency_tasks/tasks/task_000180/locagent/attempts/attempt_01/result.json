@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 180,
+  "namespace": "alembic.script.write_hooks._invoke",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5089,
+      "input_estimate_after": 5089,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `_invoke` function in `alembic/script/write_hooks.py`:\n\n```\nalembic/script/write_hooks.py\nline: 20\nvariable: _registry\n\nalembic/script/write_hooks.py\nline: 23\nfunction: register\n\nalembic/script/write_hooks.py\nline: 89\nline: 42\nfunction: _invoke\n\nalembic/util/__init__.py\nline: (implied by import)\nclass: CommandError\n\nalembic/script/write_hooks.py\nline: 114\nfunction: console_scripts\nline: 152\nfunction: exec_\n```",
+  "final_locations": {
+    "files": [
+      "alembic/script/write_hooks.py",
+      "alembic/util/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "alembic/script/write_hooks.py",
+        "name": "_registry",
+        "kind": "variable",
+        "symbol": "alembic.script.write_hooks._registry",
+        "start": 20,
+        "end": 20,
+        "code": "_registry: dict = {}"
+      },
+      {
+        "file": "alembic/script/write_hooks.py",
+        "name": "register",
+        "kind": "function",
+        "symbol": "alembic.script.write_hooks.register",
+        "start": 23,
+        "end": 39,
+        "code": "def register(name: str) -> Callable:\n    \"\"\"A function decorator that will register that function as a write hook.\n\n    See the documentation linked below for an example.\n\n    .. seealso::\n\n        :ref:`post_write_hooks_custom`\n\n\n    \"\"\"\n\n    def decorate(fn):\n        _registry[name] = fn\n        return fn\n\n    return decorate"
+      },
+      {
+        "file": "alembic/script/write_hooks.py",
+        "name": "_run_hooks",
+        "kind": "function",
+        "symbol": "alembic.script.write_hooks._run_hooks",
+        "start": 63,
+        "end": 89,
+        "code": "def _run_hooks(path: str, hook_config: Mapping[str, str]) -> None:\n    \"\"\"Invoke hooks for a generated revision.\"\"\"\n\n    from .base import _split_on_space_comma\n\n    names = _split_on_space_comma.split(hook_config.get(\"hooks\", \"\"))\n\n    for name in names:\n        if not name:\n            continue\n        opts = {\n            key[len(name) + 1 :]: hook_config[key]\n            for key in hook_config\n            if key.startswith(name + \".\")\n        }\n        opts[\"_hook_name\"] = name\n        try:\n            type_ = opts[\"type\"]\n        except KeyError as ke:\n            raise util.CommandError(\n                f\"Key {name}.type is required for post write hook {name!r}\"\n            ) from ke\n        else:\n            with util.status(\n                f\"Running post write hook {name!r}\", newline=True\n            ):\n                _invoke(type_, path, opts)"
+      },
+      {
+        "file": "alembic/script/write_hooks.py",
+        "name": "console_scripts",
+        "kind": "function",
+        "symbol": "alembic.script.write_hooks.console_scripts",
+        "start": 114,
+        "end": 149,
+        "code": "def console_scripts(\n    path: str, options: dict, ignore_output: bool = False\n) -> None:\n    try:\n        entrypoint_name = options[\"entrypoint\"]\n    except KeyError as ke:\n        raise util.CommandError(\n            f\"Key {options['_hook_name']}.entrypoint is required for post \"\n            f\"write hook {options['_hook_name']!r}\"\n        ) from ke\n    for entry in compat.importlib_metadata_get(\"console_scripts\"):\n        if entry.name == entrypoint_name:\n            impl: Any = entry\n            break\n    else:\n        raise util.CommandError(\n            f\"Could not find entrypoint console_scripts.{entrypoint_name}\"\n        )\n    cwd: Optional[str] = options.get(\"cwd\", None)\n    cmdline_options_str = options.get(\"options\", \"\")\n    cmdline_options_list = _parse_cmdline_options(cmdline_options_str, path)\n\n    kw: Dict[str, Any] = {}\n    if ignore_output:\n        kw[\"stdout\"] = kw[\"stderr\"] = subprocess.DEVNULL\n\n    subprocess.run(\n        [\n            sys.executable,\n            \"-c\",\n            f\"import {impl.module}; {impl.module}.{impl.attr}()\",\n        ]\n        + cmdline_options_list,\n        cwd=cwd,\n        **kw,\n    )"
+      },
+      {
+        "file": "alembic/script/write_hooks.py",
+        "name": "exec_",
+        "kind": "function",
+        "symbol": "alembic.script.write_hooks.exec_",
+        "start": 153,
+        "end": 176,
+        "code": "def exec_(path: str, options: dict, ignore_output: bool = False) -> None:\n    try:\n        executable = options[\"executable\"]\n    except KeyError as ke:\n        raise util.CommandError(\n            f\"Key {options['_hook_name']}.executable is required for post \"\n            f\"write hook {options['_hook_name']!r}\"\n        ) from ke\n    cwd: Optional[str] = options.get(\"cwd\", None)\n    cmdline_options_str = options.get(\"options\", \"\")\n    cmdline_options_list = _parse_cmdline_options(cmdline_options_str, path)\n\n    kw: Dict[str, Any] = {}\n    if ignore_output:\n        kw[\"stdout\"] = kw[\"stderr\"] = subprocess.DEVNULL\n\n    subprocess.run(\n        [\n            executable,\n            *cmdline_options_list,\n        ],\n        cwd=cwd,\n        **kw,\n    )"
+      }
+    ],
+    "unresolved": [
+      "alembic/util/__init__.py:class: CommandError",
+      "alembic/script/write_hooks.py:line: 152"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "alembic.script.write_hooks._registry"
+    ],
+    "exact_hit_dependencies": [
+      "alembic.script.write_hooks._registry"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 3119
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21034,
+    "completion_tokens": 609,
+    "total_tokens": 21643,
+    "seconds": 83.50809001922607,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 109.88411021232605,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

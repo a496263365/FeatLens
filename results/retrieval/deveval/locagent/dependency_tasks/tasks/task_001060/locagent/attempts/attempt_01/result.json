@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1060,
+  "namespace": "boltons.strutils.strip_ansi",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 23033,
+      "input_estimate_after": 23033,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify several reusable dependencies in the repository that would be relevant for implementing the `strip_ansi` function. The function needs to strip ANSI escape codes from input text, supporting unicode, str, bytes, and bytearray content, and returning the same type as input.\n\nKey reusable components found:\n\n1. **ANSI_SEQUENCES regex pattern** - Already defined in strutils.py for matching ANSI escape codes\n2. **Type handling patterns** - Functions like `asciify` and `is_ascii` show how to handle multiple input types (unicode, str, bytes)\n3. **String processing utilities** - The module contains various string manipulation functions that demonstrate the coding patterns used in this package\n4. **Regular expression utilities** - The `MultiReplace` class shows regex-based text replacement patterns\n5. **Encoding/decoding patterns** - Functions demonstrate proper handling of Python 2/3 compatibility\n\n```\nboltons/strutils.py\nline: 374\nline: 389\nfunction: ANSI_SEQUENCES\n\nboltons/strutils.py\nline: 431\nline: 462\nfunction: asciify\n\nboltons/strutils.py\nline: 464\nline: 488\nfunction: is_ascii\n\nboltons/strutils.py\nline: 1161\nline: 1264\nclass: MultiReplace\nfunction: MultiReplace.sub\n\nboltons/strutils.py\nline: 39\nline: 73\nsection: Python 2/3 compatibility imports\n```",
+  "final_locations": {
+    "files": [
+      "boltons/strutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/strutils.py",
+        "name": "ANSI_SEQUENCES",
+        "kind": "variable",
+        "symbol": "boltons.strutils.ANSI_SEQUENCES",
+        "start": 375,
+        "end": 389,
+        "code": "ANSI_SEQUENCES = re.compile(r'''\n    \\x1B            # Sequence starts with ESC, i.e. hex 0x1B\n    (?:\n        [@-Z\\\\-_]   # Second byte:\n                    #   all 0x40–0x5F range but CSI char, i.e ASCII @A–Z\\]^_\n    |               # Or\n        \\[          # CSI sequences, starting with [\n        [0-?]*      # Parameter bytes:\n                    #   range 0x30–0x3F, ASCII 0–9:;<=>?\n        [ -/]*      # Intermediate bytes:\n                    #   range 0x20–0x2F, ASCII space and !\"#$%&'()*+,-./\n        [@-~]       # Final byte\n                    #   range 0x40–0x7E, ASCII @A–Z[\\]^_`a–z{|}~\n    )\n''', re.VERBOSE)"
+      },
+      {
+        "file": "boltons/strutils.py",
+        "name": "asciify",
+        "kind": "function",
+        "symbol": "boltons.strutils.asciify",
+        "start": 431,
+        "end": 461,
+        "code": "def asciify(text, ignore=False):\n    \"\"\"Converts a unicode or bytestring, *text*, into a bytestring with\n    just ascii characters. Performs basic deaccenting for all you\n    Europhiles out there.\n\n    Also, a gentle reminder that this is a **utility**, primarily meant\n    for slugification. Whenever possible, make your application work\n    **with** unicode, not against it.\n\n    Args:\n        text (str or unicode): The string to be asciified.\n        ignore (bool): Configures final encoding to ignore remaining\n            unasciified unicode instead of replacing it.\n\n    >>> asciify('Beyoncé') == b'Beyonce'\n    True\n    \"\"\"\n    try:\n        try:\n            return text.encode('ascii')\n        except UnicodeDecodeError:\n            # this usually means you passed in a non-unicode string\n            text = text.decode('utf-8')\n            return text.encode('ascii')\n    except UnicodeEncodeError:\n        mode = 'replace'\n        if ignore:\n            mode = 'ignore'\n        transd = unicodedata.normalize('NFKD', text.translate(DEACCENT_MAP))\n        ret = transd.encode('ascii', mode)\n        return ret"
+      },
+      {
+        "file": "boltons/strutils.py",
+        "name": "is_ascii",
+        "kind": "function",
+        "symbol": "boltons.strutils.is_ascii",
+        "start": 464,
+        "end": 488,
+        "code": "def is_ascii(text):\n    \"\"\"Check if a unicode or bytestring, *text*, is composed of ascii\n    characters only. Raises :exc:`ValueError` if argument is not text.\n\n    Args:\n        text (str or unicode): The string to be checked.\n\n    >>> is_ascii('Beyoncé')\n    False\n    >>> is_ascii('Beyonce')\n    True\n    \"\"\"\n    if isinstance(text, unicode):\n        try:\n            text.encode('ascii')\n        except UnicodeEncodeError:\n            return False\n    elif isinstance(text, bytes):\n        try:\n            text.decode('ascii')\n        except UnicodeDecodeError:\n            return False\n    else:\n        raise ValueError('expected text or bytes, not %r' % type(text))\n    return True"
+      },
+      {
+        "file": "boltons/strutils.py",
+        "name": "MultiReplace",
+        "kind": "class",
+        "symbol": "boltons.strutils.MultiReplace",
+        "start": 1161,
+        "end": 1263,
+        "code": "class MultiReplace(object):\n    \"\"\"\n    MultiReplace is a tool for doing multiple find/replace actions in one pass.\n\n    Given a mapping of values to be replaced it allows for all of the matching\n    values to be replaced in a single pass which can save a lot of performance\n    on very large strings. In addition to simple replace, it also allows for\n    replacing based on regular expressions.\n\n    Keyword Arguments:\n\n    :type regex: bool\n    :param regex: Treat search keys as regular expressions [Default: False]\n    :type flags: int\n    :param flags: flags to pass to the regex engine during compile\n\n    Dictionary Usage::\n\n        from boltons import stringutils\n        s = stringutils.MultiReplace({\n            'foo': 'zoo',\n            'cat': 'hat',\n            'bat': 'kraken'\n        })\n        new = s.sub('The foo bar cat ate a bat')\n        new == 'The zoo bar hat ate a kraken'\n\n    Iterable Usage::\n\n        from boltons import stringutils\n        s = stringutils.MultiReplace([\n            ('foo', 'zoo'),\n            ('cat', 'hat'),\n            ('bat', 'kraken)'\n        ])\n        new = s.sub('The foo bar cat ate a bat')\n        new == 'The zoo bar hat ate a kraken'\n\n\n    The constructor can be passed a dictionary or other mapping as well as\n    an iterable of tuples. If given an iterable, the substitution will be run\n    in the order the replacement values are specified in the iterable. This is\n    also true if it is given an OrderedDict. If given a dictionary then the\n    order will be non-deterministic::\n\n        >>> 'foo bar baz'.replace('foo', 'baz').replace('baz', 'bar')\n        'bar bar bar'\n        >>> m = MultiReplace({'foo': 'baz', 'baz': 'bar'})\n        >>> m.sub('foo bar baz')\n        'baz bar bar'\n\n    This is because the order of replacement can matter if you're inserting\n    something that might be replaced by a later substitution. Pay attention and\n    if you need to rely on order then consider using a list of tuples instead\n    of a dictionary.\n    \"\"\"\n\n    def __init__(self, sub_map, **kwargs):\n        \"\"\"Compile any regular expressions that have been passed.\"\"\"\n        options = {\n            'regex': False,\n            'flags': 0,\n        }\n        options.update(kwargs)\n        self.group_map = {}\n        regex_values = []\n\n        if isinstance(sub_map, Mapping):\n            sub_map = sub_map.items()\n\n        for idx, vals in enumerate(sub_map):\n            group_name = 'group{0}'.format(idx)\n            if isinstance(vals[0], basestring):\n                # If we're not treating input strings like a regex, escape it\n                if not options['regex']:\n                    exp = re.escape(vals[0])\n                else:\n                    exp = vals[0]\n            else:\n                exp = vals[0].pattern\n\n            regex_values.append('(?P<{}>{})'.format(group_name, exp))\n            self.group_map[group_name] = vals[1]\n\n        self.combined_pattern = re.compile(\n            '|'.join(regex_values),\n            flags=options['flags']\n        )\n\n    def _get_value(self, match):\n        \"\"\"Given a match object find replacement value.\"\"\"\n        group_dict = match.groupdict()\n        key = [x for x in group_dict if group_dict[x]][0]\n        return self.group_map[key]\n\n    def sub(self, text):\n        \"\"\"\n        Run substitutions on the input text.\n\n        Given an input string, run all substitutions given in the\n        constructor.\n        \"\"\"\n        return self.combined_pattern.sub(self._get_value, text)"
+      },
+      {
+        "file": "boltons/strutils.py",
+        "name": "MultiReplace.sub",
+        "kind": "function",
+        "symbol": "boltons.strutils.MultiReplace.sub",
+        "start": 1256,
+        "end": 1263,
+        "code": "    def sub(self, text):\n        \"\"\"\n        Run substitutions on the input text.\n\n        Given an input string, run all substitutions given in the\n        constructor.\n        \"\"\"\n        return self.combined_pattern.sub(self._get_value, text)"
+      }
+    ],
+    "unresolved": [
+      "boltons/strutils.py:line: 374",
+      "boltons/strutils.py:function: ANSI_SEQUENCES",
+      "boltons/strutils.py:line: 462",
+      "boltons/strutils.py:line: 1264",
+      "boltons/strutils.py:line: 39",
+      "boltons/strutils.py:line: 73"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "boltons.strutils.ANSI_SEQUENCES",
+      "boltons.strutils.bytes",
+      "boltons.strutils.unicode"
+    ],
+    "exact_hit_dependencies": [
+      "boltons.strutils.ANSI_SEQUENCES"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 6,
+    "returned_code_chars": 6182
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 35226,
+    "completion_tokens": 1596,
+    "total_tokens": 36822,
+    "seconds": 87.38882994651794,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 102.86884236335754,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,126 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 483,
+  "namespace": "sumy.nlp.stemmers.null_stemmer",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3490,
+      "input_estimate_after": 3490,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `null_stemmer` function that converts any object to a lowercase Unicode string. The current implementation is just a stub (`pass`), so I need to find existing utilities in the codebase that handle string conversion and Unicode normalization.\n\nFrom the evidence, I can see several relevant imports and dependencies:\n\n1. **sumy/_compat.py** - Contains compatibility utilities for string handling\n2. **sumy/utils.py** - Contains `normalize_language` function which is imported in the stemmers module\n3. **sumy/nlp/tokenizers.py** - Shows imports from `_compat.py` for `to_string` and `to_unicode` functions\n4. **sumy/nlp/stemmers/czech.py** - Imports from `_compat.py`, suggesting it uses string compatibility utilities\n5. **sumy/nlp/stemmers/__init__.py** - Already shows the structure and usage pattern for stemmers\n\nThe key reusable dependencies for implementing `null_stemmer` would be the string conversion utilities from `_compat.py` that handle Unicode conversion and the existing stemmer function patterns.\n\n```\nsumy/_compat.py\nfunction: to_string\nfunction: to_unicode\n\nsumy/utils.py\nfunction: normalize_language\n\nsumy/nlp/stemmers/czech.py\nfunction: stem_word\n\nsumy/nlp/stemmers/ukrainian.py\nfunction: stem_word\n\nsumy/nlp/stemmers/greek.py\nfunction: stem_word\n```",
+  "final_locations": {
+    "files": [
+      "sumy/_compat.py",
+      "sumy/utils.py",
+      "sumy/nlp/stemmers/czech.py",
+      "sumy/nlp/stemmers/ukrainian.py",
+      "sumy/nlp/stemmers/greek.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/_compat.py",
+        "name": "to_string",
+        "kind": "function",
+        "symbol": "sumy._compat.to_string",
+        "start": 46,
+        "end": 47,
+        "code": "def to_string(object):\n    return to_unicode(object) if PY3 else to_bytes(object)"
+      },
+      {
+        "file": "sumy/_compat.py",
+        "name": "to_unicode",
+        "kind": "function",
+        "symbol": "sumy._compat.to_unicode",
+        "start": 60,
+        "end": 67,
+        "code": "def to_unicode(object):\n    if isinstance(object, unicode):\n        return object\n    elif isinstance(object, bytes):\n        return object.decode(\"utf-8\")\n    else:\n        # try decode instance to unicode\n        return instance_to_unicode(object)"
+      },
+      {
+        "file": "sumy/utils.py",
+        "name": "normalize_language",
+        "kind": "function",
+        "symbol": "sumy.utils.normalize_language",
+        "start": 24,
+        "end": 33,
+        "code": "def normalize_language(language):\n    for lookup_key in (\"alpha_2\", \"alpha_3\"):\n        try:\n            lang = languages.get(**{lookup_key: language})\n            if lang:\n                language = lang.name.lower()\n        except KeyError:\n            pass\n\n    return language"
+      },
+      {
+        "file": "sumy/nlp/stemmers/czech.py",
+        "name": "stem_word",
+        "kind": "function",
+        "symbol": "sumy.nlp.stemmers.czech.stem_word",
+        "start": 27,
+        "end": 53,
+        "code": "def stem_word(word, aggressive=False):\n    if not isinstance(word, unicode):\n        word = word.decode(\"utf-8\")\n\n    if not WORD_PATTERN.match(word):\n        return word\n\n    if not word.islower() and not word.istitle() and not word.isupper():\n        warn(\"skipping word with mixed case: \" + word)\n        return word\n\n    stem = word.lower()\n    stem = _remove_case(stem)\n    stem = _remove_possessives(stem)\n\n    if aggressive:\n        stem = _remove_comparative(stem)\n        stem = _remove_diminutive(stem)\n        stem = _remove_augmentative(stem)\n        stem = _remove_derivational(stem)\n\n    if word.isupper():\n        return stem.upper()\n    if word.istitle():\n        return stem.title()\n\n    return stem"
+      },
+      {
+        "file": "sumy/nlp/stemmers/ukrainian.py",
+        "name": "stem_word",
+        "kind": "function",
+        "symbol": "sumy.nlp.stemmers.ukrainian.stem_word",
+        "start": 18,
+        "end": 54,
+        "code": "def stem_word(word):\n    \"\"\"\n    Based on https://drupal.org/project/ukstemmer and ported to Python https://github.com/Amice13/ukr_stemmer\n    \"\"\"\n    word = _preprocess(word)\n    if not re.search('[аеиоуюяіїє]', word):\n        return word\n\n    p = re.search(_RVRE, word)\n    start = word[0:p.span()[1]]\n    suffix = word[p.span()[1]:]\n\n    # Step 1\n    updated, suffix = _update_suffix(suffix, _PERFECTIVE_GROUND, '')\n    if not updated:\n        _, suffix = _update_suffix(suffix, _REFLEXIVE, '')\n        updated, suffix = _update_suffix(suffix, _ADJECTIVE, '')\n        if updated:\n            updated, suffix = _update_suffix(suffix, _PARTICIPLE, '')\n        else:\n            updated, suffix = _update_suffix(suffix, _VERB, '')\n            if not updated:\n                _, suffix = _update_suffix(suffix, _NOUN, '')\n    # Step 2\n    updated, suffix = _update_suffix(suffix, 'и$', '')\n\n    # Step 3\n    if re.search(_DERIVATIONAL, suffix):\n        updated, suffix = _update_suffix(suffix, 'ость$', '')\n\n    # Step 4\n    updated, suffix = _update_suffix(suffix, 'ь$', '')\n    if updated:\n        _, suffix = _update_suffix(suffix, 'ейше?$', '')\n        _, suffix = _update_suffix(suffix, 'нн$', u'н')\n\n    return start + suffix"
+      },
+      {
+        "file": "sumy/nlp/stemmers/greek.py",
+        "name": "stem_word",
+        "kind": "function",
+        "symbol": "sumy.nlp.stemmers.greek.stem_word",
+        "start": 14,
+        "end": 39,
+        "code": "def stem_word(word):\n    \"\"\"\n    Stem_word() checks if the associated word has the correct tag and stems it.\n    If it does not have the correct one then it throws an exception.\n    So we check all available POS tags, until we get the correct one.\n    In the future a working greek POS tagger can substitute the code of this function.\n    \"\"\"\n    try:\n        from greek_stemmer import stemmer as gr_stemmer\n    except ImportError:\n        raise ValueError(\"Greek stemmer requires greek_stemmer. Please, install it by command 'pip install greek-stemmer-pos'.\")\n\n    stem_candidates = set()\n    \n    if len(word) < 4:\n        return word.lower()\n\n    for tag in _TOTAL_TAGS:\n        try:\n            stemmed = gr_stemmer.stem_word(word.lower(), tag)\n            if stemmed and stemmed[-1].upper() in _CONSONANTS:\n                stem_candidates.add(stemmed)\n        except (TypeError, ValueError):\n            pass\n\n    return min(stem_candidates or [word], key=len).lower()"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "sumy._compat.to_unicode"
+    ],
+    "exact_hit_dependencies": [
+      "sumy._compat.to_unicode"
+    ],
+    "returned_entities": 6,
+    "returned_files": 5,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3529
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16005,
+    "completion_tokens": 690,
+    "total_tokens": 16695,
+    "seconds": 60.205148696899414,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 61.29015588760376,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

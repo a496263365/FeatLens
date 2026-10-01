@@ -1,0 +1,89 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 655,
+  "namespace": "diffprivlib.models.forest._FittingTree.__getstate__",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3257,
+      "input_estimate_after": 3257,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndiffprivlib/models/forest.py\nline: 503\nclass: _FittingTree\nfunction: __getstate__\n\ndiffprivlib/models/forest.py\nline: [varies]\nclass: _FittingTree\nfunction: build\n\ndiffprivlib/models/forest.py\nline: [varies]\nclass: _FittingTree\nfunction: fit\n\ndiffprivlib/validation.py\nline: [varies]\nclass: DiffprivlibMixin\nfunction: _validate_params\n\ndiffprivlib/models/forest.py\nline: [varies]\nclass: _FittingTree\nfunction: apply\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/models/forest.py",
+      "diffprivlib/validation.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/models/forest.py",
+        "name": "_FittingTree",
+        "kind": "class",
+        "symbol": "diffprivlib.models.forest._FittingTree",
+        "start": 459,
+        "end": 613,
+        "code": "class _FittingTree(DiffprivlibMixin):\n    r\"\"\"Array-based representation of a binary decision tree, trained with differential privacy.\n\n    This tree mimics the architecture of the corresponding Tree from sklearn.tree.tree_, but without many methods given\n    in Tree. The purpose of _FittingTree is to fit the parameters of the model, and have those parameters passed to\n    Tree (using _FittingTree.__getstate__() and Tree.__setstate__()), to be used for prediction.\n\n    Parameters\n    ----------\n    max_depth : int\n        The maximum depth of the tree.\n\n    n_features : int\n        The number of features of the training dataset.\n\n    classes : array-like of shape (n_classes,)\n        The classes of the training dataset.\n\n    epsilon : float\n        Privacy parameter :math:`\\epsilon`.\n\n    bounds : tuple\n        Bounds of the data, provided as a tuple of the form (min, max).  `min` and `max` can either be scalars, covering\n        the min/max of the entire data.\n\n    random_state : RandomState\n        Controls the randomness of the building and training process: the feature to split at each node, the threshold\n        to split at and the randomisation of the label at each leaf.\n\n    \"\"\"\n    _TREE_LEAF = -1\n    _TREE_UNDEFINED = -2\n    StackNode = namedtuple(\"StackNode\", [\"parent\", \"is_left\", \"depth\", \"bounds\"])\n\n    def __init__(self, max_depth, n_features, classes, epsilon, bounds, random_state):\n        self.node_count = 0\n        self.nodes = []\n        self.max_depth = max_depth\n        self.n_features = n_features\n        self.classes = classes\n        self.epsilon = epsilon\n        self.bounds = bounds\n        self.random_state = random_state\n\n    def __getstate__(self):\n        pass\n\n\n\n\n\n\n    def build(self):\n        \"\"\"Build the decision tree using random feature selection and random thresholding.\"\"\"\n        stack = [self.StackNode(parent=self._TREE_UNDEFINED, is_left=False, depth=0, bounds=self.bounds)]\n\n        while stack:\n            parent, is_left, depth, bounds = stack.pop()\n            node_id = self.node_count\n            bounds_lower, bounds_upper = self._check_bounds(bounds, shape=self.n_features)\n\n            # Update parent node with its child\n            if parent != self._TREE_UNDEFINED:\n                if is_left:\n                    self.nodes[parent].left_child = node_id\n                else:\n                    self.nodes[parent].right_child = node_id\n\n            # Check if we have a leaf node, then add it\n            if depth >= self.max_depth:\n                node = _Node(node_id, self._TREE_UNDEFINED, self._TREE_UNDEFINED)\n                node.left_child = self._TREE_LEAF\n                node.right_child = self._TREE_LEAF\n\n                self.nodes.append(node)\n                self.node_count += 1\n                continue\n\n            # We have a decision node, so pick feature and threshold\n            feature = self.random_state.randint(self.n_features)\n            threshold = self.random_state.uniform(bounds_lower[feature], bounds_upper[feature])\n\n            left_bounds_upper = bounds_upper.copy()\n            left_bounds_upper[feature] = threshold\n            right_bounds_lower = bounds_lower.copy()\n            right_bounds_lower[feature] = threshold\n\n            self.nodes.append(_Node(node_id, feature, threshold))\n            self.node_count += 1\n\n            stack.append(self.StackNode(parent=node_id, is_left=True, depth=depth+1,\n                                        bounds=(bounds_lower, left_bounds_upper)))\n            stack.append(self.StackNode(parent=node_id, is_left=False, depth=depth+1,\n                                        bounds=(right_bounds_lower, bounds_upper)))\n\n        return self\n\n    def fit(self, X, y):\n        \"\"\"Fit the tree to the given training data.\n\n        Parameters\n        ----------\n        X : array-like, shape (n_samples, n_features)\n            Training vector, where n_samples is the number of samples and n_features is the number of features.\n\n        y : array-like, shape (n_samples,)\n            Target vector relative to X.\n\n        \"\"\"\n        if not self.nodes:\n            raise ValueError(\"Fitting Tree must be built before calling fit().\")\n\n        leaves = self.apply(X)\n        unique_leaves = np.unique(leaves)\n        values = np.zeros(shape=(self.node_count, 1, len(self.classes)))\n\n        # Populate value of real leaves\n        for leaf in unique_leaves:\n            idxs = (leaves == leaf)\n            leaf_y = y[idxs]\n\n            counts = [np.sum(leaf_y == cls) for cls in self.classes]\n            mech = PermuteAndFlip(epsilon=self.epsilon, sensitivity=1, monotonic=True, utility=counts,\n                                  random_state=self.random_state)\n            values[leaf, 0, mech.randomise()] = 1\n\n        # Populate value of empty leaves\n        for node in self.nodes:\n            if values[node.node_id].sum() or node.left_child != self._TREE_LEAF:\n                continue\n\n            values[node.node_id, 0, self.random_state.randint(len(self.classes))] = 1\n\n        self.values_ = values\n\n        return self\n\n    def apply(self, X):\n        \"\"\"Finds the terminal region (=leaf node) for each sample in X.\"\"\"\n        n_samples = X.shape[0]\n        out = np.zeros((n_samples,), dtype=int)\n        out_ptr = out.data\n\n        for i in range(n_samples):\n            node = self.nodes[0]\n\n            while node.left_child != self._TREE_LEAF:\n                if X[i, node.feature] <= node.threshold:\n                    node = self.nodes[node.left_child]\n                else:\n                    node = self.nodes[node.right_child]\n\n            out_ptr[i] = node.node_id\n\n        return out"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "DiffprivlibMixin",
+        "kind": "class",
+        "symbol": "diffprivlib.validation.DiffprivlibMixin",
+        "start": 203,
+        "end": 221,
+        "code": "class DiffprivlibMixin:  # pylint: disable=too-few-public-methods\n    \"\"\"Mixin for Diffprivlib models.\"\"\"\n    _check_bounds = staticmethod(check_bounds)\n    _clip_to_norm = staticmethod(clip_to_norm)\n    _clip_to_bounds = staticmethod(clip_to_bounds)\n    _warn_unused_args = staticmethod(warn_unused_args)\n\n    # todo: remove when scikit-learn v1.2 is a min requirement\n    def _validate_params(self):\n        pass\n\n    @staticmethod\n    def _copy_parameter_constraints(cls, *args):\n        \"\"\"Copies the parameter constraints for `*args` from `cls`\n        \"\"\"\n        if not hasattr(cls, \"_parameter_constraints\"):\n            return {}\n\n        return {k: cls._parameter_constraints[k] for k in args if k in cls._parameter_constraints}"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/models/forest.py:function: __getstate__",
+      "diffprivlib/models/forest.py:function: build",
+      "diffprivlib/models/forest.py:function: fit",
+      "diffprivlib/validation.py:function: _validate_params",
+      "diffprivlib/models/forest.py:function: apply"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 2,
+    "returned_files": 2,
+    "unresolved_locations": 5,
+    "returned_code_chars": 6404
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 14853,
+    "completion_tokens": 1949,
+    "total_tokens": 16802,
+    "seconds": 81.46725463867188,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 85.01798844337463,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

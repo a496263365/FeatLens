@@ -1,0 +1,90 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 789,
+  "namespace": "ydata_profiling.profile_report.ProfileReport.typeset",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12819,
+      "input_estimate_after": 12819,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies for implementing the `typeset` functionality in `ProfileReport`:\n\n```\nsrc/ydata_profiling/model/typeset.py:ProfilingTypeSet\nline: 342-362\n\nsrc/ydata_profiling/profile_report.py:ProfileReport.__init__\nline: 59-150\n```\n\nThese locations contain:\n1. The `ProfilingTypeSet` class which handles typeset creation and management\n2. The ProfileReport initialization where typeset configuration is established and stored in `self._typeset`",
+  "final_locations": {
+    "files": [
+      "src/ydata_profiling/model/typeset.py",
+      "src/ydata_profiling/profile_report.py"
+    ],
+    "entities": [
+      {
+        "file": "src/ydata_profiling/model/typeset.py",
+        "name": "ProfilingTypeSet",
+        "kind": "class",
+        "symbol": "ydata_profiling.model.typeset.ProfilingTypeSet",
+        "start": 342,
+        "end": 361,
+        "code": "class ProfilingTypeSet(visions.VisionsTypeset):\n    def __init__(self, config: Settings, type_schema: dict = None):\n        self.config = config\n\n        types = typeset_types(config)\n\n        with warnings.catch_warnings():\n            warnings.filterwarnings(\"ignore\", category=UserWarning)\n            super().__init__(types)\n\n        self.type_schema = self._init_type_schema(type_schema or {})\n\n    def _init_type_schema(self, type_schema: dict) -> dict:\n        return {k: self._get_type(v) for k, v in type_schema.items()}\n\n    def _get_type(self, type_name: str) -> visions.VisionsBaseType:\n        for t in self.types:\n            if t.__name__.lower() == type_name.lower():\n                return t\n        raise ValueError(f\"Type [{type_name}] not found.\")"
+      },
+      {
+        "file": "src/ydata_profiling/profile_report.py",
+        "name": "ProfileReport.__init__",
+        "kind": "function",
+        "symbol": "ydata_profiling.profile_report.ProfileReport.__init__",
+        "start": 59,
+        "end": 154,
+        "code": "    def __init__(\n        self,\n        df: Optional[Union[pd.DataFrame, sDataFrame]] = None,\n        minimal: bool = False,\n        tsmode: bool = False,\n        sortby: Optional[str] = None,\n        sensitive: bool = False,\n        explorative: bool = False,\n        dark_mode: bool = False,\n        orange_mode: bool = False,\n        sample: Optional[dict] = None,\n        config_file: Optional[Union[Path, str]] = None,\n        lazy: bool = True,\n        typeset: Optional[VisionsTypeset] = None,\n        summarizer: Optional[BaseSummarizer] = None,\n        config: Optional[Settings] = None,\n        type_schema: Optional[dict] = None,\n        **kwargs,\n    ):\n        \"\"\"Generate a ProfileReport based on a pandas or spark.sql DataFrame\n\n        Config processing order (in case of duplicate entries, entries later in the order are retained):\n        - config presets (e.g. `config_file`, `minimal` arguments)\n        - config groups (e.g. `explorative` and `sensitive` arguments)\n        - custom settings (e.g. `config` argument)\n        - custom settings **kwargs (e.g. `title`)\n\n        Args:\n            df: a pandas or spark.sql DataFrame\n            minimal: minimal mode is a default configuration with minimal computation\n            ts_mode: activates time-series analysis for all the numerical variables from the dataset. Only available for pd.DataFrame\n            sort_by: ignored if ts_mode=False. Order the dataset by a provided column.\n            sensitive: hides the values for categorical and text variables for report privacy\n            config_file: a config file (.yml), mutually exclusive with `minimal`\n            lazy: compute when needed\n            sample: optional dict(name=\"Sample title\", caption=\"Caption\", data=pd.DataFrame())\n            typeset: optional user typeset to use for type inference\n            summarizer: optional user summarizer to generate custom summary output\n            type_schema: optional dict containing pairs of `column name`: `type`\n            **kwargs: other arguments, for valid arguments, check the default configuration file.\n        \"\"\"\n        self.__validate_inputs(df, minimal, tsmode, config_file, lazy)\n\n        if config_file or minimal:\n            if not config_file:\n                config_file = get_config(\"config_minimal.yaml\")\n\n            report_config = Settings().from_file(config_file)\n        elif config is not None:\n            report_config = config\n        else:\n            if isinstance(df, pd.DataFrame):\n                report_config = Settings()\n            else:\n                report_config = SparkSettings()\n\n        groups = [\n            (explorative, \"explorative\"),\n            (sensitive, \"sensitive\"),\n            (dark_mode, \"dark_mode\"),\n            (orange_mode, \"orange_mode\"),\n        ]\n\n        if any(condition for condition, _ in groups):\n            cfg = Settings()\n            for condition, key in groups:\n                if condition:\n                    cfg = cfg.update(Config.get_arg_groups(key))\n            report_config = cfg.update(report_config.dict(exclude_defaults=True))\n\n        if len(kwargs) > 0:\n            shorthands, kwargs = Config.shorthands(kwargs)\n            report_config = (\n                Settings()\n                .update(shorthands)\n                .update(report_config.dict(exclude_defaults=True))\n            )\n\n        if kwargs:\n            report_config = report_config.update(kwargs)\n\n        report_config.vars.timeseries.active = tsmode\n        if tsmode and sortby:\n            report_config.vars.timeseries.sortby = sortby\n\n        self.df = self.__initialize_dataframe(df, report_config)\n        self.config = report_config\n        self._df_hash = None\n        self._sample = sample\n        self._type_schema = type_schema\n        self._typeset = typeset\n        self._summarizer = summarizer\n\n        if not lazy:\n            # Trigger building the report structure\n            _ = self.report"
+      }
+    ],
+    "unresolved": [
+      "src/ydata_profiling/model/typeset.py:function: ProfilingTypeSet",
+      "src/ydata_profiling/model/typeset.py:line: 342-362"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "ydata_profiling.model.typeset.ProfilingTypeSet"
+    ],
+    "exact_hit_dependencies": [
+      "ydata_profiling.model.typeset.ProfilingTypeSet"
+    ],
+    "returned_entities": 2,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 4725
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 32977,
+    "completion_tokens": 317,
+    "total_tokens": 33294,
+    "seconds": 35.59949707984924,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 53.393375396728516,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

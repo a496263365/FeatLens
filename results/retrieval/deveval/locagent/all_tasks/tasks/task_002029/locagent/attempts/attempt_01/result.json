@@ -1,0 +1,143 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2029,
+  "namespace": "datasette.utils.actor_matches_allow",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9873,
+      "input_estimate_after": 9873,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the key reusable dependencies for implementing the `actor_matches_allow` function. The function needs to check if an actor matches an allow condition, and several existing code locations show how actors and permissions are handled in Datasette.\n\n```\ndatasette/default_permissions.py\nline: 1\nline: 2\nfunction: permission_allowed\nimports: datasette.utils.actor_matches_allow\n\ndatasette/views/special.py\nline: 109\nclass: AllowDebugView\nline: 130\nfunction: AllowDebugView.get\nuses: actor_matches_allow\n\ndatasette/hookspecs.py\nline: 104\nfunction: permission_allowed\nsignature: permission_allowed(datasette, actor, action, resource)\n\ndatasette/app.py\nline: 663\nfunction: Datasette.permission_allowed\nline: 691\nfunction: Datasette.ensure_permissions\nline: 726\nfunction: Datasette.check_visibility\n\ndatasette/utils/asgi.py\nline: 112\nfunction: Request.actor\nproperty: actor\n```",
+  "final_locations": {
+    "files": [
+      "datasette/default_permissions.py",
+      "datasette/views/special.py",
+      "datasette/hookspecs.py",
+      "datasette/app.py",
+      "datasette/utils/asgi.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/default_permissions.py",
+        "name": "permission_allowed",
+        "kind": "function",
+        "symbol": "datasette.default_permissions.permission_allowed",
+        "start": 6,
+        "end": 51,
+        "code": "def permission_allowed(datasette, actor, action, resource):\n    async def inner():\n        if action in (\"permissions-debug\", \"debug-menu\"):\n            if actor and actor.get(\"id\") == \"root\":\n                return True\n        elif action == \"view-instance\":\n            allow = datasette.metadata(\"allow\")\n            if allow is not None:\n                return actor_matches_allow(actor, allow)\n        elif action == \"view-database\":\n            if resource == \"_internal\" and (actor is None or actor.get(\"id\") != \"root\"):\n                return False\n            database_allow = datasette.metadata(\"allow\", database=resource)\n            if database_allow is None:\n                return None\n            return actor_matches_allow(actor, database_allow)\n        elif action == \"view-table\":\n            database, table = resource\n            tables = datasette.metadata(\"tables\", database=database) or {}\n            table_allow = (tables.get(table) or {}).get(\"allow\")\n            if table_allow is None:\n                return None\n            return actor_matches_allow(actor, table_allow)\n        elif action == \"view-query\":\n            # Check if this query has a \"allow\" block in metadata\n            database, query_name = resource\n            query = await datasette.get_canned_query(database, query_name, actor)\n            assert query is not None\n            allow = query.get(\"allow\")\n            if allow is None:\n                return None\n            return actor_matches_allow(actor, allow)\n        elif action == \"execute-sql\":\n            # Only use default_allow_sql setting if it is set to False:\n            default_allow_sql = (\n                None if datasette.setting(\"default_allow_sql\") else False\n            )\n            # Use allow_sql block from database block, or from top-level\n            database_allow_sql = datasette.metadata(\"allow_sql\", database=resource)\n            if database_allow_sql is None:\n                database_allow_sql = datasette.metadata(\"allow_sql\")\n            if database_allow_sql is None:\n                return default_allow_sql\n            return actor_matches_allow(actor, database_allow_sql)\n\n    return inner"
+      },
+      {
+        "file": "datasette/views/special.py",
+        "name": "AllowDebugView",
+        "kind": "class",
+        "symbol": "datasette.views.special.AllowDebugView",
+        "start": 109,
+        "end": 141,
+        "code": "class AllowDebugView(BaseView):\n    name = \"allow_debug\"\n    has_json_alternate = False\n\n    async def get(self, request):\n        errors = []\n        actor_input = request.args.get(\"actor\") or '{\"id\": \"root\"}'\n        try:\n            actor = json.loads(actor_input)\n            actor_input = json.dumps(actor, indent=4)\n        except json.decoder.JSONDecodeError as ex:\n            errors.append(f\"Actor JSON error: {ex}\")\n        allow_input = request.args.get(\"allow\") or '{\"id\": \"*\"}'\n        try:\n            allow = json.loads(allow_input)\n            allow_input = json.dumps(allow, indent=4)\n        except json.decoder.JSONDecodeError as ex:\n            errors.append(f\"Allow JSON error: {ex}\")\n\n        result = None\n        if not errors:\n            result = str(actor_matches_allow(actor, allow))\n\n        return await self.render(\n            [\"allow_debug.html\"],\n            request,\n            {\n                \"result\": result,\n                \"error\": \"\\n\\n\".join(errors) if errors else \"\",\n                \"actor_input\": actor_input,\n                \"allow_input\": allow_input,\n            },\n        )"
+      },
+      {
+        "file": "datasette/views/special.py",
+        "name": "AllowDebugView.get",
+        "kind": "function",
+        "symbol": "datasette.views.special.AllowDebugView.get",
+        "start": 113,
+        "end": 141,
+        "code": "    async def get(self, request):\n        errors = []\n        actor_input = request.args.get(\"actor\") or '{\"id\": \"root\"}'\n        try:\n            actor = json.loads(actor_input)\n            actor_input = json.dumps(actor, indent=4)\n        except json.decoder.JSONDecodeError as ex:\n            errors.append(f\"Actor JSON error: {ex}\")\n        allow_input = request.args.get(\"allow\") or '{\"id\": \"*\"}'\n        try:\n            allow = json.loads(allow_input)\n            allow_input = json.dumps(allow, indent=4)\n        except json.decoder.JSONDecodeError as ex:\n            errors.append(f\"Allow JSON error: {ex}\")\n\n        result = None\n        if not errors:\n            result = str(actor_matches_allow(actor, allow))\n\n        return await self.render(\n            [\"allow_debug.html\"],\n            request,\n            {\n                \"result\": result,\n                \"error\": \"\\n\\n\".join(errors) if errors else \"\",\n                \"actor_input\": actor_input,\n                \"allow_input\": allow_input,\n            },\n        )"
+      },
+      {
+        "file": "datasette/hookspecs.py",
+        "name": "permission_allowed",
+        "kind": "function",
+        "symbol": "datasette.hookspecs.permission_allowed",
+        "start": 104,
+        "end": 105,
+        "code": "def permission_allowed(datasette, actor, action, resource):\n    \"\"\"Check if actor is allowed to perform this action - return True, False or None\"\"\""
+      },
+      {
+        "file": "datasette/app.py",
+        "name": "Datasette.permission_allowed",
+        "kind": "function",
+        "symbol": "datasette.app.Datasette.permission_allowed",
+        "start": 663,
+        "end": 689,
+        "code": "    async def permission_allowed(self, actor, action, resource=None, default=False):\n        \"\"\"Check permissions using the permissions_allowed plugin hook\"\"\"\n        result = None\n        for check in pm.hook.permission_allowed(\n            datasette=self,\n            actor=actor,\n            action=action,\n            resource=resource,\n        ):\n            check = await await_me_maybe(check)\n            if check is not None:\n                result = check\n        used_default = False\n        if result is None:\n            result = default\n            used_default = True\n        self._permission_checks.append(\n            {\n                \"when\": datetime.datetime.utcnow().isoformat(),\n                \"actor\": actor,\n                \"action\": action,\n                \"resource\": resource,\n                \"used_default\": used_default,\n                \"result\": result,\n            }\n        )\n        return result"
+      },
+      {
+        "file": "datasette/app.py",
+        "name": "Datasette.ensure_permissions",
+        "kind": "function",
+        "symbol": "datasette.app.Datasette.ensure_permissions",
+        "start": 691,
+        "end": 724,
+        "code": "    async def ensure_permissions(\n        self,\n        actor: dict,\n        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],\n    ):\n        \"\"\"\n        permissions is a list of (action, resource) tuples or 'action' strings\n\n        Raises datasette.Forbidden() if any of the checks fail\n        \"\"\"\n        assert actor is None or isinstance(actor, dict), \"actor must be None or a dict\"\n        for permission in permissions:\n            if isinstance(permission, str):\n                action = permission\n                resource = None\n            elif isinstance(permission, (tuple, list)) and len(permission) == 2:\n                action, resource = permission\n            else:\n                assert (\n                    False\n                ), \"permission should be string or tuple of two items: {}\".format(\n                    repr(permission)\n                )\n            ok = await self.permission_allowed(\n                actor,\n                action,\n                resource=resource,\n                default=None,\n            )\n            if ok is not None:\n                if ok:\n                    return\n                else:\n                    raise Forbidden(action)"
+      },
+      {
+        "file": "datasette/app.py",
+        "name": "Datasette.check_visibility",
+        "kind": "function",
+        "symbol": "datasette.app.Datasette.check_visibility",
+        "start": 726,
+        "end": 753,
+        "code": "    async def check_visibility(\n        self,\n        actor: dict,\n        action: Optional[str] = None,\n        resource: Optional[Union[str, Tuple[str, str]]] = None,\n        permissions: Optional[\n            Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]\n        ] = None,\n    ):\n        \"\"\"Returns (visible, private) - visible = can you see it, private = can others see it too\"\"\"\n        if permissions:\n            assert (\n                not action and not resource\n            ), \"Can't use action= or resource= with permissions=\"\n        else:\n            permissions = [(action, resource)]\n        try:\n            await self.ensure_permissions(actor, permissions)\n        except Forbidden:\n            return False, False\n        # User can see it, but can the anonymous user see it?\n        try:\n            await self.ensure_permissions(None, permissions)\n        except Forbidden:\n            # It's visible but private\n            return True, True\n        # It's visible to everyone\n        return True, False"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Request.actor",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.Request.actor",
+        "start": 112,
+        "end": 113,
+        "code": "    def actor(self):\n        return self.scope.get(\"actor\", None)"
+      }
+    ],
+    "unresolved": [
+      "datasette/default_permissions.py:line: 1",
+      "datasette/default_permissions.py:line: 2"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 5,
+    "unresolved_locations": 2,
+    "returned_code_chars": 7751
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26226,
+    "completion_tokens": 665,
+    "total_tokens": 26891,
+    "seconds": 70.79695010185242,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 86.24380421638489,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

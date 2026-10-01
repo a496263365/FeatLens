@@ -1,0 +1,142 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 733,
+  "namespace": "trailscraper.boto_service_definitions.operation_definition",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6234,
+      "input_estimate_after": 6234,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the reusable dependencies needed to implement the `operation_definition` function. The target function needs to read service definition files and extract operation definitions, and I can see several existing functions and patterns in the codebase that provide the necessary infrastructure.\n\n```\ntrailscraper/boto_service_definitions.py\nline: 9\nfunction: boto_service_definition_files\nline: 20\nfunction: service_definition_file\n\ntrailscraper/cloudtrail.py\nline: -1\nclass: Record\nfunction: _to_api_gateway_statement\nline: 140\nline: 142-143\n\ntrailscraper/__init__.py\nline: -1\nmodule: trailscraper\n\ntrailscraper/iam.py\nline: 14\nimport: Statement, Action\nline: 151\nclass: Action\nline: 149\nclass: Statement\n\ntrailscraper/collection_utils.py\nline: -1\nmodule: collection_utils\n```",
+  "final_locations": {
+    "files": [
+      "trailscraper/boto_service_definitions.py",
+      "trailscraper/cloudtrail.py",
+      "trailscraper/__init__.py",
+      "trailscraper/iam.py",
+      "trailscraper/collection_utils.py"
+    ],
+    "entities": [
+      {
+        "file": "trailscraper/boto_service_definitions.py",
+        "name": "boto_service_definition_files",
+        "kind": "function",
+        "symbol": "trailscraper.boto_service_definitions.boto_service_definition_files",
+        "start": 9,
+        "end": 17,
+        "code": "def boto_service_definition_files():\n    \"\"\"Return paths to all service definition files from botocore\"\"\"\n\n    botocore_data_dir = resource_filename(Requirement.parse(\"botocore\"), \"botocore/data\")\n    files = [os.path.join(dirname, file_in_dir)\n             for dirname, _, files_in_dir in os.walk(botocore_data_dir)\n             for file_in_dir in files_in_dir\n             if fnmatch.fnmatch(file_in_dir, 'service-*.json')]\n    return files"
+      },
+      {
+        "file": "trailscraper/boto_service_definitions.py",
+        "name": "service_definition_file",
+        "kind": "function",
+        "symbol": "trailscraper.boto_service_definitions.service_definition_file",
+        "start": 20,
+        "end": 29,
+        "code": "def service_definition_file(servicename):\n    \"\"\"Returns the path to the most recent service definition file for a service\"\"\"\n\n    boto_service_definition_files()\n    service_definitions_for_service = fnmatch.filter(boto_service_definition_files(),\n                                                     \"**/\" + servicename + \"/*/service-*.json\")\n\n    service_definitions_for_service.sort()\n\n    return service_definitions_for_service[-1]"
+      },
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "Record",
+        "kind": "class",
+        "symbol": "trailscraper.cloudtrail.Record",
+        "start": 21,
+        "end": 167,
+        "code": "class Record:\n    \"\"\"Represents a CloudTrail record\"\"\"\n\n    # pylint: disable=too-many-arguments\n    def __init__(self, event_source, event_name,\n                 resource_arns=None, assumed_role_arn=None, event_time=None, raw_source=None):\n        self.event_source = event_source\n        self.event_name = event_name\n        self.raw_source = raw_source\n        self.event_time = event_time\n        self.resource_arns = resource_arns or [\"*\"]\n        self.assumed_role_arn = assumed_role_arn\n\n    def __repr__(self):\n        return f\"Record(event_source={self.event_source} event_name={self.event_name} \" \\\n               f\"event_time={self.event_time} resource_arns={self.resource_arns})\"\n\n    def __eq__(self, other):\n        if isinstance(other, self.__class__):\n            return self.event_source == other.event_source and \\\n                   self.event_name == other.event_name and \\\n                   self.event_time == other.event_time and \\\n                   self.resource_arns == other.resource_arns and \\\n                   self.assumed_role_arn == other.assumed_role_arn\n\n        return False\n\n    def __hash__(self):\n        return hash((self.event_source,\n                     self.event_name,\n                     self.event_time,\n                     tuple(self.resource_arns),\n                     self.assumed_role_arn))\n\n    def __ne__(self, other):\n        return not self.__eq__(other)\n\n    def _source_to_iam_prefix(self):\n        special_cases = {\n            'monitoring.amazonaws.com': 'cloudwatch',\n            'appstream2.amazonaws.com': 'appstream',\n            'models.lex.amazonaws.com': 'lex',\n            'runtime.lex.amazonaws.com': 'lex',\n            'mturk-requester.amazonaws.com': 'mechanicalturk',\n            'streams.dynamodb.amazonaws.com': 'dynamodb',\n            'tagging.amazonaws.com': 'tag',\n        }\n\n        default_case = self.event_source.split('.')[0]\n\n        return special_cases.get(self.event_source, default_case)\n\n    def _event_name_to_iam_action(self):\n        special_cases = {\n            's3.amazonaws.com': {\n                'CompleteMultipartUpload': 'PutObject',\n                'CopyObject': 'PutObject',\n                'CreateMultipartUpload': 'PutObject',\n                'DeleteBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'DeleteBucketEncryption': 'PutEncryptionConfiguration',\n                'DeleteBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'DeleteBucketLifecycle': 'PutLifecycleConfiguration',\n                'DeleteBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'DeleteBucketReplication': 'DeleteReplicationConfiguration',\n                'DeleteBucketTagging': 'PutBucketTagging',\n                'DeleteObjects': 'DeleteObject',\n                'GetBucketAccelerateConfiguration': 'GetAccelerateConfiguration',\n                'GetBucketAnalyticsConfiguration': 'GetAnalyticsConfiguration',\n                'GetBucketEncryption': 'GetEncryptionConfiguration',\n                'GetBucketInventoryConfiguration': 'GetInventoryConfiguration',\n                'GetBucketLifecycle': 'GetLifecycleConfiguration',\n                'GetBucketLifecycleConfiguration': 'GetLifecycleConfiguration',\n                'GetBucketMetricsConfiguration': 'GetMetricsConfiguration',\n                'GetBucketNotificationConfiguration': 'GetBucketNotification',\n                'GetBucketReplication': 'GetReplicationConfiguration',\n                'HeadBucket': 'ListBucket',\n                'HeadObject': 'GetObject',\n                'ListBucketAnalyticsConfigurations': 'GetAnalyticsConfiguration',\n                'ListBucketInventoryConfigurations': 'GetInventoryConfiguration',\n                'ListBucketMetricsConfigurations': 'GetMetricsConfiguration',\n                'ListBuckets': 'ListAllMyBuckets',\n                'ListMultipartUploads': 'ListBucketMultipartUploads',\n                'ListObjectVersions': 'ListBucketVersions',\n                'ListObjects': 'ListBucket',\n                'ListObjectsV2': 'ListBucket',\n                'ListParts': 'ListMultipartUploadParts',\n                'PutBucketAccelerateConfiguration': 'PutAccelerateConfiguration',\n                'PutBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'PutBucketEncryption': 'PutEncryptionConfiguration',\n                'PutBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'PutBucketLifecycle': 'PutLifecycleConfiguration',\n                'PutBucketLifecycleConfiguration': 'PutLifecycleConfiguration',\n                'PutBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'PutBucketNotificationConfiguration': 'PutBucketNotification',\n                'PutBucketReplication': 'DeleteReplicationConfiguration',\n                'UploadPart': 'PutObject',\n                'UploadPartCopy': 'PutObject',\n            },\n            'kms.amazonaws.com': {\n                'ReEncrypt': 'ReEncrypt*'  # not precise. See #27 for more details.\n            }\n        }\n\n        def _regex_sub(expr, subs):\n            regex = re.compile(expr)\n            return lambda s: regex.sub(subs, s)\n\n        def _special_case_mappings(event_name):\n            return special_cases \\\n                .get(self.event_source, {}) \\\n                .get(event_name, event_name)\n\n        return pipe(self.event_name,\n                    _special_case_mappings,\n                    _regex_sub(r\"DeleteBucketCors\", \"PutBucketCORS\"),\n                    _regex_sub(r\"([a-zA-Z]+)[0-9v_]+$\", r\"\\1\", ),\n                    _regex_sub(r\"Cors$\", \"CORS\"))\n\n    def _to_api_gateway_statement(self):\n        op_def = operation_definition(\"apigateway\", self.event_name)\n\n        http_method = op_def['http']['method']\n        request_uri = op_def['http']['requestUri']\n\n        resource_path = re.compile(r\"{[a-zA-Z_]+}\").sub(\"*\", request_uri)\n\n        region = \"*\"  # use proper region from requestParameters\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(\"apigateway\", http_method)],\n            Resource=[f\"arn:aws:apigateway:{region}::{resource_path}\"]\n        )\n\n    def to_statement(self):\n        \"\"\"Converts record into a matching IAM Policy Statement\"\"\"\n        if self.event_source == \"sts.amazonaws.com\" and self.event_name == \"GetCallerIdentity\":\n            return None\n\n        if self.event_source == \"apigateway.amazonaws.com\":\n            return self._to_api_gateway_statement()\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(self._source_to_iam_prefix(), self._event_name_to_iam_action())],\n            Resource=sorted(self.resource_arns)\n        )"
+      },
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "Record._to_api_gateway_statement",
+        "kind": "function",
+        "symbol": "trailscraper.cloudtrail.Record._to_api_gateway_statement",
+        "start": 139,
+        "end": 153,
+        "code": "    def _to_api_gateway_statement(self):\n        op_def = operation_definition(\"apigateway\", self.event_name)\n\n        http_method = op_def['http']['method']\n        request_uri = op_def['http']['requestUri']\n\n        resource_path = re.compile(r\"{[a-zA-Z_]+}\").sub(\"*\", request_uri)\n\n        region = \"*\"  # use proper region from requestParameters\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(\"apigateway\", http_method)],\n            Resource=[f\"arn:aws:apigateway:{region}::{resource_path}\"]\n        )"
+      },
+      {
+        "file": "trailscraper/iam.py",
+        "name": "_parse_statement",
+        "kind": "function",
+        "symbol": "trailscraper.iam._parse_statement",
+        "start": 151,
+        "end": 154,
+        "code": "def _parse_statement(statement):\n    return Statement(Action=[_parse_action(action) for action in statement['Action']],\n                     Effect=statement['Effect'],\n                     Resource=statement['Resource'])"
+      },
+      {
+        "file": "trailscraper/iam.py",
+        "name": "Action",
+        "kind": "class",
+        "symbol": "trailscraper.iam.Action",
+        "start": 38,
+        "end": 71,
+        "code": "class Action(BaseElement):\n    \"\"\"Action in an IAM Policy.\"\"\"\n\n    def __init__(self, prefix, action):\n        self.action = action\n        self.prefix = prefix\n\n    def json_repr(self):\n        return ':'.join([self.prefix, self.action])\n\n    def _base_action(self):\n        without_prefix = self.action\n        for prefix in BASE_ACTION_PREFIXES:\n            without_prefix = re.sub(prefix, \"\", without_prefix)\n\n        without_plural = re.sub(r\"s$\", \"\", without_prefix)\n\n        return without_plural\n\n    def matching_actions(self, allowed_prefixes):\n        \"\"\"Return a matching create action for this Action\"\"\"\n\n        if not allowed_prefixes:\n            allowed_prefixes = BASE_ACTION_PREFIXES\n\n        potential_matches = [Action(prefix=self.prefix, action=action_prefix + self._base_action())\n                             for action_prefix in allowed_prefixes]\n\n        potential_matches += [Action(prefix=self.prefix, action=action_prefix + self._base_action() + \"s\")\n                              for action_prefix in allowed_prefixes]\n\n        return [potential_match\n                for potential_match in potential_matches\n                if potential_match in known_iam_actions(self.prefix) and potential_match != self]"
+      },
+      {
+        "file": "trailscraper/iam.py",
+        "name": "Statement",
+        "kind": "class",
+        "symbol": "trailscraper.iam.Statement",
+        "start": 75,
+        "end": 116,
+        "code": "class Statement(BaseElement):\n    \"\"\"Statement in an IAM Policy.\"\"\"\n\n    def __init__(self, Action, Effect, Resource):  # pylint: disable=redefined-outer-name\n        self.Action = Action  # pylint: disable=invalid-name\n        self.Effect = Effect  # pylint: disable=invalid-name\n        self.Resource = Resource  # pylint: disable=invalid-name\n\n    def json_repr(self):\n        return {\n            'Action': self.Action,\n            'Effect': self.Effect,\n            'Resource': self.Resource,\n        }\n\n    def merge(self, other):\n        \"\"\"Merge two statements into one.\"\"\"\n        if self.Effect != other.Effect:\n            raise ValueError(f\"Trying to combine two statements with differing effects: {self.Effect} {other.Effect}\")\n\n        effect = self.Effect\n\n        actions = list(sorted(set(self.Action + other.Action), key=lambda action: action.json_repr()))\n        resources = list(sorted(set(self.Resource + other.Resource)))\n\n        return Statement(\n            Effect=effect,\n            Action=actions,\n            Resource=resources,\n        )\n\n    def __action_list_strings(self):\n        return \"-\".join([a.json_repr() for a in self.Action])\n\n    def __lt__(self, other):\n        if self.Effect != other.Effect:\n            return self.Effect < other.Effect\n        if self.Action != other.Action:\n            # pylint: disable=W0212\n            return self.__action_list_strings() < other.__action_list_strings()\n\n        return \"\".join(self.Resource) < \"\".join(other.Resource)"
+      }
+    ],
+    "unresolved": [
+      "trailscraper/cloudtrail.py:line: -1",
+      "trailscraper/cloudtrail.py:function: _to_api_gateway_statement",
+      "trailscraper/__init__.py:line: -1",
+      "trailscraper/iam.py:line: 14",
+      "trailscraper/iam.py:line: 149",
+      "trailscraper/collection_utils.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "trailscraper.boto_service_definitions.service_definition_file"
+    ],
+    "exact_hit_dependencies": [
+      "trailscraper.boto_service_definitions.service_definition_file"
+    ],
+    "returned_entities": 7,
+    "returned_files": 5,
+    "unresolved_locations": 6,
+    "returned_code_chars": 11105
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17608,
+    "completion_tokens": 1284,
+    "total_tokens": 18892,
+    "seconds": 71.31072664260864,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 71.80991005897522,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

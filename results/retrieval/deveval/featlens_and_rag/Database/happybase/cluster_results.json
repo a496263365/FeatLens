@@ -1,0 +1,754 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new Batch instance .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self,\n                 table: 'Table',\n                 timestamp: int = None,\n                 batch_size: int = None,\n                 transaction: bool = False,\n                 wal: bool = True):\n        \"\"\"Initialise a new Batch instance.\"\"\"\n        if not (timestamp is None or isinstance(timestamp, Integral)):\n            raise TypeError(\"'timestamp' must be an integer or None\")\n\n        if batch_size is not None:\n            if transaction:\n                raise TypeError(\"'transaction' can't be used with 'batch_size'\")\n            if not batch_size > 0:\n                raise ValueError(\"'batch_size' must be > 0\")\n\n        self._table = table\n        self._batch_size = batch_size\n        self._timestamp = timestamp\n        self._transaction = transaction\n        self._wal = wal\n        self._families = None\n        self._reset_mutations()\n\n        # Save mutator partial here to avoid the if check each time\n        if self._timestamp is None:\n            self._mutate_rows = partial(\n                self._table.client.mutateRows,\n                self._table.name,\n                attributes={},\n            )\n        else:\n            self._mutate_rows = partial(\n                self._table.client.mutateRowsTs,\n                self._table.name,\n                timestamp=self._timestamp,\n                attributes={},\n            )",
+                    "func_fullName": "aiohappybase.batch.Batch.__init__(self, table, timestamp, batch_size, transaction, wal)"
+                },
+                {
+                    "func_id": 1,
+                    "func_name": "_reset_mutations",
+                    "func_desc": "Reset the internal mutation buffer .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _reset_mutations(self) -> None:\n        \"\"\"Reset the internal mutation buffer.\"\"\"\n        self._mutations = defaultdict(list)\n        self._mutation_count = 0",
+                    "func_fullName": "aiohappybase.batch.Batch._reset_mutations(self)"
+                },
+                {
+                    "func_id": 2,
+                    "func_name": "send",
+                    "func_desc": "Send the batch to the server .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def send(self) -> None:\n        \"\"\"Send the batch to the server.\"\"\"\n        bms = [BatchMutation(row, m) for row, m in self._mutations.items()]\n        if not bms:\n            return\n\n        logger.debug(\n            f\"Sending batch for '{self._table.name}' ({self._mutation_count} \"\n            f\"mutations on {len(bms)} rows)\"\n        )\n\n        await self._mutate_rows(bms)\n        self._reset_mutations()",
+                    "func_fullName": "aiohappybase.batch.Batch.send(self)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "close",
+                    "func_desc": "Finalize the batch and make sure all tasks are completed .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def close(self) -> None:\n        \"\"\"Finalize the batch and make sure all tasks are completed.\"\"\"\n        await self.send()  # Send any remaining mutations",
+                    "func_fullName": "aiohappybase.batch.Batch.close(self)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "__aenter__",
+                    "func_desc": "Called upon entering a new batch .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aenter__(self) -> 'Batch':\n        \"\"\"Called upon entering a ``async with`` block\"\"\"\n        return self",
+                    "func_fullName": "aiohappybase.batch.Batch.__aenter__(self)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "__aexit__",
+                    "func_desc": "Called upon exiting a async with block .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aexit__(self, exc_type: Type[Exception], *_) -> None:\n        \"\"\"Called upon exiting a ``async with`` block\"\"\"\n        # If the 'with' block raises an exception, the batch will not be\n        # sent to the server.\n        if self._transaction and exc_type is not None:\n            return\n\n        await self.close()",
+                    "func_fullName": "aiohappybase.batch.Batch.__aexit__(self, exc_type, _)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "__enter__",
+                    "func_desc": "This method is called when the process is started .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __enter__(self):\n        raise RuntimeError(\"Use async with\")",
+                    "func_fullName": "aiohappybase.batch.Batch.__enter__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 3,
+                    "func_name": "put",
+                    "func_desc": "Store data in the table .\n\n       ",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def put(self,\n                  row: bytes,\n                  data: Dict[bytes, bytes],\n                  wal: bool = None) -> None:\n        \"\"\"\n        Store data in the table.\n\n        See :py:meth:`Table.put` for a description of the `row`, `data`,\n        and `wal` arguments. The `wal` argument should normally not be\n        used; its only use is to override the batch-wide value passed to\n        :py:meth:`Table.batch`.\n        \"\"\"\n        if wal is None:\n            wal = self._wal\n\n        await self._add_mutations(row, [\n            Mutation(isDelete=False, column=column, value=value, writeToWAL=wal)\n            for column, value in data.items()\n        ])",
+                    "func_fullName": "aiohappybase.batch.Batch.put(self, row, data, wal)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "delete",
+                    "func_desc": "Delete data from the table .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def delete(self,\n                     row: bytes,\n                     columns: Iterable[bytes] = None,\n                     wal: bool = None) -> None:\n        \"\"\"\n        Delete data from the table.\n\n        See :py:meth:`Table.put` for a description of the `row`, `data`,\n        and `wal` arguments. The `wal` argument should normally not be\n        used; its only use is to override the batch-wide value passed to\n        :py:meth:`Table.batch`.\n        \"\"\"\n        # Work-around Thrift API limitation: the mutation API can only\n        # delete specified columns, not complete rows, so just list the\n        # column families once and cache them for later use by the same\n        # batch instance.\n        if columns is None:\n            if self._families is None:\n                self._families = await self._table._column_family_names()\n            columns = self._families\n\n        if wal is None:\n            wal = self._wal\n\n        await self._add_mutations(row, [\n            Mutation(isDelete=True, column=column, writeToWAL=wal)\n            for column in columns\n        ])",
+                    "func_fullName": "aiohappybase.batch.Batch.delete(self, row, columns, wal)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "_add_mutations",
+                    "func_desc": "Add mutations to the current row .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def _add_mutations(self, row: bytes, mutations: List[Mutation]):\n        self._mutations[row].extend(mutations)\n        self._mutation_count += len(mutations)\n        if self._batch_size and self._mutation_count >= self._batch_size:\n            await self.send()",
+                    "func_fullName": "aiohappybase.batch.Batch._add_mutations(self, row, mutations)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "put",
+                    "func_desc": "Store the data in the table .\n\n       ",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def put(self,\n                  row: bytes,\n                  data: Data,\n                  timestamp: int = None,\n                  wal: bool = True) -> None:\n        \"\"\"\n        Store data in the table.\n\n        This method stores the data in the `data` argument for the row\n        specified by `row`. The `data` argument is dictionary that maps columns\n        to values. Column names must include a family and qualifier part, e.g.\n        ``b'cf:col'``, though the qualifier part may be the empty string, e.g.\n        ``b'cf:'``.\n\n        Note that, in many situations, :py:meth:`batch()` is a more appropriate\n        method to manipulate data.\n\n        .. versionadded:: 0.7\n           `wal` argument\n\n        :param row: the row key\n        :param data: the data to store\n        :param timestamp: timestamp (optional)\n        :param wal: whether to write to the WAL (optional)\n        \"\"\"\n        async with self.batch(timestamp=timestamp, wal=wal) as batch:\n            await batch.put(row, data)",
+                    "func_fullName": "aiohappybase.table.Table.put(self, row, data, timestamp, wal)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "delete",
+                    "func_desc": "Delete data from the table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def delete(self,\n                     row: bytes,\n                     columns: Iterable[bytes] = None,\n                     timestamp: int = None,\n                     wal: bool = True) -> None:\n        \"\"\"\n        Delete data from the table.\n\n        This method deletes all columns for the row specified by `row`, or only\n        some columns if the `columns` argument is specified.\n\n        Note that, in many situations, :py:meth:`batch()` is a more appropriate\n        method to manipulate data.\n\n        .. versionadded:: 0.7\n           `wal` argument\n\n        :param row: the row key\n        :param columns: list of columns (optional)\n        :param timestamp: timestamp (optional)\n        :param wal: whether to write to the WAL (optional)\n        \"\"\"\n        async with self.batch(timestamp=timestamp, wal=wal) as batch:\n            await batch.delete(row, columns)",
+                    "func_fullName": "aiohappybase.table.Table.delete(self, row, columns, timestamp, wal)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "batch",
+                    "func_desc": "Create a new batch operation for this table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def batch(self,\n              timestamp: int = None,\n              batch_size: int = None,\n              transaction: bool = False,\n              wal: bool = True) -> Batch:\n        \"\"\"\n        Create a new batch operation for this table.\n\n        This method returns a new :py:class:`Batch` instance that can be used\n        for mass data manipulation. The `timestamp` argument applies to all\n        puts and deletes on the batch.\n\n        If given, the `batch_size` argument specifies the maximum batch size\n        after which the batch should send the mutations to the server. By\n        default this is unbounded.\n\n        The `transaction` argument specifies whether the returned\n        :py:class:`Batch` instance should act in a transaction-like manner when\n        used as context manager in a ``with`` block of code. The `transaction`\n        flag cannot be used in combination with `batch_size`.\n\n        The `wal` argument determines whether mutations should be\n        written to the HBase Write Ahead Log (WAL). This flag can only\n        be used with recent HBase versions. If specified, it provides\n        a default for all the put and delete operations on this batch.\n        This default value can be overridden for individual operations\n        using the `wal` argument to :py:meth:`Batch.put` and\n        :py:meth:`Batch.delete`.\n\n        .. versionadded:: 0.7\n           `wal` argument\n\n        :param transaction:\n            whether this batch should behave like a transaction\n            (only useful when used as a context manager)\n        :param batch_size: batch size (optional)\n        :param timestamp: timestamp (optional)\n        :param wal: whether to write to the WAL (optional)\n\n        :return: Batch instance\n        \"\"\"\n        kwargs = locals().copy()\n        del kwargs['self']\n        return Batch(table=self, **kwargs)",
+                    "func_fullName": "aiohappybase.table.Table.batch(self, timestamp, batch_size, transaction, wal)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "counter_set",
+                    "func_desc": "Set a specific key - log entry column to a specific value .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def counter_set(self,\n                          row: bytes,\n                          column: bytes,\n                          value: int = 0) -> None:\n        \"\"\"\n        Set a counter column to a specific value.\n\n        This method stores a 64-bit signed integer value in the specified\n        column.\n\n        Note that application code should *never* store a incremented or\n        decremented counter value directly; use the atomic\n        :py:meth:`Table.counter_inc` and :py:meth:`Table.counter_dec` methods\n        for that.\n\n        :param row: the row key\n        :param column: the column name\n        :param value: the counter value to set\n        \"\"\"\n        await self.put(row, {column: pack_i64(value)})",
+                    "func_fullName": "aiohappybase.table.Table.counter_set(self, row, column, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 10,
+                    "func_name": "__exit__",
+                    "func_desc": "Raise RuntimeError if async .",
+                    "func_file": "batch",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __exit__(self, *_exc):\n        raise RuntimeError(\"Use async with\")",
+                    "func_fullName": "aiohappybase.batch.Batch.__exit__(self, _exc)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "__repr__",
+                    "func_desc": "Return a string representation of the object .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return f'<{__name__}.{self.__class__.__name__} name={self.name!r}>'",
+                    "func_fullName": "aiohappybase.table.Table.__repr__(self)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "_id",
+                    "func_desc": "Return the id of x .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _id(x: T) -> T: return x",
+                    "func_fullName": "aiohappybase._util._id(x)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 11,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new connection object .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self,\n                 host: str = DEFAULT_HOST,\n                 port: int = DEFAULT_PORT,\n                 timeout: int = None,\n                 autoconnect: bool = False,\n                 table_prefix: str = None,\n                 table_prefix_separator: bytes = b'_',\n                 compat: str = DEFAULT_COMPAT,\n                 transport: str = DEFAULT_TRANSPORT,\n                 protocol: str = DEFAULT_PROTOCOL):\n\n        if transport not in THRIFT_TRANSPORTS:\n            raise ValueError(f\"'transport' not in {list(THRIFT_TRANSPORTS)}\")\n\n        if table_prefix is not None:\n            if not isinstance(table_prefix, STRING_OR_BINARY):\n                raise TypeError(\"'table_prefix' must be a string\")\n            table_prefix = ensure_bytes(table_prefix)\n\n        if not isinstance(table_prefix_separator, STRING_OR_BINARY):\n            raise TypeError(\"'table_prefix_separator' must be a string\")\n        table_prefix_separator = ensure_bytes(table_prefix_separator)\n\n        if compat not in COMPAT_MODES:\n            raise ValueError(f\"'compat' not in {list(COMPAT_MODES)}\")\n\n        if protocol not in THRIFT_PROTOCOLS:\n            raise ValueError(f\"'protocol' not in {list(THRIFT_PROTOCOLS)}\")\n\n        # Allow host and port to be None, which may be easier for\n        # applications wrapping a Connection instance.\n        self.host = host or DEFAULT_HOST\n        self.port = port or DEFAULT_PORT\n        self.timeout = timeout\n        self.table_prefix = table_prefix\n        self.table_prefix_separator = table_prefix_separator\n        self.compat = compat\n\n        self._transport_class = THRIFT_TRANSPORTS[transport]\n        self._protocol_class = THRIFT_PROTOCOLS[protocol]\n\n        self._refresh_thrift_client()\n\n        if autoconnect:\n            loop = aio.get_event_loop()\n            if loop.is_running():\n                raise RuntimeError(\n                    \"'autoconnect' cannot be used inside a running event loop!\"\n                )\n            else:\n                loop.run_until_complete(self.open())\n\n        self._initialized = True",
+                    "func_fullName": "aiohappybase.connection.Connection.__init__(self, host, port, timeout, autoconnect, table_prefix, table_prefix_separator, compat, transport, protocol)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "_refresh_thrift_client",
+                    "func_desc": "Refresh the Thrift socket transport and client .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _refresh_thrift_client(self) -> None:\n        \"\"\"Refresh the Thrift socket, transport, and client.\"\"\"\n        # TODO: Support all kwargs to make_client\n        socket = TAsyncSocket(self.host, self.port, socket_timeout=self.timeout)\n        self.transport = self._transport_class(socket)\n        protocol = self._protocol_class(self.transport, decode_response=False)\n        self.client = TAsyncClient(Hbase, protocol)",
+                    "func_fullName": "aiohappybase.connection.Connection._refresh_thrift_client(self)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "open",
+                    "func_desc": "Open the underlying Thrift transport to the HBase instance .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def open(self) -> None:\n        \"\"\"Open the underlying transport to the HBase instance.\n\n        This method opens the underlying Thrift transport (TCP connection).\n        \"\"\"\n        if self.transport.is_open():\n            return\n\n        logger.debug(f\"Opening Thrift transport to {self.host}:{self.port}\")\n        await self.transport.open()",
+                    "func_fullName": "aiohappybase.connection.Connection.open(self)"
+                },
+                {
+                    "func_id": 24,
+                    "func_name": "__aenter__",
+                    "func_desc": "Initialize the connection .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aenter__(self) -> 'Connection':\n        await self.open()\n        return self",
+                    "func_fullName": "aiohappybase.connection.Connection.__aenter__(self)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "__enter__",
+                    "func_desc": "Enter a new connection .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __enter__(self) -> 'Connection':\n        try:\n            aio.get_event_loop().run_until_complete(self.open())\n        except RuntimeError:\n            raise RuntimeError(\"Use async with inside a running event loop!\")\n        return self",
+                    "func_fullName": "aiohappybase.connection.Connection.__enter__(self)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "_acquire_connection",
+                    "func_desc": "Acquire a connection from the pool .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def _acquire_connection(self, timeout: Real = None) -> Connection:\n        \"\"\"Acquire a connection from the pool.\"\"\"\n        try:\n            return await aio.wait_for(self._queue.get(), timeout)\n        except aio.TimeoutError:\n            raise NoConnectionsAvailable(\"Timeout waiting for a connection\")",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool._acquire_connection(self, timeout)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "_return_connection",
+                    "func_desc": "Return a connection to the pool .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def _return_connection(self, connection: Connection) -> None:\n        \"\"\"Return a connection to the pool.\"\"\"\n        await self._queue.put(connection)",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool._return_connection(self, connection)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "connection",
+                    "func_desc": "A context manager context manager that returns a connection from the pool .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def connection(self, timeout: Real = None) -> Connection:\n        \"\"\"\n        Obtain a connection from the pool.\n\n        This method *must* be used as a context manager, i.e. with\n        Python's ``with`` block. Example::\n\n            async with pool.connection() as connection:\n                pass  # do something with the connection\n\n        If `timeout` is specified, this is the number of seconds to wait\n        for a connection to become available before\n        :py:exc:`NoConnectionsAvailable` is raised. If omitted, this\n        method waits forever for a connection to become available.\n\n        :param timeout: number of seconds to wait (optional)\n        :return: active connection from the pool\n        :rtype: :py:class:`happybase.Connection`\n        \"\"\"\n        task_id = id(current_task())\n        connection = self._task_connections.get(task_id)\n\n        return_after_use = False\n        if connection is None:\n            # This is the outermost connection requests for this task.\n            # Obtain a new connection from the pool and keep a reference\n            # by the task id so that nested calls get the same connection\n            return_after_use = True\n            connection = await self._acquire_connection(timeout)\n            self._task_connections[task_id] = connection\n\n        try:\n            # Open connection, because connections are opened lazily.\n            # This is a no-op for connections that are already open.\n            await connection.open()\n\n            # Return value from the context manager's __enter__()\n            yield connection\n\n        except (TException, socket.error):\n            # Refresh the underlying Thrift client if an exception\n            # occurred in the Thrift layer, since we don't know whether\n            # the connection is still usable.\n            logger.info(\"Replacing tainted pool connection\")\n            connection._refresh_thrift_client()\n            await connection.open()\n\n            # Reraise to caller; see contextlib.contextmanager() docs\n            raise\n\n        finally:\n            # Remove thread local reference after the outermost 'with'\n            # block ends. Afterwards the thread no longer owns the\n            # connection.\n            if return_after_use:\n                del self._task_connections[task_id]\n                await self._return_connection(connection)",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.connection(self, timeout)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "__aenter__",
+                    "func_desc": "A new instance of ConnectionPool .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aenter__(self) -> 'ConnectionPool':\n        return self",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__aenter__(self)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "__enter__",
+                    "func_desc": "Enter the connection pool .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __enter__(self) -> 'ConnectionPool':\n        if aio.get_event_loop().is_running():\n            raise RuntimeError(\"Use async with inside a running event loop!\")\n        return self",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__enter__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 13,
+                    "func_name": "_table_name",
+                    "func_desc": "Construct a table name by optionally adding a table name prefix .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _table_name(self, name: AnyStr) -> bytes:\n        \"\"\"Construct a table name by optionally adding a table name prefix.\"\"\"\n        name = ensure_bytes(name)\n        if self.table_prefix is None:\n            return name\n        return self.table_prefix + self.table_prefix_separator + name",
+                    "func_fullName": "aiohappybase.connection.Connection._table_name(self, name)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "table",
+                    "func_desc": "Return a table object .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def table(self, name: AnyStr, use_prefix: bool = True) -> Table:\n        \"\"\"\n        Return a table object.\n\n        Returns a :py:class:`happybase.Table` instance for the table\n        named `name`. This does not result in a round-trip to the\n        server, and the table is not checked for existence.\n\n        The optional `use_prefix` argument specifies whether the table\n        prefix (if any) is prepended to the specified `name`. Set this\n        to `False` if you want to use a table that resides in another\n        ‘prefix namespace’, e.g. a table from a ‘friendly’ application\n        co-hosted on the same HBase instance. See the `table_prefix`\n        argument to the :py:class:`Connection` constructor for more\n        information.\n\n        :param name: the name of the table\n        :param use_prefix: whether to use the table prefix (if any)\n        :return: Table instance\n        \"\"\"\n        name = ensure_bytes(name)\n        if use_prefix:\n            name = self._table_name(name)\n        return Table(name, self)",
+                    "func_fullName": "aiohappybase.connection.Connection.table(self, name, use_prefix)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "tables",
+                    "func_desc": "Return a list of table names available in this HBase instance .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def tables(self) -> List[bytes]:\n        \"\"\"\n        Return a list of table names available in this HBase instance.\n\n        If a `table_prefix` was set for this :py:class:`Connection`, only\n        tables that have the specified prefix will be listed.\n\n        :return: The table names\n        \"\"\"\n        names = await self.client.getTableNames()\n\n        # Filter using prefix, and strip prefix from names\n        if self.table_prefix is not None:\n            prefix = self._table_name(b'')\n            offset = len(prefix)\n            names = [n[offset:] for n in names if n.startswith(prefix)]\n\n        return names",
+                    "func_fullName": "aiohappybase.connection.Connection.tables(self)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "create_table",
+                    "func_desc": "Create a new table in the database with the given name and options .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def create_table(self,\n                           name: AnyStr,\n                           families: Dict[str, Dict[str, Any]]) -> Table:\n        \"\"\"\n        Create a table.\n\n        :param name: The table name\n        :param families: The name and options for each column family\n        :return: The created table instance\n\n        The `families` argument is a dictionary mapping column family\n        names to a dictionary containing the options for this column\n        family, e.g.\n\n        ::\n\n            families = {\n                'cf1': dict(max_versions=10),\n                'cf2': dict(max_versions=1, block_cache_enabled=False),\n                'cf3': dict(),  # use defaults\n            }\n            connection.create_table('mytable', families)\n\n        These options correspond to the ColumnDescriptor structure in\n        the Thrift API, but note that the names should be provided in\n        Python style, not in camel case notation, e.g. `time_to_live`,\n        not `timeToLive`. The following options are supported:\n\n        * ``max_versions`` (`int`)\n        * ``compression`` (`str`)\n        * ``in_memory`` (`bool`)\n        * ``bloom_filter_type`` (`str`)\n        * ``bloom_filter_vector_size`` (`int`)\n        * ``bloom_filter_nb_hashes`` (`int`)\n        * ``block_cache_enabled`` (`bool`)\n        * ``time_to_live`` (`int`)\n        \"\"\"\n        name = self._table_name(name)\n        if not isinstance(families, dict):\n            raise TypeError(\"'families' arg must be a dictionary\")\n\n        if not families:\n            raise ValueError(f\"No column families given for table: {name!r}\")\n\n        column_descriptors = []\n        for cf_name, options in families.items():\n            kwargs = {\n                pep8_to_camel_case(option_name): value\n                for option_name, value in (options or {}).items()\n            }\n\n            if not cf_name.endswith(':'):\n                cf_name += ':'\n            kwargs['name'] = cf_name\n\n            column_descriptors.append(ColumnDescriptor(**kwargs))\n\n        await self.client.createTable(name, column_descriptors)\n        return self.table(name, use_prefix=False)",
+                    "func_fullName": "aiohappybase.connection.Connection.create_table(self, name, families)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "delete_table",
+                    "func_desc": "Delete the specified table .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def delete_table(self, name: AnyStr, disable: bool = False) -> None:\n        \"\"\"\n        Delete the specified table.\n\n        .. versionadded:: 0.5\n           `disable` argument\n\n        In HBase, a table always needs to be disabled before it can be\n        deleted. If the `disable` argument is `True`, this method first\n        disables the table if it wasn't already and then deletes it.\n\n        :param name: The table name\n        :param disable: Whether to first disable the table if needed\n        \"\"\"\n        if disable and await self.is_table_enabled(name):\n            await self.disable_table(name)\n\n        name = self._table_name(name)\n        await self.client.deleteTable(name)",
+                    "func_fullName": "aiohappybase.connection.Connection.delete_table(self, name, disable)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "enable_table",
+                    "func_desc": "Enable the specified table .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def enable_table(self, name: AnyStr) -> None:\n        \"\"\"\n        Enable the specified table.\n\n        :param name: The table name\n        \"\"\"\n        name = self._table_name(name)\n        await self.client.enableTable(name)",
+                    "func_fullName": "aiohappybase.connection.Connection.enable_table(self, name)"
+                },
+                {
+                    "func_id": 21,
+                    "func_name": "disable_table",
+                    "func_desc": "Disable the specified table .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def disable_table(self, name: AnyStr) -> None:\n        \"\"\"\n        Disable the specified table.\n\n        :param name: The table name\n        \"\"\"\n        name = self._table_name(name)\n        await self.client.disableTable(name)",
+                    "func_fullName": "aiohappybase.connection.Connection.disable_table(self, name)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "is_table_enabled",
+                    "func_desc": "Check if the specified table is enabled .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def is_table_enabled(self, name: AnyStr) -> None:\n        \"\"\"\n        Return whether the specified table is enabled.\n\n        :param str name: The table name\n\n        :return: whether the table is enabled\n        :rtype: bool\n        \"\"\"\n        name = self._table_name(name)\n        return await self.client.isTableEnabled(name)",
+                    "func_fullName": "aiohappybase.connection.Connection.is_table_enabled(self, name)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "compact_table",
+                    "func_desc": "Compact the specified table .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def compact_table(self, name: AnyStr, major: bool = False) -> None:\n        \"\"\"Compact the specified table.\n\n        :param str name: The table name\n        :param bool major: Whether to perform a major compaction.\n        \"\"\"\n        name = self._table_name(name)\n        if major:\n            await self.client.majorCompact(name)\n        else:\n            await self.client.compact(name)",
+                    "func_fullName": "aiohappybase.connection.Connection.compact_table(self, name, major)"
+                },
+                {
+                    "func_id": 52,
+                    "func_name": "ensure_bytes",
+                    "func_desc": "Convert text into bytes and leaves bytes as - is .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def ensure_bytes(value: AnyStr) -> bytes:\n    \"\"\"Convert text into bytes, and leaves bytes as-is.\"\"\"\n    if isinstance(value, bytes):\n        return value \n    if isinstance(value, str):\n        return value.encode('utf-8')\n    raise TypeError(\n        f\"input must be a text or byte string, got {type(value).__name__}\"\n    )",
+                    "func_fullName": "aiohappybase._util.ensure_bytes(value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 15,
+                    "func_name": "close",
+                    "func_desc": "Close the underlying Thrift transport to the HBase instance .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def close(self) -> None:\n        \"\"\"\n        Close the underlying transport to the HBase instance.\n\n        This method closes the underlying Thrift transport (TCP connection).\n        \"\"\"\n        if not self.transport.is_open():\n            return\n\n        if logger is not None:\n            # If called from __del__(), module variables may no longer exist.\n            logger.debug(f\"Closing Thrift transport to {self.host}:{self.port}\")\n\n        closer = self.transport.close()\n        if inspect.isawaitable(closer):  # Allow async close methods\n            await closer\n        # Socket isn't really closed yet, wait for it\n        await aio.sleep(0)",
+                    "func_fullName": "aiohappybase.connection.Connection.close(self)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "__aexit__",
+                    "func_desc": "Close the SECRET_TOKEN and close the session .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aexit__(self, *_exc) -> None:\n        await self.close()",
+                    "func_fullName": "aiohappybase.connection.Connection.__aexit__(self, _exc)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "__exit__",
+                    "func_desc": "Close the SEM .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __exit__(self, *_exc) -> None:\n        aio.get_event_loop().run_until_complete(self.close())",
+                    "func_fullName": "aiohappybase.connection.Connection.__exit__(self, _exc)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "__del__",
+                    "func_desc": "Remove the node from the list of nodes .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __del__(self) -> None:\n        try:\n            if self.transport.is_open():\n                logger.warning(f\"{self} was not closed!\")\n        except:  # noqa\n            pass",
+                    "func_fullName": "aiohappybase.connection.Connection.__del__(self)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "__aexit__",
+                    "func_desc": "Close the SECRET_TOKEN and close the session .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def __aexit__(self, *_exc) -> None:\n        await self.close()",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__aexit__(self, _exc)"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "__exit__",
+                    "func_desc": "Close the SEM .",
+                    "func_file": "connection",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __exit__(self, *_exc) -> None:\n        aio.get_event_loop().run_until_complete(self.close())",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__exit__(self, _exc)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "close",
+                    "func_desc": "Clean up all pool connections and delete the queue .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def close(self):\n        \"\"\"Clean up all pool connections and delete the queue.\"\"\"\n        while True:\n            try:\n                await self._queue.get_nowait().close()\n            except aio.QueueEmpty:\n                break\n        del self._queue",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.close(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 29,
+                    "func_name": "make_row",
+                    "func_desc": "Make a row dict for a given row result .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_row(row: TRowResult, include_timestamp: bool) -> Row:\n    \"\"\"Make a row dict for a given row result.\"\"\"\n    if row.sortedColumns is not None:\n        cell_map = {c.columnName: c.cell for c in row.sortedColumns}\n    elif row.columns is not None:\n        cell_map = row.columns\n    else:\n        raise RuntimeError(\"Neither columns nor sortedColumns is available!\")\n    return {\n        name: (cell.value, cell.timestamp) if include_timestamp else cell.value\n        for name, cell in cell_map.items()\n    }",
+                    "func_fullName": "aiohappybase.table.make_row(row, include_timestamp)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "client",
+                    "func_desc": "The client for the current connection .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def client(self):\n        return self.connection.client",
+                    "func_fullName": "aiohappybase.table.Table.client(self)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "regions",
+                    "func_desc": "Retrieve the regions for this table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def regions(self) -> List[Dict[bytes, Any]]:\n        \"\"\"\n        Retrieve the regions for this table.\n\n        :return: regions for this table\n        \"\"\"\n        regions = await self.client.getTableRegions(self.name)\n        return [thrift_type_to_dict(r) for r in regions]",
+                    "func_fullName": "aiohappybase.table.Table.regions(self)"
+                },
+                {
+                    "func_id": 37,
+                    "func_name": "row",
+                    "func_desc": "Retrieve a single row of data .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def row(self,\n                  row: bytes,\n                  columns: Iterable[bytes] = None,\n                  timestamp: int = None,\n                  include_timestamp: bool = False) -> Row:\n        \"\"\"\n        Retrieve a single row of data.\n\n        This method retrieves the row with the row key specified in the `row`\n        argument and returns the columns and values for this row as\n        a dictionary.\n\n        The `row` argument is the row key of the row. If the `columns`\n        argument is specified, only the values for these columns will be\n        returned instead of all available columns. The `columns`\n        argument should be a list or tuple containing byte strings. Each\n        name can be a column family, such as ``b'cf1'`` or ``b'cf1:'``\n        (the trailing colon is not required), or a column family with a\n        qualifier, such as ``b'cf1:col1'``.\n\n        If specified, the `timestamp` argument specifies the maximum version\n        that results may have. The `include_timestamp` argument specifies\n        whether cells are returned as single values or as `(value, timestamp)`\n        tuples.\n\n        :param row: the row key\n        :param columns: list of columns (optional)\n        :param timestamp: timestamp (optional)\n        :param include_timestamp: whether timestamps are returned\n\n        :return: Mapping of columns (both qualifier and family) to values\n        \"\"\"\n        if columns is not None and not isinstance(columns, (tuple, list)):\n            raise TypeError(\"'columns' must be a tuple or list\")\n\n        if timestamp is None:\n            rows = await self.client.getRowWithColumns(\n                self.name, row, columns, {})\n        else:\n            if not isinstance(timestamp, Integral):\n                raise TypeError(\"'timestamp' must be an integer\")\n            rows = await self.client.getRowWithColumnsTs(\n                self.name, row, columns, timestamp, {})\n\n        if not rows:\n            return {}\n\n        return make_row(rows[0], include_timestamp)",
+                    "func_fullName": "aiohappybase.table.Table.row(self, row, columns, timestamp, include_timestamp)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "rows",
+                    "func_desc": "Retrieve multiple rows of data .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def rows(self,\n                   rows: List[bytes],\n                   columns: Iterable[bytes] = None,\n                   timestamp: int = None,\n                   include_timestamp: bool = False) -> List[Tuple[bytes, Row]]:\n        \"\"\"\n        Retrieve multiple rows of data.\n\n        This method retrieves the rows with the row keys specified in the\n        `rows` argument, which should be should be a list (or tuple) of row\n        keys. The return value is a list of `(row_key, row_dict)` tuples.\n\n        The `columns`, `timestamp` and `include_timestamp` arguments behave\n        exactly the same as for :py:meth:`row`.\n\n        :param rows: list of row keys\n        :param columns: list of columns (optional)\n        :param timestamp: timestamp (optional)\n        :param include_timestamp: whether timestamps are returned\n\n        :return: List of mappings (columns to values)\n        \"\"\"\n        if columns is not None and not isinstance(columns, (tuple, list)):\n            raise TypeError(\"'columns' must be a tuple or list\")\n\n        if not rows:\n            # Avoid round-trip if the result is empty anyway\n            return []\n\n        if timestamp is None:\n            results = await self.client.getRowsWithColumns(\n                self.name, rows, columns, {})\n        else:\n            if not isinstance(timestamp, Integral):\n                raise TypeError(\"'timestamp' must be an integer\")\n\n            # Work-around a bug in the HBase Thrift server where the\n            # timestamp is only applied if columns are specified, at\n            # the cost of an extra round-trip.\n            if columns is None:\n                columns = await self._column_family_names()\n\n            results = await self.client.getRowsWithColumnsTs(\n                self.name, rows, columns, timestamp, {})\n\n        return [(r.row, make_row(r, include_timestamp)) for r in results]",
+                    "func_fullName": "aiohappybase.table.Table.rows(self, rows, columns, timestamp, include_timestamp)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "cells",
+                    "func_desc": "Retrieve multiple versions of a single cell from the table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def cells(self,\n                    row: bytes,\n                    column: bytes,\n                    versions: int = None,\n                    timestamp: int = None,\n                    include_timestamp: bool = False) -> List[Tuple[bytes, int]]:\n        \"\"\"\n        Retrieve multiple versions of a single cell from the table.\n\n        This method retrieves multiple versions of a cell (if any).\n\n        The `versions` argument defines how many cell versions to\n        retrieve at most.\n\n        The `timestamp` and `include_timestamp` arguments behave exactly the\n        same as for :py:meth:`row`.\n\n        :param row: the row key\n        :param column: the column name\n        :param versions: the maximum number of versions to retrieve\n        :param timestamp: timestamp (optional)\n        :param include_timestamp: whether timestamps are returned\n\n        :return: cell values\n        \"\"\"\n        if versions is None:\n            versions = (2 ** 31) - 1  # Thrift type is i32\n        elif not isinstance(versions, int):\n            raise TypeError(\"'versions' argument must be a number or None\")\n        elif versions < 1:\n            raise ValueError(\n                \"'versions' argument must be at least 1 (or None)\")\n\n        if timestamp is None:\n            cells = await self.client.getVer(\n                self.name, row, column, versions, {})\n        else:\n            if not isinstance(timestamp, Integral):\n                raise TypeError(\"'timestamp' must be an integer\")\n            cells = await self.client.getVerTs(\n                self.name, row, column, timestamp, versions, {})\n\n        return [\n            (c.value, c.timestamp) if include_timestamp else c.value\n            for c in cells\n        ]",
+                    "func_fullName": "aiohappybase.table.Table.cells(self, row, column, versions, timestamp, include_timestamp)"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "scan",
+                    "func_desc": "Scans a table for data .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def scan(self,\n                   row_start: bytes = None,\n                   row_stop: bytes = None,\n                   row_prefix: bytes = None,\n                   columns: Iterable[bytes] = None,\n                   filter: bytes = None,  # noqa\n                   timestamp: int = None,\n                   include_timestamp: bool = False,\n                   batch_size: int = 1000,\n                   scan_batching: int = None,\n                   limit: int = None,\n                   sorted_columns: bool = False,\n                   reverse: bool = False) -> AsyncGen[Tuple[bytes, Data], None]:\n        \"\"\"\n        Create a scanner for data in the table.\n\n        This method returns an iterable that can be used for looping over the\n        matching rows. Scanners can be created in two ways:\n\n        * The `row_start` and `row_stop` arguments specify the row keys where\n          the scanner should start and stop. It does not matter whether the\n          table contains any rows with the specified keys: the first row after\n          `row_start` will be the first result, and the last row before\n          `row_stop` will be the last result. Note that the start of the range\n          is inclusive, while the end is exclusive.\n\n          Both `row_start` and `row_stop` can be `None` to specify the start\n          and the end of the table respectively. If both are omitted, a full\n          table scan is done. Note that this usually results in severe\n          performance problems.\n\n        * Alternatively, if `row_prefix` is specified, only rows with row keys\n          matching the prefix will be returned. If given, `row_start` and\n          `row_stop` cannot be used.\n\n        The `columns`, `timestamp` and `include_timestamp` arguments behave\n        exactly the same as for :py:meth:`row`.\n\n        The `filter` argument may be a filter string that will be applied at\n        the server by the region servers.\n\n        If `limit` is given, at most `limit` results will be returned.\n\n        The `batch_size` argument specifies how many results should be\n        retrieved per batch when retrieving results from the scanner. Only set\n        this to a low value (or even 1) if your data is large, since a low\n        batch size results in added round-trips to the server.\n\n        The optional `scan_batching` is for advanced usage only; it\n        translates to `Scan.setBatching()` at the Java side (inside the\n        Thrift server). By setting this value rows may be split into\n        partial rows, so result rows may be incomplete, and the number\n        of results returned by the scanner may no longer correspond to\n        the number of rows matched by the scan.\n\n        If `sorted_columns` is `True`, the columns in the rows returned\n        by this scanner will be retrieved in sorted order, and the data\n        will be stored in `OrderedDict` instances.\n\n        If `reverse` is `True`, the scanner will perform the scan in reverse.\n        This means that `row_start` must be lexicographically after `row_stop`.\n        Note that the start of the range is inclusive, while the end is\n        exclusive just as in the forward scan.\n\n        **Compatibility notes:**\n\n        * The `filter` argument is only available when using HBase 0.92\n          (or up). In HBase 0.90 compatibility mode, specifying\n          a `filter` raises an exception.\n\n        * The `sorted_columns` argument is only available when using\n          HBase 0.96 (or up).\n\n        * The `reverse` argument is only available when using HBase 0.98\n          (or up).\n\n        .. versionadded:: 1.1.0\n           `reverse` argument\n\n        .. versionadded:: 0.8\n           `sorted_columns` argument\n\n        .. versionadded:: 0.8\n           `scan_batching` argument\n\n        :param row_start: the row key to start at (inclusive)\n        :param row_stop: the row key to stop at (exclusive)\n        :param row_prefix: a prefix of the row key that must match\n        :param columns: list of columns (optional)\n        :param filter: a filter string (optional)\n        :param timestamp: timestamp (optional)\n        :param include_timestamp: whether timestamps are returned\n        :param batch_size: batch size for retrieving results\n        :param scan_batching: server-side scan batching (optional)\n        :param limit: max number of rows to return\n        :param sorted_columns: whether to return sorted columns\n        :param reverse: whether to perform scan in reverse\n\n        :return: generator yielding the rows matching the scan\n        :rtype: iterable of `(row_key, row_data)` tuples\n        \"\"\"\n        if batch_size < 1:\n            raise ValueError(\"'batch_size' must be >= 1\")\n\n        if limit is not None and limit < 1:\n            raise ValueError(\"'limit' must be >= 1\")\n\n        if scan_batching is not None and scan_batching < 1:\n            raise ValueError(\"'scan_batching' must be >= 1\")\n\n        if sorted_columns and self.connection.compat < '0.96':\n            raise NotImplementedError(\"'sorted_columns' requires HBase >= 0.96\")\n\n        if reverse and self.connection.compat < '0.98':\n            raise NotImplementedError(\"'reverse' requires HBase >= 0.98\")\n\n        if row_prefix is not None:\n            if row_start is not None or row_stop is not None:\n                raise TypeError(\n                    \"'row_prefix' cannot be combined with 'row_start' \"\n                    \"or 'row_stop'\")\n\n            if reverse:\n                row_start = bytes_increment(row_prefix)\n                row_stop = row_prefix\n            else:\n                row_start = row_prefix\n                row_stop = bytes_increment(row_prefix)\n\n        if row_start is None:\n            row_start = b''\n\n        if self.connection.compat == '0.90':\n            # The scannerOpenWithScan() Thrift function is not\n            # available, so work around it as much as possible with the\n            # other scannerOpen*() Thrift functions\n\n            if filter is not None:\n                raise NotImplementedError(\"'filter' requires HBase > 0.90\")\n\n            args = [self.name, row_start, columns]\n            scan_func = 'scannerOpen'\n\n            if row_stop is not None:\n                scan_func += 'WithStop'\n                args.insert(2, row_stop)\n\n            if timestamp is not None:\n                scan_func += 'Ts'\n                args.append(timestamp)\n\n            scan_id = await getattr(self.client, scan_func)(*args, {})\n\n        else:\n            # XXX: The \"batch_size\" can be slightly confusing to those\n            # familiar with the HBase Java API:\n            #\n            # * TScan.caching (Thrift API) translates to\n            #   Scan.setCaching() (Java API)\n            #\n            # * TScan.batchSize (Thrift API) translates to\n            #   Scan.setBatching (Java API) .\n            #\n            # However, we set Scan.setCaching() to what is called\n            # batch_size in the HappyBase API, so that the HTable on the\n            # Java side (inside the Thrift server) retrieves rows from\n            # the region servers in the same chunk sizes that it sends\n            # out again to Python (over Thrift). This cannot be tweaked\n            # (by design).\n            #\n            # The Scan.setBatching() value (Java API), which possibly\n            # cuts rows into multiple partial rows, can be set using the\n            # slightly strange name scan_batching.\n            scan = TScan(\n                startRow=row_start,\n                stopRow=row_stop,\n                timestamp=timestamp,\n                columns=columns,\n                caching=batch_size,\n                filterString=filter,\n                batchSize=scan_batching,\n                sortColumns=sorted_columns,\n                reversed=reverse,\n            )\n            scan_id = await self.client.scannerOpenWithScan(self.name, scan, {})\n\n        logger.debug(f\"Opened scanner (id={scan_id}) on '{self.name}'\")\n\n        n_returned = n_fetched = 0\n        try:\n            while True:\n                if limit is None:\n                    how_many = batch_size\n                else:\n                    how_many = min(batch_size, limit - n_returned)\n\n                items = await self.client.scannerGetList(scan_id, how_many)\n\n                if not items:\n                    return  # scan has finished\n\n                n_fetched += len(items)\n\n                for n_returned, item in enumerate(items, n_returned + 1):\n                    yield item.row, make_row(item, include_timestamp)\n\n                    if limit is not None and n_returned == limit:\n                        return  # scan has finished\n        finally:\n            await self.client.scannerClose(scan_id)\n            logger.debug(\n                f\"Closed scanner (id={scan_id}) on '{self.name}' \"\n                f\"({n_returned} returned, {n_fetched} fetched)\"\n            )",
+                    "func_fullName": "aiohappybase.table.Table.scan(self, row_start, row_stop, row_prefix, columns, filter, timestamp, include_timestamp, batch_size, scan_batching, limit, sorted_columns, reverse)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "bytes_increment",
+                    "func_desc": "Increment and truncate a byte string by 1 and return the shortest string that sorts after the given byte string .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def bytes_increment(b: bytes) -> Optional[bytes]:\n    \"\"\"\n    Increment and truncate a byte string (for sorting purposes)\n\n    This functions returns the shortest string that sorts after the given\n    string when compared using regular string comparison semantics.\n\n    This function increments the last byte that is smaller than ``0xFF``, and\n    drops everything after it. If the string only contains ``0xFF`` bytes,\n    `None` is returned.\n    \"\"\"\n    assert isinstance(b, bytes)\n    b = bytearray(b)  # Used subset of its API is the same on Python 2 and 3.\n    for i in range(len(b) - 1, -1, -1):\n        if b[i] != 0xff:\n            b[i] += 1\n            return bytes(b[:i+1])\n    return None",
+                    "func_fullName": "aiohappybase._util.bytes_increment(b)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 30,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SECRET_KEY_CONTEXT .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name: bytes, connection: 'Connection'):\n        self.name = name\n        self.connection = connection",
+                    "func_fullName": "aiohappybase.table.Table.__init__(self, name, connection)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize connection pool with a number of unique tokens .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, size: int, **kwargs):\n        if not isinstance(size, int):\n            raise TypeError(\"Pool 'size' arg must be an integer\")\n\n        if not size > 0:\n            raise ValueError(\"Pool 'size' arg must be greater than zero\")\n\n        logger.debug(f\"Initializing connection pool with {size} connections\")\n\n        self._queue = aio.LifoQueue(maxsize=size)\n        self._task_connections = {}\n\n        kwargs['autoconnect'] = False\n\n        for i in range(size):\n            self._queue.put_nowait(Connection(**kwargs))",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__init__(self, size, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 33,
+                    "func_name": "families",
+                    "func_desc": "Retrieve the column families for this table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def families(self) -> Dict[bytes, Dict[bytes, Any]]:\n        \"\"\"\n        Retrieve the column families for this table.\n\n        :return: Mapping from column family name to settings dict\n        \"\"\"\n        descriptors = await self._column_family_descriptors()\n        return map_dict(descriptors, values=thrift_type_to_dict)",
+                    "func_fullName": "aiohappybase.table.Table.families(self)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "_column_family_names",
+                    "func_desc": "Retrieve the column family names for this table .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def _column_family_names(self) -> List[bytes]:\n        \"\"\"Retrieve the column family names for this table\"\"\"\n        return list(await self._column_family_descriptors())",
+                    "func_fullName": "aiohappybase.table.Table._column_family_names(self)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "_column_family_descriptors",
+                    "func_desc": "Retrieve the column family descriptors for this table",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def _column_family_descriptors(self) -> Dict[bytes, Any]:\n        \"\"\"Retrieve the column family descriptors for this table\"\"\"\n        descriptors = await self.client.getColumnDescriptors(self.name)\n        return map_dict(descriptors, keys=lambda k: k.rstrip(b':'))",
+                    "func_fullName": "aiohappybase.table.Table._column_family_descriptors(self)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "camel_case_to_pep8",
+                    "func_desc": "Convert a camel cased name to PEP8 style .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def camel_case_to_pep8(name: str) -> str:\n    \"\"\"Convert a camel cased name to PEP8 style.\"\"\"\n    converted = CAPITALS.sub(lambda m: '_' + m.groups()[0].lower(), name)\n    return converted[1:] if converted[0] == '_' else converted",
+                    "func_fullName": "aiohappybase._util.camel_case_to_pep8(name)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "pep8_to_camel_case",
+                    "func_desc": "Convert a PEP8 style name to camel case .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def pep8_to_camel_case(name: str, initial: bool = False) -> str:\n    \"\"\"Convert a PEP8 style name to camel case.\"\"\"\n    chunks = name.split('_')\n    converted = [s.capitalize() for s in chunks]\n    if initial:\n        return ''.join(converted)\n    else:\n        return chunks[0].lower() + ''.join(converted[1:])",
+                    "func_fullName": "aiohappybase._util.pep8_to_camel_case(name, initial)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "thrift_attrs",
+                    "func_desc": "Obtain Thrift data type attribute names for an instance or class .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def thrift_attrs(obj_or_cls) -> List[str]:\n    \"\"\"Obtain Thrift data type attribute names for an instance or class.\"\"\"\n    return [v[1] for v in obj_or_cls.thrift_spec.values()]",
+                    "func_fullName": "aiohappybase._util.thrift_attrs(obj_or_cls)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "thrift_type_to_dict",
+                    "func_desc": "Convert a Thrift data type to a regular dictionary .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def thrift_type_to_dict(obj: Any) -> Dict[bytes, Any]:\n    \"\"\"Convert a Thrift data type to a regular dictionary.\"\"\"\n    return {\n        camel_case_to_pep8(attr): getattr(obj, attr)\n        for attr in thrift_attrs(obj)\n    }",
+                    "func_fullName": "aiohappybase._util.thrift_type_to_dict(obj)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "map_dict",
+                    "func_desc": "Dictionary mapping function analogous to : py : func . py .",
+                    "func_file": "_util",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def map_dict(data: Dict[KTI, VTI],\n             keys: Callable[[KTI], KTO] = _id,\n             values: Callable[[VTI], VTO] = _id) -> Dict[KTO, VTO]:\n    \"\"\"\n    Dictionary mapping function, analogous to :py:func:`builtins.map`. Allows\n    applying a specific function independently to both the keys and values.\n\n    :param data: Dictionary to apply mapping to\n    :param keys: Optional function to apply to all keys\n    :param values: Optional function to apply to all values\n    :return: New dictionary with keys and values mapped\n    \"\"\"\n    return {keys(k): values(v) for k, v in data.items()}",
+                    "func_fullName": "aiohappybase._util.map_dict(data, keys, values)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1430; k=10; a=0.25; combined=0.695; stability(ARI)=1.000; sep=0.287",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 44,
+                    "func_name": "counter_get",
+                    "func_desc": "Retrieve the current value of a counter column .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def counter_get(self, row: bytes, column: bytes) -> int:\n        \"\"\"\n        Retrieve the current value of a counter column.\n\n        This method retrieves the current value of a counter column. If the\n        counter column does not exist, this function initialises it to `0`.\n\n        Note that application code should *never* store a incremented or\n        decremented counter value directly; use the atomic\n        :py:meth:`Table.counter_inc` and :py:meth:`Table.counter_dec` methods\n        for that.\n\n        :param row: the row key\n        :param column: the column name\n\n        :return: counter value\n        \"\"\"\n        # Don't query directly, but increment with value=0 so that the counter\n        # is correctly initialised if didn't exist yet.\n        return await self.counter_inc(row, column, value=0)",
+                    "func_fullName": "aiohappybase.table.Table.counter_get(self, row, column)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "counter_inc",
+                    "func_desc": "Atomically increment or decrements a key - system column in the specified row .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def counter_inc(self,\n                          row: bytes,\n                          column: bytes,\n                          value: int = 1) -> int:\n        \"\"\"\n        Atomically increment (or decrements) a counter column.\n\n        This method atomically increments or decrements a counter column in the\n        row specified by `row`. The `value` argument specifies how much the\n        counter should be incremented (for positive values) or decremented (for\n        negative values). If the counter column did not exist, it is\n        automatically initialised to 0 before incrementing it.\n\n        :param row: the row key\n        :param column: the column name\n        :param value: the amount to increment or decrement by (optional)\n\n        :return: counter value after incrementing\n        \"\"\"\n        return await self.client.atomicIncrement(self.name, row, column, value)",
+                    "func_fullName": "aiohappybase.table.Table.counter_inc(self, row, column, value)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "counter_dec",
+                    "func_desc": "Atomically decrement a counter column .",
+                    "func_file": "table",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def counter_dec(self,\n                          row: bytes,\n                          column: bytes,\n                          value: int = 1) -> int:\n        \"\"\"\n        Atomically decrement (or increments) a counter column.\n\n        This method is a shortcut for calling :py:meth:`Table.counter_inc` with\n        the value negated.\n\n        :return: counter value after decrementing\n        \"\"\"\n        return await self.counter_inc(row, column, -value)",
+                    "func_fullName": "aiohappybase.table.Table.counter_dec(self, row, column, value)"
+                },
+                {
+                    "func_id": 65,
+                    "func_name": "__del__",
+                    "func_desc": "Remove the sequence from the sequence .",
+                    "func_file": "pool",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __del__(self) -> None:\n        if hasattr(self, '_queue'):\n            logger.warning(f\"{self} was not closed!\")",
+                    "func_fullName": "aiohappybase.pool.ConnectionPool.__del__(self)"
+                }
+            ]
+        }
+    ]
+}

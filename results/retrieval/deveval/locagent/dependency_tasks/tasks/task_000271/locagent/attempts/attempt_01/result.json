@@ -1,0 +1,137 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 271,
+  "namespace": "jinja2.bccache.MemcachedBytecodeCache.load_bytecode",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6205,
+      "input_estimate_after": 6205,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/jinja2/bccache.py\nline: 396\nclass: MemcachedBytecodeCache\nfunction: dump_bytecode\n\nsrc/jinja2/bccache.py\nline: 44\nclass: Bucket\nfunction: bytecode_from_string\n\nsrc/jinja2/bccache.py\nline: 94\nclass: Bucket\nfunction: bytecode_to_string\n\nsrc/jinja2/bccache.py\nline: 374\nclass: MemcachedBytecodeCache\nfunction: __init__\n\nsrc/jinja2/bccache.py\nline: 165\nclass: BytecodeCache\nfunction: get_bucket\n```",
+  "final_locations": {
+    "files": [
+      "src/jinja2/bccache.py"
+    ],
+    "entities": [
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "MemcachedBytecodeCache.dump_bytecode",
+        "kind": "function",
+        "symbol": "jinja2.bccache.MemcachedBytecodeCache.dump_bytecode",
+        "start": 395,
+        "end": 406,
+        "code": "    def dump_bytecode(self, bucket: Bucket) -> None:\n        key = self.prefix + bucket.key\n        value = bucket.bytecode_to_string()\n\n        try:\n            if self.timeout is not None:\n                self.client.set(key, value, self.timeout)\n            else:\n                self.client.set(key, value)\n        except Exception:\n            if not self.ignore_memcache_errors:\n                raise"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "MemcachedBytecodeCache",
+        "kind": "class",
+        "symbol": "jinja2.bccache.MemcachedBytecodeCache",
+        "start": 329,
+        "end": 406,
+        "code": "class MemcachedBytecodeCache(BytecodeCache):\n    \"\"\"This class implements a bytecode cache that uses a memcache cache for\n    storing the information.  It does not enforce a specific memcache library\n    (tummy's memcache or cmemcache) but will accept any class that provides\n    the minimal interface required.\n\n    Libraries compatible with this class:\n\n    -   `cachelib <https://github.com/pallets/cachelib>`_\n    -   `python-memcached <https://pypi.org/project/python-memcached/>`_\n\n    (Unfortunately the django cache interface is not compatible because it\n    does not support storing binary data, only text. You can however pass\n    the underlying cache client to the bytecode cache which is available\n    as `django.core.cache.cache._client`.)\n\n    The minimal interface for the client passed to the constructor is this:\n\n    .. class:: MinimalClientInterface\n\n        .. method:: set(key, value[, timeout])\n\n            Stores the bytecode in the cache.  `value` is a string and\n            `timeout` the timeout of the key.  If timeout is not provided\n            a default timeout or no timeout should be assumed, if it's\n            provided it's an integer with the number of seconds the cache\n            item should exist.\n\n        .. method:: get(key)\n\n            Returns the value for the cache key.  If the item does not\n            exist in the cache the return value must be `None`.\n\n    The other arguments to the constructor are the prefix for all keys that\n    is added before the actual cache key and the timeout for the bytecode in\n    the cache system.  We recommend a high (or no) timeout.\n\n    This bytecode cache does not support clearing of used items in the cache.\n    The clear method is a no-operation function.\n\n    .. versionadded:: 2.7\n       Added support for ignoring memcache errors through the\n       `ignore_memcache_errors` parameter.\n    \"\"\"\n\n    def __init__(\n        self,\n        client: \"_MemcachedClient\",\n        prefix: str = \"jinja2/bytecode/\",\n        timeout: t.Optional[int] = None,\n        ignore_memcache_errors: bool = True,\n    ):\n        self.client = client\n        self.prefix = prefix\n        self.timeout = timeout\n        self.ignore_memcache_errors = ignore_memcache_errors\n\n    def load_bytecode(self, bucket: Bucket) -> None:\n        pass\n\n\n\n\n\n\n\n    def dump_bytecode(self, bucket: Bucket) -> None:\n        key = self.prefix + bucket.key\n        value = bucket.bytecode_to_string()\n\n        try:\n            if self.timeout is not None:\n                self.client.set(key, value, self.timeout)\n            else:\n                self.client.set(key, value)\n        except Exception:\n            if not self.ignore_memcache_errors:\n                raise"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "Bucket",
+        "kind": "class",
+        "symbol": "jinja2.bccache.Bucket",
+        "start": 44,
+        "end": 98,
+        "code": "class Bucket:\n    \"\"\"Buckets are used to store the bytecode for one template.  It's created\n    and initialized by the bytecode cache and passed to the loading functions.\n\n    The buckets get an internal checksum from the cache assigned and use this\n    to automatically reject outdated cache material.  Individual bytecode\n    cache subclasses don't have to care about cache invalidation.\n    \"\"\"\n\n    def __init__(self, environment: \"Environment\", key: str, checksum: str) -> None:\n        self.environment = environment\n        self.key = key\n        self.checksum = checksum\n        self.reset()\n\n    def reset(self) -> None:\n        \"\"\"Resets the bucket (unloads the bytecode).\"\"\"\n        self.code: t.Optional[CodeType] = None\n\n    def load_bytecode(self, f: t.BinaryIO) -> None:\n        \"\"\"Loads bytecode from a file or file like object.\"\"\"\n        # make sure the magic header is correct\n        magic = f.read(len(bc_magic))\n        if magic != bc_magic:\n            self.reset()\n            return\n        # the source code of the file changed, we need to reload\n        checksum = pickle.load(f)\n        if self.checksum != checksum:\n            self.reset()\n            return\n        # if marshal_load fails then we need to reload\n        try:\n            self.code = marshal.load(f)\n        except (EOFError, ValueError, TypeError):\n            self.reset()\n            return\n\n    def write_bytecode(self, f: t.IO[bytes]) -> None:\n        \"\"\"Dump the bytecode into the file or file like object passed.\"\"\"\n        if self.code is None:\n            raise TypeError(\"can't write empty bucket\")\n        f.write(bc_magic)\n        pickle.dump(self.checksum, f, 2)\n        marshal.dump(self.code, f)\n\n    def bytecode_from_string(self, string: bytes) -> None:\n        \"\"\"Load bytecode from bytes.\"\"\"\n        self.load_bytecode(BytesIO(string))\n\n    def bytecode_to_string(self) -> bytes:\n        \"\"\"Return the bytecode as bytes.\"\"\"\n        out = BytesIO()\n        self.write_bytecode(out)\n        return out.getvalue()"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "Bucket.bytecode_to_string",
+        "kind": "function",
+        "symbol": "jinja2.bccache.Bucket.bytecode_to_string",
+        "start": 94,
+        "end": 98,
+        "code": "    def bytecode_to_string(self) -> bytes:\n        \"\"\"Return the bytecode as bytes.\"\"\"\n        out = BytesIO()\n        self.write_bytecode(out)\n        return out.getvalue()"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "MemcachedBytecodeCache.__init__",
+        "kind": "function",
+        "symbol": "jinja2.bccache.MemcachedBytecodeCache.__init__",
+        "start": 374,
+        "end": 384,
+        "code": "    def __init__(\n        self,\n        client: \"_MemcachedClient\",\n        prefix: str = \"jinja2/bytecode/\",\n        timeout: t.Optional[int] = None,\n        ignore_memcache_errors: bool = True,\n    ):\n        self.client = client\n        self.prefix = prefix\n        self.timeout = timeout\n        self.ignore_memcache_errors = ignore_memcache_errors"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "BytecodeCache.get_bucket",
+        "kind": "function",
+        "symbol": "jinja2.bccache.BytecodeCache.get_bucket",
+        "start": 165,
+        "end": 179,
+        "code": "    def get_bucket(\n        self,\n        environment: \"Environment\",\n        name: str,\n        filename: t.Optional[str],\n        source: str,\n    ) -> Bucket:\n        \"\"\"Return a cache bucket for the given template.  All arguments are\n        mandatory but filename may be `None`.\n        \"\"\"\n        key = self.get_cache_key(name, filename)\n        checksum = self.get_source_checksum(source)\n        bucket = Bucket(environment, key, checksum)\n        self.load_bytecode(bucket)\n        return bucket"
+      },
+      {
+        "file": "src/jinja2/bccache.py",
+        "name": "BytecodeCache",
+        "kind": "class",
+        "symbol": "jinja2.bccache.BytecodeCache",
+        "start": 101,
+        "end": 183,
+        "code": "class BytecodeCache:\n    \"\"\"To implement your own bytecode cache you have to subclass this class\n    and override :meth:`load_bytecode` and :meth:`dump_bytecode`.  Both of\n    these methods are passed a :class:`~jinja2.bccache.Bucket`.\n\n    A very basic bytecode cache that saves the bytecode on the file system::\n\n        from os import path\n\n        class MyCache(BytecodeCache):\n\n            def __init__(self, directory):\n                self.directory = directory\n\n            def load_bytecode(self, bucket):\n                filename = path.join(self.directory, bucket.key)\n                if path.exists(filename):\n                    with open(filename, 'rb') as f:\n                        bucket.load_bytecode(f)\n\n            def dump_bytecode(self, bucket):\n                filename = path.join(self.directory, bucket.key)\n                with open(filename, 'wb') as f:\n                    bucket.write_bytecode(f)\n\n    A more advanced version of a filesystem based bytecode cache is part of\n    Jinja.\n    \"\"\"\n\n    def load_bytecode(self, bucket: Bucket) -> None:\n        \"\"\"Subclasses have to override this method to load bytecode into a\n        bucket.  If they are not able to find code in the cache for the\n        bucket, it must not do anything.\n        \"\"\"\n        raise NotImplementedError()\n\n    def dump_bytecode(self, bucket: Bucket) -> None:\n        \"\"\"Subclasses have to override this method to write the bytecode\n        from a bucket back to the cache.  If it unable to do so it must not\n        fail silently but raise an exception.\n        \"\"\"\n        raise NotImplementedError()\n\n    def clear(self) -> None:\n        \"\"\"Clears the cache.  This method is not used by Jinja but should be\n        implemented to allow applications to clear the bytecode cache used\n        by a particular environment.\n        \"\"\"\n\n    def get_cache_key(\n        self, name: str, filename: t.Optional[t.Union[str]] = None\n    ) -> str:\n        \"\"\"Returns the unique hash key for this template name.\"\"\"\n        hash = sha1(name.encode(\"utf-8\"))\n\n        if filename is not None:\n            hash.update(f\"|{filename}\".encode())\n\n        return hash.hexdigest()\n\n    def get_source_checksum(self, source: str) -> str:\n        \"\"\"Returns a checksum for the source.\"\"\"\n        return sha1(source.encode(\"utf-8\")).hexdigest()\n\n    def get_bucket(\n        self,\n        environment: \"Environment\",\n        name: str,\n        filename: t.Optional[str],\n        source: str,\n    ) -> Bucket:\n        \"\"\"Return a cache bucket for the given template.  All arguments are\n        mandatory but filename may be `None`.\n        \"\"\"\n        key = self.get_cache_key(name, filename)\n        checksum = self.get_source_checksum(source)\n        bucket = Bucket(environment, key, checksum)\n        self.load_bytecode(bucket)\n        return bucket\n\n    def set_bucket(self, bucket: Bucket) -> None:\n        \"\"\"Put the bucket into the cache.\"\"\"\n        self.dump_bytecode(bucket)"
+      }
+    ],
+    "unresolved": [
+      "src/jinja2/bccache.py:function: dump_bytecode",
+      "src/jinja2/bccache.py:function: bytecode_from_string",
+      "src/jinja2/bccache.py:function: bytecode_to_string",
+      "src/jinja2/bccache.py:function: __init__",
+      "src/jinja2/bccache.py:function: get_bucket"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [
+      "jinja2.bccache.MemcachedBytecodeCache.client",
+      "jinja2.bccache.MemcachedBytecodeCache.ignore_memcache_errors",
+      "jinja2.bccache.MemcachedBytecodeCache.prefix"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 9150
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 23817,
+    "completion_tokens": 557,
+    "total_tokens": 24374,
+    "seconds": 27.682286500930786,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 37.87985348701477,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

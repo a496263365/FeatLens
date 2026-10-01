@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 617,
+  "namespace": "csvkit.convert.fixed.fixed2csv",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4959,
+      "input_estimate_after": 4959,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `fixed2csv` function in `csvkit/convert/fixed.py`. These are existing components that should be inspected and reused:\n\n```\ncsvkit/convert/fixed.py\nline: 62\nclass: FixedWidthReader\nfunction: __init__\nfunction: __iter__\nfunction: __next__\n\ncsvkit/convert/fixed.py\nline: 98\nclass: FixedWidthRowParser\nfunction: __init__\nfunction: parse\nproperty: headers\n\ncsvkit/convert/fixed.py\nline: 138\nclass: SchemaDecoder\nfunction: __init__\nfunction: __call__\n\ncsvkit/convert/fixed.py\nline: 95\nnamedtuple: FixedWidthField\n\ncsvkit/convert/geojs.py\nline: 10\nfunction: geojson2csv\nline: 57\nline: 58\nline: 60\nline: 73\nline: 75\nline: 78\n```",
+  "final_locations": {
+    "files": [
+      "csvkit/convert/fixed.py",
+      "csvkit/convert/geojs.py"
+    ],
+    "entities": [
+      {
+        "file": "csvkit/convert/fixed.py",
+        "name": "FixedWidthReader",
+        "kind": "class",
+        "symbol": "csvkit.convert.fixed.FixedWidthReader",
+        "start": 62,
+        "end": 92,
+        "code": "class FixedWidthReader:\n    \"\"\"\n    Given a fixed-width file and a schema file, produce an analog to a csv\n    reader that yields a row of strings for each line in the fixed-width file,\n    preceded with a row of headers as provided in the schema.  (This might be\n    problematic if fixed-width-files ever have header rows also, but I haven't\n    seen that.)\n\n    The schema_file should be in CSV format with a header row which has columns\n    'column', 'start', and 'length'. (Other columns will be ignored.)  Values\n    in the 'start' column are assumed to be \"zero-based\" unless the first value\n    is \"1\" in which case all values are assumed to be \"one-based.\"\n    \"\"\"\n\n    def __init__(self, f, schema, encoding=None):\n        if encoding is not None:\n            f = iterdecode(f, encoding)\n\n        self.file = f\n        self.parser = FixedWidthRowParser(schema)\n        self.header = True\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        if self.header:\n            self.header = False\n            return self.parser.headers\n\n        return self.parser.parse(next(self.file))"
+      },
+      {
+        "file": "csvkit/convert/fixed.py",
+        "name": "FixedWidthRowParser",
+        "kind": "class",
+        "symbol": "csvkit.convert.fixed.FixedWidthRowParser",
+        "start": 98,
+        "end": 135,
+        "code": "class FixedWidthRowParser:\n    \"\"\"\n    Instantiated with a schema, able to return a sequence of trimmed strings\n    representing fields given a fixed-length line. Flexible about where the\n    columns are, as long as they are headed with the literal names 'column',\n    'start', and 'length'.\n    \"\"\"\n\n    def __init__(self, schema):\n        self.fields = []  # A list of FixedWidthFields\n\n        schema_reader = agate.csv.reader(schema)\n        schema_decoder = SchemaDecoder(next(schema_reader))\n\n        for i, row in enumerate(schema_reader):\n            try:\n                self.fields.append(schema_decoder(row))\n            except Exception as e:\n                raise ValueError(\"Error reading schema at line %i: %s\" % (i + 2, e))\n\n    def parse(self, line):\n        values = []\n\n        for field in self.fields:\n            values.append(line[field.start:field.start + field.length].strip())\n\n        return values\n\n    def parse_dict(self, line):\n        \"\"\"\n        Convenience method returns a dict. Equivalent to\n        ``dict(zip(self.headers,self.parse(line)))``.\n        \"\"\"\n        return dict(zip(self.headers, self.parse(line)))\n\n    @property\n    def headers(self):\n        return [field.name for field in self.fields]"
+      },
+      {
+        "file": "csvkit/convert/fixed.py",
+        "name": "SchemaDecoder",
+        "kind": "class",
+        "symbol": "csvkit.convert.fixed.SchemaDecoder",
+        "start": 138,
+        "end": 182,
+        "code": "class SchemaDecoder:\n    \"\"\"\n    Extracts column, start, and length columns from schema rows. Once\n    instantiated, each time the instance is called with a row, a\n    ``(column,start,length)`` tuple will be returned based on values in that\n    row and the constructor kwargs.\n    \"\"\"\n    REQUIRED_COLUMNS = [('column', None), ('start', int), ('length', int)]\n\n    start = None\n    length = None\n    column = None\n    one_based = None\n\n    def __init__(self, header):\n        \"\"\"\n        Constructs a schema row decoder.\n        \"\"\"\n        for p, val_type in self.REQUIRED_COLUMNS:\n            try:\n                if val_type:\n                    setattr(self, p, val_type(header.index(p)))\n                else:\n                    setattr(self, p, header.index(p))\n            except ValueError:\n                raise ValueError(f'A column named \"{p}\" must exist in the schema file.')\n\n    def __call__(self, row):\n        \"\"\"\n        Return a tuple (column, start, length) based on this instance's\n        parameters. If the first time this is called, the row's 'start'\n        value is 1, then all 'start' values including the first will be one\n        less than in the actual input data, to adjust for one-based\n        specifications.  Values for 'start' and 'length' will be cast to\n        integers.\n        \"\"\"\n        if self.one_based is None:\n            self.one_based = int(row[self.start]) == 1\n\n        if self.one_based:\n            adjusted_start = int(row[self.start]) - 1\n        else:\n            adjusted_start = int(row[self.start])\n\n        return FixedWidthField(row[self.column], adjusted_start, int(row[self.length]))"
+      },
+      {
+        "file": "csvkit/convert/fixed.py",
+        "name": "FixedWidthField",
+        "kind": "variable",
+        "symbol": "csvkit.convert.fixed.FixedWidthField",
+        "start": 95,
+        "end": 95,
+        "code": "FixedWidthField = namedtuple('FixedWidthField', ['name', 'start', 'length'])"
+      },
+      {
+        "file": "csvkit/convert/geojs.py",
+        "name": "geojson2csv",
+        "kind": "function",
+        "symbol": "csvkit.convert.geojs.geojson2csv",
+        "start": 10,
+        "end": 78,
+        "code": "def geojson2csv(f, key=None, **kwargs):\n    \"\"\"\n    Convert a GeoJSON document into CSV format.\n    \"\"\"\n    js = json.load(f, object_pairs_hook=OrderedDict)\n\n    if not isinstance(js, dict):\n        raise TypeError('JSON document is not valid GeoJSON: Root element is not an object.')\n\n    if 'type' not in js:\n        raise TypeError('JSON document is not valid GeoJSON: No top-level \"type\" key.')\n\n    if js['type'] != 'FeatureCollection':\n        raise TypeError(f\"Only GeoJSON with root FeatureCollection type is supported. Not {js['type']}\")\n\n    if 'features' not in js:\n        raise TypeError('JSON document is not a valid FeatureCollection: No top-level \"features\" key.')\n\n    features = js['features']\n\n    features_parsed = []    # tuples in the format (id, properties, geometry)\n    property_fields = []\n\n    for feature in features:\n        properties = feature.get('properties', {})\n\n        for prop in properties.keys():\n            if prop not in property_fields:\n                property_fields.append(prop)\n\n        geometry = feature['geometry']\n        if geometry:\n            geometry_type = geometry.get('type')\n        else:\n            geometry_type = None\n        if geometry_type == 'Point' and 'coordinates' in geometry:\n            longitude, latitude = geometry['coordinates'][0:2]  # Drop altitude or elevation.\n        else:\n            longitude, latitude = (None, None)\n\n        features_parsed.append((feature.get('id'), properties, json.dumps(\n            geometry), geometry_type, longitude, latitude))\n\n    header = ['id']\n    header.extend(property_fields)\n    header.extend(('geojson', 'type', 'longitude', 'latitude'))\n\n    o = StringIO()\n    writer = agate.csv.writer(o)\n\n    writer.writerow(header)\n\n    for geoid, properties, geometry, geometry_type, longitude, latitude in features_parsed:\n        row = [geoid]\n\n        for field in property_fields:\n            value = properties.get(field)\n            if isinstance(value, OrderedDict):\n                value = json.dumps(value)\n            row.append(value)\n\n        row.extend((geometry, geometry_type, longitude, latitude))\n\n        writer.writerow(row)\n\n    output = o.getvalue()\n    o.close()\n\n    return output"
+      }
+    ],
+    "unresolved": [
+      "csvkit/convert/fixed.py:function: __init__",
+      "csvkit/convert/fixed.py:function: __iter__",
+      "csvkit/convert/fixed.py:function: __next__",
+      "csvkit/convert/fixed.py:function: __init__",
+      "csvkit/convert/fixed.py:function: parse",
+      "csvkit/convert/fixed.py:function: __init__",
+      "csvkit/convert/fixed.py:function: __call__"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "csvkit.convert.fixed.FixedWidthReader"
+    ],
+    "exact_hit_dependencies": [
+      "csvkit.convert.fixed.FixedWidthReader"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 7,
+    "returned_code_chars": 6290
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18380,
+    "completion_tokens": 626,
+    "total_tokens": 19006,
+    "seconds": 61.282785415649414,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 62.52383303642273,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

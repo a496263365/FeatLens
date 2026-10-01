@@ -1,0 +1,96 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 938,
+  "namespace": "sslyze.plugins.certificate_info._cert_chain_analyzer._certificate_matches_hostname",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "The additional search results reveal critical functions and classes for extracting and validating hostnames from certificates. Here's the updated list of relevant locations, ordered by importance:\n\n```\nsslyze/plugins/certificate_info/_cert_chain_analyzer.py\nline: 274\nfunction: _certificate_matches_hostname\n\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 25\nfunction: parse_subject_alternative_name_extension\n\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 50\nfunction: get_common_names\n\nsslyze/plugins/certificate_info/_cli_connector.py\nline: 101\nfunction: _CertificateInfoCliConnector._cert_deployment_to_console_output\n\nsslyze/plugins/certificate_info/_cli_connector.py\nline: 269\nfunction: _CertificateInfoCliConnector._get_basic_certificate_text\n```\n\n### Key Findings:\n1. **`parse_subject_alternative_name_extension`**:\n   - Extracts DNS names and IP addresses from the SAN extension of a certificate.\n   - Critical for validating hostnames against the certificate.\n\n2. **`get_common_names`**:\n   - Extracts Common Names (CNs) from the certificate's subject field.\n   - Useful for legacy hostname validation.\n\n3. **`_cert_deployment_to_console_output`**:\n   - Contains logic for displaying hostname validation results in the CLI.\n\n4. **`_get_basic_certificate_text`**:\n   - Extracts and formats certificate details, including CN and SANs.\n\n### Impact Analysis:\n- The `_certificate_matches_hostname` function can reuse `parse_subject_alternative_name_extension` and `get_common_names` to extract hostnames from the certificate.\n- The existing CLI logic (`_cert_deployment_to_console_output`) confirms the importance of hostname validation in the codebase.\n\n### Final Answer:\nThe following locations contain all necessary information to implement the `_certificate_matches_hostname` function:\n\n```\nsslyze/plugins/certificate_info/_cert_chain_analyzer.py\nline: 274\nfunction: _certificate_matches_hostname\n\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 25\nfunction: parse_subject_alternative_name_extension\n\nsslyze/plugins/certificate_info/_certificate_utils.py\nline: 50\nfunction: get_common_names\n\nsslyze/plugins/certificate_info/_cli_connector.py\nline: 101\nfunction: _CertificateInfoCliConnector._cert_deployment_to_console_output\n\nsslyze/plugins/certificate_info/_cli_connector.py\nline: 269\nfunction: _CertificateInfoCliConnector._get_basic_certificate_text\n```",
+  "final_locations": {
+    "files": [
+      "sslyze/plugins/certificate_info/_cert_chain_analyzer.py",
+      "sslyze/plugins/certificate_info/_certificate_utils.py",
+      "sslyze/plugins/certificate_info/_cli_connector.py"
+    ],
+    "entities": [
+      {
+        "file": "sslyze/plugins/certificate_info/_certificate_utils.py",
+        "name": "parse_subject_alternative_name_extension",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._certificate_utils.parse_subject_alternative_name_extension",
+        "start": 25,
+        "end": 47,
+        "code": "def parse_subject_alternative_name_extension(certificate: Certificate) -> SubjectAlternativeNameExtension:\n    try:\n        san_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)\n        san_ext_value = cast(SubjectAlternativeName, san_ext.value)\n    except ExtensionNotFound:\n        return SubjectAlternativeNameExtension(dns_names=[], ip_addresses=[])\n    except DuplicateExtension:\n        # Fix for https://github.com/nabla-c0d3/sslyze/issues/420\n        # Not sure how browsers behave in this case but having a duplicate extension makes the certificate invalid\n        # so we just return no SANs (likely to make hostname validation fail, which is fine)\n        return SubjectAlternativeNameExtension(dns_names=[], ip_addresses=[])\n\n    dns_names = []\n    ip_addresses = []\n    for san_value in san_ext_value:\n        if isinstance(san_value, IPAddress):\n            ip_addresses.append(str(san_value.value))\n        elif isinstance(san_value, DNSName):\n            dns_names.append(san_value.value)\n        else:\n            pass\n\n    return SubjectAlternativeNameExtension(dns_names=dns_names, ip_addresses=ip_addresses)"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_certificate_utils.py",
+        "name": "get_common_names",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._certificate_utils.get_common_names",
+        "start": 50,
+        "end": 51,
+        "code": "def get_common_names(name_field: Name) -> List[str]:\n    return [cn.value for cn in name_field.get_attributes_for_oid(NameOID.COMMON_NAME)]  # type: ignore"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_cli_connector.py",
+        "name": "_CertificateInfoCliConnector._cert_deployment_to_console_output",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._cli_connector._CertificateInfoCliConnector._cert_deployment_to_console_output",
+        "start": 87,
+        "end": 266,
+        "code": "    def _cert_deployment_to_console_output(\n        cls, index: int, cert_deployment: CertificateDeploymentAnalysisResult\n    ) -> List[str]:\n        leaf_certificate = cert_deployment.received_certificate_chain[0]\n        deployment_as_txt = [\n            cls._format_subtitle(f\"Certificate #{index} ( {leaf_certificate.public_key().__class__.__name__} )\")\n        ]\n\n        deployment_as_txt.extend(cls._get_basic_certificate_text(leaf_certificate))\n\n        # Trust section\n        deployment_as_txt.append(\"\")\n        deployment_as_txt.append(cls._format_subtitle(f\"Certificate #{index} - Trust\"))\n\n        hostname_validation_text = (\n            \"OK - Certificate matches server hostname\"\n            if cert_deployment.leaf_certificate_subject_matches_hostname\n            else \"FAILED - Certificate does NOT match server hostname\"\n        )\n        deployment_as_txt.append(cls._format_field(\"Hostname Validation:\", hostname_validation_text))\n\n        # Path validation that was successfully tested\n        for path_result in cert_deployment.path_validation_results:\n            if path_result.was_validation_successful:\n                # EV certs - Only Mozilla supported for now\n                ev_txt = \"\"\n                if cert_deployment.leaf_certificate_is_ev and path_result.trust_store.ev_oids:\n                    ev_txt = \", Extended Validation\"\n                path_txt = f\"OK - Certificate is trusted{ev_txt}\"\n\n            else:\n                path_txt = f\"FAILED - Certificate is NOT Trusted: {path_result.openssl_error_string}\"\n\n            deployment_as_txt.append(\n                cls._format_field(\n                    cls.TRUST_FORMAT.format(\n                        store_name=path_result.trust_store.name, store_version=path_result.trust_store.version\n                    ),\n                    path_txt,\n                )\n            )\n\n        if cert_deployment.verified_chain_has_legacy_symantec_anchor is None:\n            symantec_str = cls.NO_VERIFIED_CHAIN_ERROR_TXT\n        elif cert_deployment.verified_chain_has_legacy_symantec_anchor is True:\n            symantec_str = \"WARNING: Certificate distrusted by Google and Mozilla since 2018\"\n        elif cert_deployment.verified_chain_has_legacy_symantec_anchor is False:\n            symantec_str = \"OK - Not a Symantec-issued certificate\"\n        else:\n            raise RuntimeError(\"Should never happen\")\n        deployment_as_txt.append(cls._format_field(\"Symantec 2018 Deprecation:\", symantec_str))\n\n        # Print the Common Names within the received certificate chain\n        cns_in_received_chain: List[str] = [\n            _get_subject_as_short_text(cert) for cert in cert_deployment.received_certificate_chain\n        ]\n        deployment_as_txt.append(cls._format_field(\"Received Chain:\", \" --> \".join(cns_in_received_chain)))\n\n        # Print the Common Names within the verified certificate chain if validation was successful\n        if cert_deployment.verified_certificate_chain:\n            cns_in_certificate_chain = [\n                _get_subject_as_short_text(cert) for cert in cert_deployment.verified_certificate_chain\n            ]\n            verified_chain_txt = \" --> \".join(cns_in_certificate_chain)\n        else:\n            verified_chain_txt = cls.NO_VERIFIED_CHAIN_ERROR_TXT\n        deployment_as_txt.append(cls._format_field(\"Verified Chain:\", verified_chain_txt))\n\n        if cert_deployment.verified_certificate_chain:\n            chain_with_anchor_txt = (\n                \"OK - Anchor certificate not sent\"\n                if not cert_deployment.received_chain_contains_anchor_certificate\n                else \"WARNING - Received certificate chain contains the anchor certificate\"\n            )\n        else:\n            chain_with_anchor_txt = cls.NO_VERIFIED_CHAIN_ERROR_TXT\n        deployment_as_txt.append(cls._format_field(\"Received Chain Contains Anchor:\", chain_with_anchor_txt))\n\n        chain_order_txt = (\n            \"OK - Order is valid\"\n            if cert_deployment.received_chain_has_valid_order\n            else \"FAILED - Certificate chain out of order!\"\n        )\n        deployment_as_txt.append(cls._format_field(\"Received Chain Order:\", chain_order_txt))\n\n        if cert_deployment.verified_certificate_chain:\n            sha1_text = (\n                \"OK - No SHA1-signed certificate in the verified certificate chain\"\n                if not cert_deployment.verified_chain_has_sha1_signature\n                else \"INSECURE - SHA1-signed certificate in the verified certificate chain\"\n            )\n        else:\n            sha1_text = cls.NO_VERIFIED_CHAIN_ERROR_TXT\n        deployment_as_txt.append(cls._format_field(\"Verified Chain contains SHA1:\", sha1_text))\n\n        # Extensions section\n        deployment_as_txt.extend([\"\", cls._format_subtitle(f\"Certificate #{index} - Extensions\")])\n\n        # OCSP must-staple\n        must_staple_txt = (\n            \"OK - Extension present\"\n            if cert_deployment.leaf_certificate_has_must_staple_extension\n            else \"NOT SUPPORTED - Extension not found\"\n        )\n        deployment_as_txt.append(cls._format_field(\"OCSP Must-Staple:\", must_staple_txt))\n\n        # Look for SCT extension\n        scts_count = cert_deployment.leaf_certificate_signed_certificate_timestamps_count\n        if scts_count is None:\n            sct_txt = \"OK - Extension present\"\n        elif scts_count == 0:\n            sct_txt = \"NOT SUPPORTED - Extension not found\"\n        elif scts_count < 3:\n            sct_txt = \"WARNING - Only {} SCTs included but Google recommends 3 or more\".format(str(scts_count))\n        else:\n            sct_txt = \"OK - {} SCTs included\".format(str(scts_count))\n        deployment_as_txt.append(cls._format_field(\"Certificate Transparency:\", sct_txt))\n\n        # OCSP stapling\n        deployment_as_txt.extend([\"\", cls._format_subtitle(f\"Certificate #{index} - OCSP Stapling\")])\n\n        if cert_deployment.ocsp_response is None:\n            deployment_as_txt.append(cls._format_field(\"\", \"NOT SUPPORTED - Server did not send back an OCSP response\"))\n\n        else:\n            if cert_deployment.ocsp_response.response_status != OCSPResponseStatus.SUCCESSFUL:\n                ocsp_resp_txt = [\n                    cls._format_field(\n                        \"\",\n                        \"ERROR - OCSP response status is not successful: {}\".format(\n                            cert_deployment.ocsp_response.response_status.name\n                        ),\n                    )\n                ]\n            else:\n                ocsp_trust_txt = (\n                    \"OK - Response is trusted\"\n                    if cert_deployment.ocsp_response_is_trusted\n                    else \"FAILED - Response is NOT trusted\"\n                )\n\n                ocsp_resp_txt = [\n                    cls._format_field(\"OCSP Response Status:\", cert_deployment.ocsp_response.response_status.name),\n                    cls._format_field(\"Validation w/ Mozilla Store:\", ocsp_trust_txt),\n                ]\n\n                if cert_deployment.ocsp_response.responder_key_hash:\n                    ocsp_resp_txt.append(\n                        cls._format_field(\"Responder Key Hash:\", str(cert_deployment.ocsp_response.responder_key_hash))\n                    )\n\n                if cert_deployment.ocsp_response.responder_name:\n                    ocsp_resp_txt.append(\n                        cls._format_field(\n                            \"Responder Name:\", cert_deployment.ocsp_response.responder_name.rfc4514_string()\n                        )\n                    )\n\n                if cert_deployment.ocsp_response.response_status == OCSPResponseStatus.SUCCESSFUL:\n                    ocsp_resp_txt.extend(\n                        [\n                            cls._format_field(\"Cert Status:\", cert_deployment.ocsp_response.certificate_status.name),\n                            cls._format_field(\"Cert Serial Number:\", str(cert_deployment.ocsp_response.serial_number)),\n                            cls._format_field(\n                                \"This Update:\", cert_deployment.ocsp_response.this_update.date().isoformat()\n                            ),\n                        ]\n                    )\n\n                    # The Next Update field is optional: https://github.com/nabla-c0d3/sslyze/issues/481\n                    if cert_deployment.ocsp_response.next_update is None:\n                        next_update_str = \"None\"\n                    else:\n                        next_update_str = cert_deployment.ocsp_response.next_update.date().isoformat()\n                    ocsp_resp_txt.append(cls._format_field(\"Next Update:\", next_update_str))\n\n            deployment_as_txt.extend(ocsp_resp_txt)\n\n        # All done\n        return deployment_as_txt"
+      },
+      {
+        "file": "sslyze/plugins/certificate_info/_cli_connector.py",
+        "name": "_CertificateInfoCliConnector._get_basic_certificate_text",
+        "kind": "function",
+        "symbol": "sslyze.plugins.certificate_info._cli_connector._CertificateInfoCliConnector._get_basic_certificate_text",
+        "start": 269,
+        "end": 305,
+        "code": "    def _get_basic_certificate_text(cls, certificate: Certificate) -> List[str]:\n        text_output = [\n            cls._format_field(\n                \"SHA1 Fingerprint:\", binascii.hexlify(certificate.fingerprint(hashes.SHA1())).decode(\"ascii\")\n            ),\n            cls._format_field(\"Common Name:\", _get_subject_as_short_text(certificate)),\n            cls._format_field(\"Issuer:\", _get_issuer_as_short_text(certificate)),\n            cls._format_field(\"Serial Number:\", str(certificate.serial_number)),\n            cls._format_field(\"Not Before:\", certificate.not_valid_before.date().isoformat()),\n            cls._format_field(\"Not After:\", certificate.not_valid_after.date().isoformat()),\n            cls._format_field(\"Public Key Algorithm:\", certificate.public_key().__class__.__name__),\n        ]\n\n        if certificate.signature_hash_algorithm:\n            # The signature_hash_algorithm can be None if signature did not use separate hash (ED25519, ED448)\n            # https://cryptography.io/en/latest/x509/reference/#cryptography.x509.Certificate.signature_hash_algorithm\n            text_output.append(cls._format_field(\"Signature Algorithm:\", certificate.signature_hash_algorithm.name))\n\n        public_key = certificate.public_key()\n        if isinstance(public_key, EllipticCurvePublicKey):\n            text_output.append(cls._format_field(\"Key Size:\", str(public_key.curve.key_size)))\n            text_output.append(cls._format_field(\"Curve:\", str(public_key.curve.name)))\n        elif isinstance(public_key, RSAPublicKey):\n            text_output.append(cls._format_field(\"Key Size:\", str(public_key.key_size)))\n            text_output.append(cls._format_field(\"Exponent:\", str(public_key.public_numbers().e)))  # type: ignore\n        else:\n            # DSA Key? https://github.com/nabla-c0d3/sslyze/issues/314\n            pass\n\n        # Print the SAN extension if there's one\n        subj_alt_name_ext = parse_subject_alternative_name_extension(certificate)\n        if subj_alt_name_ext.dns_names:\n            text_output.append(cls._format_field(\"SubjAltName - DNS Names:\", str(subj_alt_name_ext.dns_names)))\n        if subj_alt_name_ext.ip_addresses:\n            text_output.append(cls._format_field(\"SubjAltName - IP Addresses\", str(subj_alt_name_ext.ip_addresses)))\n\n        return text_output"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "sslyze.plugins.certificate_info._certificate_utils.get_common_names",
+      "sslyze.plugins.certificate_info._certificate_utils.parse_subject_alternative_name_extension"
+    ],
+    "exact_hit_dependencies": [
+      "sslyze.plugins.certificate_info._certificate_utils.get_common_names",
+      "sslyze.plugins.certificate_info._certificate_utils.parse_subject_alternative_name_extension"
+    ],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 12413
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 58748,
+    "completion_tokens": 1258,
+    "total_tokens": 60006,
+    "seconds": 80.52994561195374,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 89.41153907775879,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

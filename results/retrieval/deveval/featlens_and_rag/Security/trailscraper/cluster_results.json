@@ -1,0 +1,978 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "consume",
+                    "func_desc": "Consume the whole iterator to trigger side effects ; does not return anything",
+                    "func_file": "collection_utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def consume(iterator):\n    \"\"\"Consume the whole iterator to trigger side effects; does not return anything\"\"\"\n    # Inspired by this: https://docs.python.org/3/library/itertools.html#itertools-recipes\n    collections.deque(iterator, maxlen=0)",
+                    "func_fullName": "trailscraper.collection_utils.consume(iterator)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "_s3_download_recursive",
+                    "func_desc": "Download all keys in bucket recursively .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _s3_download_recursive(bucket, prefixes, target_dir, parallelism):\n    thread_local = threading.local()\n    def get_s3_client():\n        if not hasattr(thread_local, \"s3_client\"):\n            thread_local.s3_client = boto3.client('s3')\n        return thread_local.s3_client\n\n    def _download_file(key):\n        target_file = target_dir + os.sep + key\n        logging.info(\"Downloading %s/%s to %s\", bucket, key, target_file)\n        # replace with get_object to get rid of extra HEAD call?\n        get_s3_client().download_file(bucket, key, target_file)\n\n    def _starts_with_prefix(potential_prefix):\n        for prefix in prefixes:\n            # potential_prefix always has a trailing slash so this match is good enough:\n            if prefix.startswith(potential_prefix):\n                return True\n        return False\n\n    def _list_files_to_download(current_prefix):\n        files_to_download = []\n        logging.info(\"Listing %s\", current_prefix)\n        paginator = get_s3_client().get_paginator('list_objects')\n        for result in paginator.paginate(Bucket=bucket, Prefix=current_prefix, Delimiter=\"/\"):\n            if result.get('CommonPrefixes') is not None:\n                for prefix_result in result.get('CommonPrefixes'):\n                    if _starts_with_prefix(prefix_result[\"Prefix\"]):\n                        files_to_download.extend(_list_files_to_download(prefix_result[\"Prefix\"]))\n\n            if result.get('Contents') is not None:\n                for content in result.get('Contents'):\n                    if current_prefix in prefixes:\n                        key = content.get('Key')\n                        target = target_dir + os.sep + key\n\n                        if not os.path.exists(os.path.dirname(target)):\n                            os.makedirs(os.path.dirname(target))\n\n                        if not os.path.exists(target):\n                            files_to_download.append(key)\n                        else:\n                            logging.info(\"Skipping %s/%s, already exists.\", bucket, key)\n\n        return files_to_download\n\n    files_to_download = _list_files_to_download(\"\")\n\n    with concurrent.futures.ThreadPoolExecutor(max_workers=parallelism) as executor:\n        results = executor.map(_download_file, files_to_download)\n        consume(results) # Ensure we raise exceptions",
+                    "func_fullName": "trailscraper.s3_download._s3_download_recursive(bucket, prefixes, target_dir, parallelism)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "get_s3_client",
+                    "func_desc": "Get the boto3 client for the current thread .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_s3_client():\n        if not hasattr(thread_local, \"s3_client\"):\n            thread_local.s3_client = boto3.client('s3')\n        return thread_local.s3_client",
+                    "func_fullName": "trailscraper.s3_download._s3_download_recursive.get_s3_client()"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "_download_file",
+                    "func_desc": "Download a key - cache entry to the target directory .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _download_file(key):\n        target_file = target_dir + os.sep + key\n        logging.info(\"Downloading %s/%s to %s\", bucket, key, target_file)\n        # replace with get_object to get rid of extra HEAD call?\n        get_s3_client().download_file(bucket, key, target_file)",
+                    "func_fullName": "trailscraper.s3_download._s3_download_recursive._download_file(key)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "_starts_with_prefix",
+                    "func_desc": "Checks if a potential_prefix is a prefix of a tag .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _starts_with_prefix(potential_prefix):\n        for prefix in prefixes:\n            # potential_prefix always has a trailing slash so this match is good enough:\n            if prefix.startswith(potential_prefix):\n                return True\n        return False",
+                    "func_fullName": "trailscraper.s3_download._s3_download_recursive._starts_with_prefix(potential_prefix)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "_list_files_to_download",
+                    "func_desc": "List files to download .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _list_files_to_download(current_prefix):\n        files_to_download = []\n        logging.info(\"Listing %s\", current_prefix)\n        paginator = get_s3_client().get_paginator('list_objects')\n        for result in paginator.paginate(Bucket=bucket, Prefix=current_prefix, Delimiter=\"/\"):\n            if result.get('CommonPrefixes') is not None:\n                for prefix_result in result.get('CommonPrefixes'):\n                    if _starts_with_prefix(prefix_result[\"Prefix\"]):\n                        files_to_download.extend(_list_files_to_download(prefix_result[\"Prefix\"]))\n\n            if result.get('Contents') is not None:\n                for content in result.get('Contents'):\n                    if current_prefix in prefixes:\n                        key = content.get('Key')\n                        target = target_dir + os.sep + key\n\n                        if not os.path.exists(os.path.dirname(target)):\n                            os.makedirs(os.path.dirname(target))\n\n                        if not os.path.exists(target):\n                            files_to_download.append(key)\n                        else:\n                            logging.info(\"Skipping %s/%s, already exists.\", bucket, key)\n\n        return files_to_download",
+                    "func_fullName": "trailscraper.s3_download._s3_download_recursive._list_files_to_download(current_prefix)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "boto_service_definition_files",
+                    "func_desc": "Return paths to all service definition files from botocore",
+                    "func_file": "boto_service_definitions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def boto_service_definition_files():\n    \"\"\"Return paths to all service definition files from botocore\"\"\"\n\n    botocore_data_dir = resource_filename(Requirement.parse(\"botocore\"), \"botocore/data\")\n    files = [os.path.join(dirname, file_in_dir)\n             for dirname, _, files_in_dir in os.walk(botocore_data_dir)\n             for file_in_dir in files_in_dir\n             if fnmatch.fnmatch(file_in_dir, 'service-*.json')]\n    return files",
+                    "func_fullName": "trailscraper.boto_service_definitions.boto_service_definition_files()"
+                },
+                {
+                    "func_id": 2,
+                    "func_name": "service_definition_file",
+                    "func_desc": "Returns the path to the most recent service definition file for a service",
+                    "func_file": "boto_service_definitions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def service_definition_file(servicename):\n    \"\"\"Returns the path to the most recent service definition file for a service\"\"\"\n\n    boto_service_definition_files()\n    service_definitions_for_service = fnmatch.filter(boto_service_definition_files(),\n                                                     \"**/\" + servicename + \"/*/service-*.json\")\n\n    service_definitions_for_service.sort()\n\n    return service_definitions_for_service[-1]",
+                    "func_fullName": "trailscraper.boto_service_definitions.service_definition_file(servicename)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "operation_definition",
+                    "func_desc": "Returns the operation definition for a specific service and operation",
+                    "func_file": "boto_service_definitions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def operation_definition(servicename, operationname):\n    \"\"\"Returns the operation definition for a specific service and operation\"\"\"\n    with open(service_definition_file(servicename), encoding=\"UTF-8\") as definition_file:\n        service_definition = json.loads(definition_file.read())\n        return service_definition['operations'][operationname]",
+                    "func_fullName": "trailscraper.boto_service_definitions.operation_definition(servicename, operationname)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 4,
+                    "func_name": "_combine_statements_by",
+                    "func_desc": "Combines statements by key .",
+                    "func_file": "policy_generator",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _combine_statements_by(key):\n    def _result(statements):\n        def key_function(statement):\n            return tuple(key(statement))\n        return list(toolz.reduceby(key_function, Statement.merge, statements).values())\n\n    return _result",
+                    "func_fullName": "trailscraper.policy_generator._combine_statements_by(key)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "_result",
+                    "func_desc": "Return a list of all the statements in the grammar .",
+                    "func_file": "policy_generator",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _result(statements):\n        def key_function(statement):\n            return tuple(key(statement))\n        return list(toolz.reduceby(key_function, Statement.merge, statements).values())",
+                    "func_fullName": "trailscraper.policy_generator._combine_statements_by._result(statements)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "key_function",
+                    "func_desc": "Return a tuple of the keys of a given log record .",
+                    "func_file": "policy_generator",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def key_function(statement):\n            return tuple(key(statement))",
+                    "func_fullName": "trailscraper.policy_generator._combine_statements_by._result.key_function(statement)"
+                },
+                {
+                    "func_id": 70,
+                    "func_name": "merge",
+                    "func_desc": "Merge two statements into one .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def merge(self, other):\n        \"\"\"Merge two statements into one.\"\"\"\n        if self.Effect != other.Effect:\n            raise ValueError(f\"Trying to combine two statements with differing effects: {self.Effect} {other.Effect}\")\n\n        effect = self.Effect\n\n        actions = list(sorted(set(self.Action + other.Action), key=lambda action: action.json_repr()))\n        resources = list(sorted(set(self.Resource + other.Resource)))\n\n        return Statement(\n            Effect=effect,\n            Action=actions,\n            Resource=resources,\n        )",
+                    "func_fullName": "trailscraper.iam.Statement.merge(self, other)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 5,
+                    "func_name": "generate_policy",
+                    "func_desc": "Generates a policy from a set of records .",
+                    "func_file": "policy_generator",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def generate_policy(selected_records):\n    \"\"\"Generates a policy from a set of records\"\"\"\n    statements = pipe(selected_records,\n                      mapz(Record.to_statement),\n                      filterz(lambda statement: statement is not None),\n                      _combine_statements_by(lambda statement: statement.Resource),\n                      _combine_statements_by(lambda statement: statement.Action),\n                      sortedz())\n\n    return PolicyDocument(\n        Version=\"2012-10-17\",\n        Statement=statements,\n    )",
+                    "func_fullName": "trailscraper.policy_generator.generate_policy(selected_records)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "_source_to_iam_prefix",
+                    "func_desc": "Convert event source to IAM prefix .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _source_to_iam_prefix(self):\n        special_cases = {\n            'monitoring.amazonaws.com': 'cloudwatch',\n            'appstream2.amazonaws.com': 'appstream',\n            'models.lex.amazonaws.com': 'lex',\n            'runtime.lex.amazonaws.com': 'lex',\n            'mturk-requester.amazonaws.com': 'mechanicalturk',\n            'streams.dynamodb.amazonaws.com': 'dynamodb',\n            'tagging.amazonaws.com': 'tag',\n        }\n\n        default_case = self.event_source.split('.')[0]\n\n        return special_cases.get(self.event_source, default_case)",
+                    "func_fullName": "trailscraper.cloudtrail.Record._source_to_iam_prefix(self)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "_to_api_gateway_statement",
+                    "func_desc": "Return a statement that can be used to add a warning to an API Gateway .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _to_api_gateway_statement(self):\n        op_def = operation_definition(\"apigateway\", self.event_name)\n\n        http_method = op_def['http']['method']\n        request_uri = op_def['http']['requestUri']\n\n        resource_path = re.compile(r\"{[a-zA-Z_]+}\").sub(\"*\", request_uri)\n\n        region = \"*\"  # use proper region from requestParameters\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(\"apigateway\", http_method)],\n            Resource=[f\"arn:aws:apigateway:{region}::{resource_path}\"]\n        )",
+                    "func_fullName": "trailscraper.cloudtrail.Record._to_api_gateway_statement(self)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "to_statement",
+                    "func_desc": "Converts a record into a matching IAM Policy Statement .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def to_statement(self):\n        \"\"\"Converts record into a matching IAM Policy Statement\"\"\"\n        if self.event_source == \"sts.amazonaws.com\" and self.event_name == \"GetCallerIdentity\":\n            return None\n\n        if self.event_source == \"apigateway.amazonaws.com\":\n            return self._to_api_gateway_statement()\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(self._source_to_iam_prefix(), self._event_name_to_iam_action())],\n            Resource=sorted(self.resource_arns)\n        )",
+                    "func_fullName": "trailscraper.cloudtrail.Record.to_statement(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 8,
+                    "func_name": "parse_human_readable_time",
+                    "func_desc": "Parse a human readable string into a datetime object .",
+                    "func_file": "time_utils",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_human_readable_time(time_string):\n    \"\"\"Parse human readable strings (e.g. \"now\", \"2017-01-01\" and \"one hour ago\") into datetime\"\"\"\n    return dateparser.parse(time_string, settings={'RETURN_AS_TIMEZONE_AWARE': True})",
+                    "func_fullName": "trailscraper.time_utils.parse_human_readable_time(time_string)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "default",
+                    "func_desc": "JSON encoder for VOCSPV2 .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def default(self, o):  # pylint: disable=method-hidden\n        if hasattr(o, 'json_repr'):\n            return o.json_repr()\n        return json.JSONEncoder.default(self, o)",
+                    "func_fullName": "trailscraper.iam.IAMJSONEncoder.default(self, o)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "_parse_statement",
+                    "func_desc": "Parse a single HAR statement .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _parse_statement(statement):\n    return Statement(Action=[_parse_action(action) for action in statement['Action']],\n                     Effect=statement['Effect'],\n                     Resource=statement['Resource'])",
+                    "func_fullName": "trailscraper.iam._parse_statement(statement)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "_parse_statements",
+                    "func_desc": "Parse a list of statements from a JSON string .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _parse_statements(json_data):\n    # TODO: jsonData could also be dict, aka one statement; similar things happen in the rest of the policy pylint: disable=fixme\n    # https://github.com/flosell/iam-policy-json-to-terraform/blob/fafc231/converter/decode.go#L12-L22\n    return [_parse_statement(statement) for statement in json_data]",
+                    "func_fullName": "trailscraper.iam._parse_statements(json_data)"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "parse_policy_document",
+                    "func_desc": "Parse a stream of JSON data to a PolicyDocument object",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_policy_document(stream):\n    \"\"\"Parse a stream of JSON data to a PolicyDocument object\"\"\"\n    if isinstance(stream, six.string_types):\n        json_dict = json.loads(stream)\n    else:\n        json_dict = json.load(stream)\n\n    return PolicyDocument(_parse_statements(json_dict['Statement']), Version=json_dict['Version'])",
+                    "func_fullName": "trailscraper.iam.parse_policy_document(stream)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 9,
+                    "func_name": "_guess_actions",
+                    "func_desc": "Guess actions from a list of action objects .",
+                    "func_file": "guess",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _guess_actions(actions, allowed_prefixes):\n    return [item for action in actions\n            for item in action.matching_actions(allowed_prefixes)]",
+                    "func_fullName": "trailscraper.guess._guess_actions(actions, allowed_prefixes)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "_extend_statement",
+                    "func_desc": "Extend a single statement with a list of action effects and resource .",
+                    "func_file": "guess",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _extend_statement(statement, allowed_prefixes):\n    extended_actions = _guess_actions(statement.Action, allowed_prefixes)\n    if extended_actions:\n        return [statement, Statement(Action=extended_actions,\n                                     Effect=statement.Effect,\n                                     Resource=[\"*\"])]\n\n    return [statement]",
+                    "func_fullName": "trailscraper.guess._extend_statement(statement, allowed_prefixes)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "guess_statements",
+                    "func_desc": "Guess additional create actions from a policy .",
+                    "func_file": "guess",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def guess_statements(policy, allowed_prefixes):\n    \"\"\"Guess additional create actions\"\"\"\n    extended_statements = [item for statement in policy.Statement\n                           for item in _extend_statement(statement, allowed_prefixes)]\n\n    return PolicyDocument(Version=policy.Version, Statement=extended_statements)",
+                    "func_fullName": "trailscraper.guess.guess_statements(policy, allowed_prefixes)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "guess",
+                    "func_desc": "Extend a policy passed in through STDIN by guessing related actions",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def guess(only):\n    \"\"\"Extend a policy passed in through STDIN by guessing related actions\"\"\"\n    stdin = click.get_text_stream('stdin')\n    policy = parse_policy_document(stdin)\n\n    allowed_prefixes = [s.title() for s in only]\n\n    policy = guess_statements(policy, allowed_prefixes)\n    click.echo(policy.to_json())",
+                    "func_fullName": "trailscraper.cli.guess(only)"
+                },
+                {
+                    "func_id": 66,
+                    "func_name": "_base_action",
+                    "func_desc": "Returns the base action for the action .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _base_action(self):\n        without_prefix = self.action\n        for prefix in BASE_ACTION_PREFIXES:\n            without_prefix = re.sub(prefix, \"\", without_prefix)\n\n        without_plural = re.sub(r\"s$\", \"\", without_prefix)\n\n        return without_plural",
+                    "func_fullName": "trailscraper.iam.Action._base_action(self)"
+                },
+                {
+                    "func_id": 67,
+                    "func_name": "matching_actions",
+                    "func_desc": "Return a list of matching create actions for this Action .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def matching_actions(self, allowed_prefixes):\n        \"\"\"Return a matching create action for this Action\"\"\"\n\n        if not allowed_prefixes:\n            allowed_prefixes = BASE_ACTION_PREFIXES\n\n        potential_matches = [Action(prefix=self.prefix, action=action_prefix + self._base_action())\n                             for action_prefix in allowed_prefixes]\n\n        potential_matches += [Action(prefix=self.prefix, action=action_prefix + self._base_action() + \"s\")\n                              for action_prefix in allowed_prefixes]\n\n        return [potential_match\n                for potential_match in potential_matches\n                if potential_match in known_iam_actions(self.prefix) and potential_match != self]",
+                    "func_fullName": "trailscraper.iam.Action.matching_actions(self, allowed_prefixes)"
+                },
+                {
+                    "func_id": 77,
+                    "func_name": "_parse_action",
+                    "func_desc": "Parse an action string into an Action object .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _parse_action(action):\n    parts = action.split(\":\")\n    return Action(parts[0], parts[1])",
+                    "func_fullName": "trailscraper.iam._parse_action(action)"
+                },
+                {
+                    "func_id": 81,
+                    "func_name": "all_known_iam_permissions",
+                    "func_desc": "Return a list of all known IAM actions",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def all_known_iam_permissions():\n    \"Return a list of all known IAM actions\"\n    with open(os.path.join(os.path.dirname(__file__), 'known-iam-actions.txt'), encoding=\"UTF-8\") as iam_file:\n        return {line.rstrip('\\n') for line in iam_file.readlines()}",
+                    "func_fullName": "trailscraper.iam.all_known_iam_permissions()"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "known_iam_actions",
+                    "func_desc": "Return known IAM actions for a prefix e . g . all ec2 actions",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def known_iam_actions(prefix):\n    \"\"\"Return known IAM actions for a prefix, e.g. all ec2 actions\"\"\"\n    # This could be memoized for performance improvements\n    knowledge = pipe(all_known_iam_permissions(),\n                     mapz(_parse_action),\n                     groupbyz(lambda x: x.prefix))\n\n    return knowledge.get(prefix, [])",
+                    "func_fullName": "trailscraper.iam.known_iam_actions(prefix)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 12,
+                    "func_name": "root_group",
+                    "func_desc": "A command - line tool to get valuable information out of AWS CloudTrail .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def root_group(verbose):\n    \"\"\"A command-line tool to get valuable information out of AWS CloudTrail.\"\"\"\n    logger = logging.getLogger()\n    if verbose:\n        logger.setLevel(logging.DEBUG)\n        logging.getLogger('botocore').setLevel(logging.INFO)\n        logging.getLogger('s3transfer').setLevel(logging.INFO)",
+                    "func_fullName": "trailscraper.cli.root_group(verbose)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "_to_paths",
+                    "func_desc": "Convert a triple of type warning_alert to a list of paths .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def _to_paths(triple):\n            root, _, files_in_dir = triple\n            return [os.path.join(root, file_in_dir) for file_in_dir in files_in_dir]",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource._valid_log_files._to_paths(triple)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 13,
+                    "func_name": "download",
+                    "func_desc": "Downloads CloudTrail Logs from S3 .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def download(bucket, prefix, org_id, account_id, region, log_dir, from_s, to_s, wait, parallelism):\n    \"\"\"Downloads CloudTrail Logs from S3.\"\"\"\n    log_dir = os.path.expanduser(log_dir)\n\n    from_date = time_utils.parse_human_readable_time(from_s)\n    to_date = time_utils.parse_human_readable_time(to_s)\n\n    download_cloudtrail_logs(log_dir, bucket, prefix, org_id, account_id, region, from_date, to_date, parallelism)\n\n    if wait:\n        last_timestamp = LocalDirectoryRecordSource(log_dir).last_event_timestamp_in_dir()\n        while last_timestamp <= to_date:\n            click.echo(\"CloudTrail logs haven't caught up to \" + str(to_date) + \" yet. \" +\n                       \"Most recent timestamp: \" + str(last_timestamp.astimezone(to_date.tzinfo)) + \". \" +\n                       \"Trying again in 60sec.\")\n\n            time.sleep(60 * 1)\n\n            download_cloudtrail_logs(log_dir, bucket, prefix, org_id,\n                                     account_id, region, from_date, to_date, parallelism)\n            last_timestamp = LocalDirectoryRecordSource(log_dir).last_event_timestamp_in_dir()",
+                    "func_fullName": "trailscraper.cli.download(bucket, prefix, org_id, account_id, region, log_dir, from_s, to_s, wait, parallelism)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "last_event_timestamp",
+                    "func_desc": "Print the most recent cloudtrail event timestamp in a log directory .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def last_event_timestamp(log_dir):\n    \"\"\"Print the most recent cloudtrail event timestamp\"\"\"\n    log_dir = os.path.expanduser(log_dir)\n    click.echo(LocalDirectoryRecordSource(log_dir).last_event_timestamp_in_dir())",
+                    "func_fullName": "trailscraper.cli.last_event_timestamp(log_dir)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "timestamp",
+                    "func_desc": "Returns the timestamp of the log file was delivered",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def timestamp(self):\n        \"\"\"Returns the timestamp the log file was delivered\"\"\"\n        dstr = self.filename().split('_')[3]\n        # using manual substring instead of strptime for performance reasons\n        # inspired by https://stackoverflow.com/a/14166888\n        return datetime.datetime(*map(int, [dstr[:4], dstr[4:6], dstr[6:8], dstr[9:11], dstr[11:13]])) \\\n            .replace(tzinfo=pytz.utc)",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.timestamp(self)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "filename",
+                    "func_desc": "Name of the logfile without path",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def filename(self):\n        \"\"\"Name of the logfile (without path)\"\"\"\n        return os.path.split(self._path)[-1]",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.filename(self)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "has_valid_filename",
+                    "func_desc": "Returns if the log file represented by this object has a valid filename",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def has_valid_filename(self):\n        \"\"\"Returns if the log file represented has a valid filename\"\"\"\n        pattern = re.compile(r\"[0-9]+_CloudTrail_[a-z0-9-]+_[0-9TZ]+_[a-zA-Z0-9]+\\.json\\.gz\")\n        return pattern.match(self.filename())",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.has_valid_filename(self)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "records",
+                    "func_desc": "Returns a list of CloudTrail Records in this log file .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def records(self):\n        \"\"\"Returns CloudTrail Records in this log file\"\"\"\n        logging.debug(\"Loading %s\", self._path)\n\n        try:\n            with gzip.open(self._path, 'rt') as unzipped:\n                json_data = json.load(unzipped)\n                records = json_data['Records']\n                return parse_records(records)\n        except (IOError, OSError) as error:\n            logging.warning(\"Could not load %s: %s\", self._path, error)\n            return []",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.records(self)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "contains_events_for_timeframe",
+                    "func_desc": "Returns True if this logfile likely contains events in the relevant timeframe",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def contains_events_for_timeframe(self, from_date, to_date):\n        \"\"\"Returns true if this logfile likely contains events in the relevant timeframe\"\"\"\n        return from_date <= self.timestamp() <= to_date + datetime.timedelta(hours=1)",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.contains_events_for_timeframe(self, from_date, to_date)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "download_cloudtrail_logs",
+                    "func_desc": "Downloads all cloudtrail logs matching the given arguments to the given target directory .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def download_cloudtrail_logs(target_dir, bucket, cloudtrail_prefix, org_ids,\n                             account_ids, regions, from_date, to_date, parallelism):\n    \"\"\"Downloads cloudtrail logs matching the given arguments to the target dir\"\"\"\n    prefixes = _s3_key_prefixes(cloudtrail_prefix, org_ids, account_ids, regions, from_date, to_date)\n    _s3_download_recursive(bucket, prefixes, target_dir, parallelism)",
+                    "func_fullName": "trailscraper.s3_download.download_cloudtrail_logs(target_dir, bucket, cloudtrail_prefix, org_ids, account_ids, regions, from_date, to_date, parallelism)"
+                },
+                {
+                    "func_id": 65,
+                    "func_name": "json_repr",
+                    "func_desc": "Returns a string representation of the log entry .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def json_repr(self):\n        return ':'.join([self.prefix, self.action])",
+                    "func_fullName": "trailscraper.iam.Action.json_repr(self)"
+                },
+                {
+                    "func_id": 52,
+                    "func_name": "_valid_log_files",
+                    "func_desc": "This function walks the log directory and checks if the log files are valid .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _valid_log_files(self):\n        def _valid_or_warn(log_file):\n            if log_file.has_valid_filename():\n                return True\n\n            logging.warning(\"Invalid filename: %s\", log_file.filename())\n            return False\n\n        def _to_paths(triple):\n            root, _, files_in_dir = triple\n            return [os.path.join(root, file_in_dir) for file_in_dir in files_in_dir]\n\n        return pipe(os.walk(self._log_dir),\n                    mapcatz(_to_paths),\n                    mapz(LogFile),\n                    filterz(_valid_or_warn))",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource._valid_log_files(self)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "load_from_dir",
+                    "func_desc": "Loads all CloudTrail Records in a file from a given timeframe range .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def load_from_dir(self, from_date, to_date):\n        \"\"\"Loads all CloudTrail Records in a file\"\"\"\n        records = []\n        for logfile in self._valid_log_files():\n            if logfile.contains_events_for_timeframe(from_date, to_date):\n                records.extend(logfile.records())\n\n        return records",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource.load_from_dir(self, from_date, to_date)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "last_event_timestamp_in_dir",
+                    "func_desc": "Return the timestamp of the most recent event in the given directory .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def last_event_timestamp_in_dir(self):\n        \"\"\"Return the timestamp of the most recent event in the given directory\"\"\"\n        most_recent_file = pipe(self._valid_log_files(),\n                                sortedz(key=LogFile.timestamp),\n                                lastz,\n                                LogFile.records,\n                                sortedz(key=lambda record: record.event_time),\n                                lastz)\n\n        return most_recent_file.event_time",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource.last_event_timestamp_in_dir(self)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "_valid_or_warn",
+                    "func_desc": "Check if a log file is valid or warn .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def _valid_or_warn(log_file):\n            if log_file.has_valid_filename():\n                return True\n\n            logging.warning(\"Invalid filename: %s\", log_file.filename())\n            return False",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource._valid_log_files._valid_or_warn(log_file)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 14,
+                    "func_name": "select",
+                    "func_desc": "Finds all CloudTrail records matching the given filters and prints them .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def select(log_dir, filter_assumed_role_arn, use_cloudtrail_api, from_s, to_s):\n    \"\"\"Finds all CloudTrail records matching the given filters and prints them.\"\"\"\n    log_dir = os.path.expanduser(log_dir)\n    from_date = time_utils.parse_human_readable_time(from_s)\n    to_date = time_utils.parse_human_readable_time(to_s)\n\n    if use_cloudtrail_api:\n        records = CloudTrailAPIRecordSource().load_from_api(from_date, to_date)\n    else:\n        records = LocalDirectoryRecordSource(log_dir).load_from_dir(from_date, to_date)\n\n    filtered_records = filter_records(records, filter_assumed_role_arn, from_date, to_date)\n\n    filtered_records_as_json = [record.raw_source for record in filtered_records]\n\n    click.echo(json.dumps({\"Records\": filtered_records_as_json}))",
+                    "func_fullName": "trailscraper.cli.select(log_dir, filter_assumed_role_arn, use_cloudtrail_api, from_s, to_s)"
+                },
+                {
+                    "func_id": 37,
+                    "func_name": "_by_timeframe",
+                    "func_desc": "A function to filter records by timeframe .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _by_timeframe(from_date, to_date):\n    return lambda record: record.event_time is None or \\\n                          (from_date <= record.event_time <= to_date)",
+                    "func_fullName": "trailscraper.cloudtrail._by_timeframe(from_date, to_date)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "_by_role_arns",
+                    "func_desc": "Return a filter function that filters records by the specified role ARNs .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _by_role_arns(arns_to_filter_for):\n    if arns_to_filter_for is None:\n        arns_to_filter_for = []\n\n    return lambda record: (record.assumed_role_arn in arns_to_filter_for) or (len(arns_to_filter_for) == 0)",
+                    "func_fullName": "trailscraper.cloudtrail._by_role_arns(arns_to_filter_for)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "filter_records",
+                    "func_desc": "Filter records so they match the given condition .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def filter_records(records,\n                   arns_to_filter_for=None,\n                   from_date=datetime.datetime(1970, 1, 1, tzinfo=pytz.utc),\n                   to_date=datetime.datetime.now(tz=pytz.utc)):\n    \"\"\"Filter records so they match the given condition\"\"\"\n    result = list(pipe(records, filterz(_by_timeframe(from_date, to_date)), filterz(_by_role_arns(arns_to_filter_for))))\n    if not result and records:\n        logging.warning(ALL_RECORDS_FILTERED)\n\n    return result",
+                    "func_fullName": "trailscraper.cloudtrail.filter_records(records, arns_to_filter_for, from_date, to_date)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "load_from_api",
+                    "func_desc": "Loads the last 10 hours of cloudtrail events from the API .",
+                    "func_file": "cloudtrail_api_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def load_from_api(self, from_date, to_date):\n        \"\"\"Loads the last 10 hours of cloudtrail events from the API\"\"\"\n        client = boto3.client('cloudtrail')\n        paginator = client.get_paginator('lookup_events')\n        response_iterator = paginator.paginate(\n            StartTime=from_date,\n            EndTime=to_date,\n        )\n        records = []\n        for response in response_iterator:\n            for event in response['Events']:\n                records.append(_parse_record(json.loads(event['CloudTrailEvent'])))\n\n        return records",
+                    "func_fullName": "trailscraper.record_sources.cloudtrail_api_record_source.CloudTrailAPIRecordSource.load_from_api(self, from_date, to_date)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 15,
+                    "func_name": "generate",
+                    "func_desc": "Generates a policy that allows the events passed in through STDIN .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def generate():\n    \"\"\"Generates a policy that allows the events passed in through STDIN\"\"\"\n    stdin = click.get_text_stream('stdin')\n    records = parse_records(json.load(stdin)['Records'])\n\n    policy = policy_generator.generate_policy(records)\n    click.echo(policy.to_json())",
+                    "func_fullName": "trailscraper.cli.generate()"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "_resource_arns",
+                    "func_desc": "Get the list of resource ARNs from a JSON record .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _resource_arns(json_record):\n    resources = json_record.get('resources', [])\n    arns = [resource['ARN'] for resource in resources if 'ARN' in resource]\n    return arns",
+                    "func_fullName": "trailscraper.cloudtrail._resource_arns(json_record)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "_assumed_role_arn",
+                    "func_desc": "Returns the ARN of the assumed role .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _assumed_role_arn(json_record):\n    user_identity = json_record['userIdentity']\n    if 'type' in user_identity \\\n            and user_identity['type'] == 'AssumedRole' \\\n            and 'sessionContext' in user_identity:\n        return user_identity['sessionContext']['sessionIssuer']['arn']\n    return None",
+                    "func_fullName": "trailscraper.cloudtrail._assumed_role_arn(json_record)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "_parse_record",
+                    "func_desc": "Parse a record from a JSON string .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _parse_record(json_record):\n    try:\n        return Record(json_record['eventSource'],\n                      json_record['eventName'],\n                      event_time=datetime.datetime.strptime(json_record['eventTime'],\n                                                            \"%Y-%m-%dT%H:%M:%SZ\").replace(tzinfo=pytz.utc),\n                      resource_arns=_resource_arns(json_record),\n                      assumed_role_arn=_assumed_role_arn(json_record),\n                      raw_source=json_record)\n    except KeyError as error:\n        logging.warning(\"Could not parse %s: %s\", json_record, error)\n        return None",
+                    "func_fullName": "trailscraper.cloudtrail._parse_record(json_record)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "parse_records",
+                    "func_desc": "Convert JSON Records into Record objects",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_records(json_records):\n    \"\"\"Convert JSON Records into Record objects\"\"\"\n    parsed_records = [_parse_record(record) for record in json_records]\n    return [r for r in parsed_records if r is not None]",
+                    "func_fullName": "trailscraper.cloudtrail.parse_records(json_records)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "json_repr",
+                    "func_desc": "Return a JSON representation of the\n            .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def json_repr(self):\n        return {\n            'Version': self.Version,\n            'Statement': self.Statement\n        }",
+                    "func_fullName": "trailscraper.iam.PolicyDocument.json_repr(self)"
+                },
+                {
+                    "func_id": 75,
+                    "func_name": "to_json",
+                    "func_desc": "Render object into IAM Policy JSON",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def to_json(self):\n        \"\"\"Render object into IAM Policy JSON\"\"\"\n        return json.dumps(self.json_repr(), cls=IAMJSONEncoder, indent=4, sort_keys=True)",
+                    "func_fullName": "trailscraper.iam.PolicyDocument.to_json(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 18,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new object with the given attributes .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, event_source, event_name,\n                 resource_arns=None, assumed_role_arn=None, event_time=None, raw_source=None):\n        self.event_source = event_source\n        self.event_name = event_name\n        self.raw_source = raw_source\n        self.event_time = event_time\n        self.resource_arns = resource_arns or [\"*\"]\n        self.assumed_role_arn = assumed_role_arn",
+                    "func_fullName": "trailscraper.cloudtrail.Record.__init__(self, event_source, event_name, resource_arns, assumed_role_arn, event_time, raw_source)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SECRET_TOKENS object .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, path):\n        self._path = path",
+                    "func_fullName": "trailscraper.cloudtrail.LogFile.__init__(self, path)"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, prefix, action):\n        self.action = action\n        self.prefix = prefix",
+                    "func_fullName": "trailscraper.iam.Action.__init__(self, prefix, action)"
+                },
+                {
+                    "func_id": 68,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new Vocabulary .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, Action, Effect, Resource):  # pylint: disable=redefined-outer-name\n        self.Action = Action  # pylint: disable=invalid-name\n        self.Effect = Effect  # pylint: disable=invalid-name\n        self.Resource = Resource  # pylint: disable=invalid-name",
+                    "func_fullName": "trailscraper.iam.Statement.__init__(self, Action, Effect, Resource)"
+                },
+                {
+                    "func_id": 73,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SEQUELIZER .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, Statement, Version=\"2012-10-17\"):  # pylint: disable=redefined-outer-name\n        self.Version = Version  # pylint: disable=invalid-name\n        self.Statement = Statement  # pylint: disable=invalid-name",
+                    "func_fullName": "trailscraper.iam.PolicyDocument.__init__(self, Statement, Version)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the SECRET_TOKENS object .",
+                    "func_file": "local_directory_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, log_dir):\n        self._log_dir = log_dir",
+                    "func_fullName": "trailscraper.record_sources.local_directory_record_source.LocalDirectoryRecordSource.__init__(self, log_dir)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the API client .",
+                    "func_file": "cloudtrail_api_record_source",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self):\n        self._client = boto3.client('cloudtrail')",
+                    "func_fullName": "trailscraper.record_sources.cloudtrail_api_record_source.CloudTrailAPIRecordSource.__init__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 19,
+                    "func_name": "__repr__",
+                    "func_desc": "A string representation of the record .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return f\"Record(event_source={self.event_source} event_name={self.event_name} \" \\\n               f\"event_time={self.event_time} resource_arns={self.resource_arns})\"",
+                    "func_fullName": "trailscraper.cloudtrail.Record.__repr__(self)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "json_repr",
+                    "func_desc": "Return a string representation of a NCBINegotiation .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def json_repr(self):\n        return {\n            'Action': self.Action,\n            'Effect': self.Effect,\n            'Resource': self.Resource,\n        }",
+                    "func_fullName": "trailscraper.iam.Statement.json_repr(self)"
+                },
+                {
+                    "func_id": 71,
+                    "func_name": "__action_list_strings",
+                    "func_desc": "Returns a string representation of the action list .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __action_list_strings(self):\n        return \"-\".join([a.json_repr() for a in self.Action])",
+                    "func_fullName": "trailscraper.iam.Statement.__action_list_strings(self)"
+                },
+                {
+                    "func_id": 72,
+                    "func_name": "__lt__",
+                    "func_desc": "A method to compare two terms of type Token .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __lt__(self, other):\n        if self.Effect != other.Effect:\n            return self.Effect < other.Effect\n        if self.Action != other.Action:\n            # pylint: disable=W0212\n            return self.__action_list_strings() < other.__action_list_strings()\n\n        return \"\".join(self.Resource) < \"\".join(other.Resource)",
+                    "func_fullName": "trailscraper.iam.Statement.__lt__(self, other)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 20,
+                    "func_name": "__eq__",
+                    "func_desc": "Tests if two object are equal .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __eq__(self, other):\n        if isinstance(other, self.__class__):\n            return self.event_source == other.event_source and \\\n                   self.event_name == other.event_name and \\\n                   self.event_time == other.event_time and \\\n                   self.resource_arns == other.resource_arns and \\\n                   self.assumed_role_arn == other.assumed_role_arn\n\n        return False",
+                    "func_fullName": "trailscraper.cloudtrail.Record.__eq__(self, other)"
+                },
+                {
+                    "func_id": 21,
+                    "func_name": "__hash__",
+                    "func_desc": "A hash of the object .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __hash__(self):\n        return hash((self.event_source,\n                     self.event_name,\n                     self.event_time,\n                     tuple(self.resource_arns),\n                     self.assumed_role_arn))",
+                    "func_fullName": "trailscraper.cloudtrail.Record.__hash__(self)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "__ne__",
+                    "func_desc": "Return True if self is not equal to other .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __ne__(self, other):\n        return not self.__eq__(other)",
+                    "func_fullName": "trailscraper.cloudtrail.Record.__ne__(self, other)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "__ne__",
+                    "func_desc": "Return True if self is not equal to other .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __ne__(self, other):\n        return not self == other",
+                    "func_fullName": "trailscraper.iam.BaseElement.__ne__(self, other)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 24,
+                    "func_name": "_event_name_to_iam_action",
+                    "func_desc": "Returns a dict of all special cases that are defined in the API .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _event_name_to_iam_action(self):\n        special_cases = {\n            's3.amazonaws.com': {\n                'CompleteMultipartUpload': 'PutObject',\n                'CopyObject': 'PutObject',\n                'CreateMultipartUpload': 'PutObject',\n                'DeleteBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'DeleteBucketEncryption': 'PutEncryptionConfiguration',\n                'DeleteBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'DeleteBucketLifecycle': 'PutLifecycleConfiguration',\n                'DeleteBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'DeleteBucketReplication': 'DeleteReplicationConfiguration',\n                'DeleteBucketTagging': 'PutBucketTagging',\n                'DeleteObjects': 'DeleteObject',\n                'GetBucketAccelerateConfiguration': 'GetAccelerateConfiguration',\n                'GetBucketAnalyticsConfiguration': 'GetAnalyticsConfiguration',\n                'GetBucketEncryption': 'GetEncryptionConfiguration',\n                'GetBucketInventoryConfiguration': 'GetInventoryConfiguration',\n                'GetBucketLifecycle': 'GetLifecycleConfiguration',\n                'GetBucketLifecycleConfiguration': 'GetLifecycleConfiguration',\n                'GetBucketMetricsConfiguration': 'GetMetricsConfiguration',\n                'GetBucketNotificationConfiguration': 'GetBucketNotification',\n                'GetBucketReplication': 'GetReplicationConfiguration',\n                'HeadBucket': 'ListBucket',\n                'HeadObject': 'GetObject',\n                'ListBucketAnalyticsConfigurations': 'GetAnalyticsConfiguration',\n                'ListBucketInventoryConfigurations': 'GetInventoryConfiguration',\n                'ListBucketMetricsConfigurations': 'GetMetricsConfiguration',\n                'ListBuckets': 'ListAllMyBuckets',\n                'ListMultipartUploads': 'ListBucketMultipartUploads',\n                'ListObjectVersions': 'ListBucketVersions',\n                'ListObjects': 'ListBucket',\n                'ListObjectsV2': 'ListBucket',\n                'ListParts': 'ListMultipartUploadParts',\n                'PutBucketAccelerateConfiguration': 'PutAccelerateConfiguration',\n                'PutBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'PutBucketEncryption': 'PutEncryptionConfiguration',\n                'PutBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'PutBucketLifecycle': 'PutLifecycleConfiguration',\n                'PutBucketLifecycleConfiguration': 'PutLifecycleConfiguration',\n                'PutBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'PutBucketNotificationConfiguration': 'PutBucketNotification',\n                'PutBucketReplication': 'DeleteReplicationConfiguration',\n                'UploadPart': 'PutObject',\n                'UploadPartCopy': 'PutObject',\n            },\n            'kms.amazonaws.com': {\n                'ReEncrypt': 'ReEncrypt*'  # not precise. See #27 for more details.\n            }\n        }\n\n        def _regex_sub(expr, subs):\n            regex = re.compile(expr)\n            return lambda s: regex.sub(subs, s)\n\n        def _special_case_mappings(event_name):\n            return special_cases \\\n                .get(self.event_source, {}) \\\n                .get(event_name, event_name)\n\n        return pipe(self.event_name,\n                    _special_case_mappings,\n                    _regex_sub(r\"DeleteBucketCors\", \"PutBucketCORS\"),\n                    _regex_sub(r\"([a-zA-Z]+)[0-9v_]+$\", r\"\\1\", ),\n                    _regex_sub(r\"Cors$\", \"CORS\"))",
+                    "func_fullName": "trailscraper.cloudtrail.Record._event_name_to_iam_action(self)"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "_regex_sub",
+                    "func_desc": "Return a function that sub - string from a sequence of strings .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def _regex_sub(expr, subs):\n            regex = re.compile(expr)\n            return lambda s: regex.sub(subs, s)",
+                    "func_fullName": "trailscraper.cloudtrail.Record._event_name_to_iam_action._regex_sub(expr, subs)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "_special_case_mappings",
+                    "func_desc": "Get the special case mapping for the given event name .",
+                    "func_file": "cloudtrail",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def _special_case_mappings(event_name):\n            return special_cases \\\n                .get(self.event_source, {}) \\\n                .get(event_name, event_name)",
+                    "func_fullName": "trailscraper.cloudtrail.Record._event_name_to_iam_action._special_case_mappings(event_name)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 42,
+                    "func_name": "_s3_key_prefix",
+                    "func_desc": "Generate a key prefix for a given date .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _s3_key_prefix(prefix, date, account_id, region):\n    return f\"{prefix}AWSLogs/{account_id}/CloudTrail/{region}/{date.year}/{date.month:02d}/{date.day:02d}/\"",
+                    "func_fullName": "trailscraper.s3_download._s3_key_prefix(prefix, date, account_id, region)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "_s3_key_prefix_for_org_trails",
+                    "func_desc": "Return the S3 key prefix for the given prefix for the given date .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _s3_key_prefix_for_org_trails(prefix, date, org_id, account_id, region):\n    return f\"{prefix}AWSLogs/{org_id}/{account_id}/CloudTrail/{region}/{date.year}/{date.month:02d}/{date.day:02d}/\"",
+                    "func_fullName": "trailscraper.s3_download._s3_key_prefix_for_org_trails(prefix, date, org_id, account_id, region)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "_s3_key_prefixes",
+                    "func_desc": "Return a list of S3 key prefixes for the given prefix .",
+                    "func_file": "s3_download",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _s3_key_prefixes(prefix, org_ids, account_ids, regions, from_date, to_date):\n    delta = to_date.astimezone(pytz.utc) - from_date.astimezone(pytz.utc)\n\n    days = [to_date - datetime.timedelta(days=delta_days) for delta_days in range(delta.days + 1)]\n    if org_ids:\n        return [_s3_key_prefix_for_org_trails(prefix, day, org_id, account_id, region)\n                for org_id in org_ids\n                for account_id in account_ids\n                for day in days\n                for region in regions]\n\n    return [_s3_key_prefix(prefix, day, account_id, region)\n            for account_id in account_ids\n            for day in days\n            for region in regions]",
+                    "func_fullName": "trailscraper.s3_download._s3_key_prefixes(prefix, org_ids, account_ids, regions, from_date, to_date)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1500; k=16; a=0.25; combined=0.713; stability(ARI)=0.916; sep=0.354",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 59,
+                    "func_name": "json_repr",
+                    "func_desc": "JSON representation of the class",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def json_repr(self):\n        \"\"\"JSON representation of the class\"\"\"\n        raise NotImplementedError",
+                    "func_fullName": "trailscraper.iam.BaseElement.json_repr(self)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "__eq__",
+                    "func_desc": "Checks if two terms are equal .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __eq__(self, other):\n        if isinstance(other, self.__class__):\n            return self.json_repr() == other.json_repr()\n\n        return False",
+                    "func_fullName": "trailscraper.iam.BaseElement.__eq__(self, other)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "__hash__",
+                    "func_desc": "Hash function for the object .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __hash__(self):\n        return hash(self.json_repr())",
+                    "func_fullName": "trailscraper.iam.BaseElement.__hash__(self)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "__repr__",
+                    "func_desc": "Returns a string representation of the object .",
+                    "func_file": "iam",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __repr__(self):\n        return str(self.json_repr())",
+                    "func_fullName": "trailscraper.iam.BaseElement.__repr__(self)"
+                }
+            ]
+        }
+    ]
+}

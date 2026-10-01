@@ -1,0 +1,135 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2203,
+  "namespace": "mrjob.util.save_cwd",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13786,
+      "input_estimate_after": 13786,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the reusable dependencies and patterns needed to implement the `save_cwd()` context manager. The key information comes from:\n\n1. **Existing context manager patterns in `mrjob/util.py`**: I can see three similar context managers that follow the same pattern: `save_current_environment()`, `save_sys_std()`, and `save_sys_path()`. These provide the template for how to implement `save_cwd()`.\n\n2. **Usage of `save_cwd()` in other files**: The `mrjob/inline.py` file shows how `save_cwd()` is intended to be used alongside other context managers, and it shows the pattern of using `os.chdir()` and `os.getcwd()`.\n\n3. **Import statements and module structure**: The imports in `mrjob/util.py` show that `os` module is already imported, which provides `os.getcwd()` and `os.chdir()`.\n\nHere are the specific locations containing reusable dependencies:\n\n```\nmrjob/util.py\nline: 170\nline: 176\nline: 180\nfunction: save_current_environment\nclass: None\n\nmrjob/util.py\nline: 198\nline: 204\nline: 224\nfunction: save_sys_std\nclass: None\n\nmrjob/util.py\nline: 227\nline: 230\nline: 236\nfunction: save_sys_path\nclass: None\n\nmrjob/inline.py\nline: 108\nline: 112\nline: 113\nfunction: InlineMRJobRunner._invoke_task_func\nclass: InlineMRJobRunner\n\nmrjob/inline.py\nline: 174\nline: 177\nline: 178\nfunction: InlineMRJobRunner._run_step_on_spark\nclass: InlineMRJobRunner\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/util.py",
+      "mrjob/inline.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/util.py",
+        "name": "save_current_environment",
+        "kind": "function",
+        "symbol": "mrjob.util.save_current_environment",
+        "start": 171,
+        "end": 182,
+        "code": "def save_current_environment():\n    \"\"\" Context manager that saves os.environ and loads\n        it back again after execution\n    \"\"\"\n    original_environ = os.environ.copy()\n\n    try:\n        yield\n\n    finally:\n        os.environ.clear()\n        os.environ.update(original_environ)"
+      },
+      {
+        "file": "mrjob/util.py",
+        "name": "save_sys_std",
+        "kind": "function",
+        "symbol": "mrjob.util.save_sys_std",
+        "start": 199,
+        "end": 224,
+        "code": "def save_sys_std():\n    \"\"\"Context manager that saves the current values of `sys.stdin`,\n    `sys.stdout`, and `sys.stderr`, and flushes these filehandles before\n    and after switching them out.\"\"\"\n\n    stdin, stdout, stderr = sys.stdin, sys.stdout, sys.stderr\n\n    try:\n        sys.stdout.flush()\n        sys.stderr.flush()\n\n        yield\n\n        # at this point, sys.stdout/stderr may have been patched. Don't\n        # raise an exception if flush() fails\n        try:\n            sys.stdout.flush()\n        except:\n            pass\n\n        try:\n            sys.stderr.flush()\n        except:\n            pass\n    finally:\n        sys.stdin, sys.stdout, sys.stderr = stdin, stdout, stderr"
+      },
+      {
+        "file": "mrjob/util.py",
+        "name": "save_sys_path",
+        "kind": "function",
+        "symbol": "mrjob.util.save_sys_path",
+        "start": 228,
+        "end": 236,
+        "code": "def save_sys_path():\n    \"\"\"Context manager that saves sys.path and restores it after execution.\"\"\"\n    original_sys_path = list(sys.path)\n\n    try:\n        yield\n\n    finally:\n        sys.path = original_sys_path"
+      },
+      {
+        "file": "mrjob/inline.py",
+        "name": "InlineMRJobRunner._invoke_task_func.invoke_task",
+        "kind": "function",
+        "symbol": "mrjob.inline.InlineMRJobRunner._invoke_task_func.invoke_task",
+        "start": 107,
+        "end": 146,
+        "code": "        def invoke_task(stdin, stdout, stderr, wd, env):\n            with save_current_environment(), save_cwd(), save_sys_path(), \\\n                    save_sys_std():\n                # pretend we're running the script in the working dir\n                os.environ.update(env)\n                os.chdir(wd)\n                sys.path = [os.getcwd()] + sys.path\n\n                # pretend we've redirected stdin/stdout/stderr\n                sys.stdin = stdin\n                sys.stdout = stdout\n                sys.stderr = stderr\n\n                input_uri = None\n                try:\n                    args = self._args_for_task(step_num, task_type)\n\n                    if manifest:\n                        # read input path from stdin, add to args\n                        line = stdin.readline().decode('utf_8')\n                        input_uri = line.split('\\t')[-1].rstrip()\n                        # input_uri is an absolute path, can serve\n                        # as path and uri both\n                        args = list(args) + [input_uri, input_uri]\n\n                    task = self._mrjob_cls(args)\n                    task.execute()\n                except:\n                    # so users can figure out where the exception came from;\n                    # see _log_cause_of_error(). we can't wrap the exception\n                    # because then we lose the stacktrace (which is the whole\n                    # point of the inline runner)\n\n                    if input_uri:  # from manifest\n                        self._error_while_reading_from = input_uri\n                    else:\n                        self._error_while_reading_from = self._task_input_path(\n                            task_type, step_num, task_num)\n\n                    raise"
+      },
+      {
+        "file": "mrjob/inline.py",
+        "name": "InlineMRJobRunner._invoke_task_func",
+        "kind": "function",
+        "symbol": "mrjob.inline.InlineMRJobRunner._invoke_task_func",
+        "start": 101,
+        "end": 148,
+        "code": "    def _invoke_task_func(self, task_type, step_num, task_num):\n        \"\"\"Just run tasks in the same process.\"\"\"\n        manifest = (step_num == 0 and task_type == 'mapper' and\n                    self._uses_input_manifest())\n\n        # Don't care about pickleability since this runs in the same process\n        def invoke_task(stdin, stdout, stderr, wd, env):\n            with save_current_environment(), save_cwd(), save_sys_path(), \\\n                    save_sys_std():\n                # pretend we're running the script in the working dir\n                os.environ.update(env)\n                os.chdir(wd)\n                sys.path = [os.getcwd()] + sys.path\n\n                # pretend we've redirected stdin/stdout/stderr\n                sys.stdin = stdin\n                sys.stdout = stdout\n                sys.stderr = stderr\n\n                input_uri = None\n                try:\n                    args = self._args_for_task(step_num, task_type)\n\n                    if manifest:\n                        # read input path from stdin, add to args\n                        line = stdin.readline().decode('utf_8')\n                        input_uri = line.split('\\t')[-1].rstrip()\n                        # input_uri is an absolute path, can serve\n                        # as path and uri both\n                        args = list(args) + [input_uri, input_uri]\n\n                    task = self._mrjob_cls(args)\n                    task.execute()\n                except:\n                    # so users can figure out where the exception came from;\n                    # see _log_cause_of_error(). we can't wrap the exception\n                    # because then we lose the stacktrace (which is the whole\n                    # point of the inline runner)\n\n                    if input_uri:  # from manifest\n                        self._error_while_reading_from = input_uri\n                    else:\n                        self._error_while_reading_from = self._task_input_path(\n                            task_type, step_num, task_num)\n\n                    raise\n\n        return invoke_task"
+      },
+      {
+        "file": "mrjob/inline.py",
+        "name": "InlineMRJobRunner",
+        "kind": "class",
+        "symbol": "mrjob.inline.InlineMRJobRunner",
+        "start": 36,
+        "end": 200,
+        "code": "class InlineMRJobRunner(SimMRJobRunner):\n    \"\"\"Runs an :py:class:`~mrjob.job.MRJob` in the same process, so it's easy\n    to attach a debugger.\n\n    This is the default way to run jobs (we assume you'll spend some time\n    debugging your job before you're ready to run it on EMR or Hadoop).\n\n    Unlike other runners, ``InlineMRJobRunner``\\\\'s ``run()`` method\n    raises the actual exception that caused a step to fail (rather than\n    :py:class:`~mrjob.step.StepFailedException`).\n\n    To more accurately simulate your environment prior to running on\n    Hadoop/EMR, use ``-r local`` (see\n    :py:class:`~mrjob.local.LocalMRJobRunner`).\n\n    .. versionadded:: 0.6.8\n\n       can run :py:class:`~mrjob.step.SparkStep`\\\\s via the\n       :py:mod:`pyspark` library.\n    \"\"\"\n    alias = 'inline'\n\n    def __init__(self, mrjob_cls=None, **kwargs):\n        \"\"\":py:class:`~mrjob.inline.InlineMRJobRunner` takes the same keyword\n        args as :py:class:`~mrjob.runner.MRJobRunner`. However, please note\n        that\n        *hadoop_input_format*, *hadoop_output_format*, and *partitioner*\n        are ignored\n        because they require Java. If you need to test these, consider\n        starting up a standalone Hadoop instance and running your job with\n        ``-r hadoop``.\"\"\"\n        super(InlineMRJobRunner, self).__init__(**kwargs)\n        # if we run python -m mrjob.job, mrjob_cls is __main__.MRJob\n        # which is identical to (but not a subclass of) mrjob.job.MRJob\n        #\n        # the base MRJob still isn't runnable, but this yields a more\n        # useful error about the step having no mappers or reducers\n        if not (mrjob_cls is None or issubclass(mrjob_cls, MRJob) or\n                mrjob_cls.__module__ == '__main__'):\n            raise TypeError\n\n        self._mrjob_cls = mrjob_cls\n\n        # used to explain exceptions\n        self._error_while_reading_from = None\n\n        if self._opts['py_files']:\n            log.warning(\"inline runner doesn't import py_files\")\n\n        if self._opts['setup']:\n            log.warning(\"inline runner can't run setup commands\")\n\n    def _check_step(self, step, step_num):\n        \"\"\"Don't try to run steps that include commands.\"\"\"\n        super(InlineMRJobRunner, self)._check_step(step, step_num)\n\n        if step['type'] == 'streaming':\n            for mrc in ('mapper', 'combiner', 'reducer'):\n                if step.get(mrc):\n                    if 'command' in step[mrc] or 'pre_filter' in step[mrc]:\n                        raise NotImplementedError(\n                            \"step %d's %s runs a command, but inline\"\n                            \" runner does not support subprocesses (try\"\n                            \" -r local)\" % (step_num, mrc))\n\n    def _invoke_task_func(self, task_type, step_num, task_num):\n        \"\"\"Just run tasks in the same process.\"\"\"\n        manifest = (step_num == 0 and task_type == 'mapper' and\n                    self._uses_input_manifest())\n\n        # Don't care about pickleability since this runs in the same process\n        def invoke_task(stdin, stdout, stderr, wd, env):\n            with save_current_environment(), save_cwd(), save_sys_path(), \\\n                    save_sys_std():\n                # pretend we're running the script in the working dir\n                os.environ.update(env)\n                os.chdir(wd)\n                sys.path = [os.getcwd()] + sys.path\n\n                # pretend we've redirected stdin/stdout/stderr\n                sys.stdin = stdin\n                sys.stdout = stdout\n                sys.stderr = stderr\n\n                input_uri = None\n                try:\n                    args = self._args_for_task(step_num, task_type)\n\n                    if manifest:\n                        # read input path from stdin, add to args\n                        line = stdin.readline().decode('utf_8')\n                        input_uri = line.split('\\t')[-1].rstrip()\n                        # input_uri is an absolute path, can serve\n                        # as path and uri both\n                        args = list(args) + [input_uri, input_uri]\n\n                    task = self._mrjob_cls(args)\n                    task.execute()\n                except:\n                    # so users can figure out where the exception came from;\n                    # see _log_cause_of_error(). we can't wrap the exception\n                    # because then we lose the stacktrace (which is the whole\n                    # point of the inline runner)\n\n                    if input_uri:  # from manifest\n                        self._error_while_reading_from = input_uri\n                    else:\n                        self._error_while_reading_from = self._task_input_path(\n                            task_type, step_num, task_num)\n\n                    raise\n\n        return invoke_task\n\n    def _run_step_on_spark(self, step, step_num):\n        \"\"\"Set up a fake working directory and environment, and call the Spark\n        method.\"\"\"\n        # this is kind of a Spark-specific mash-up of _run_streaming_step()\n        # (in sim.py) and _invoke_task_func(), above\n\n        # don't create the output dir for the step; that's Spark's job\n\n        # breaking the Spark step down into tasks is pyspark's job, so\n        # we just have a single dummy task\n\n        self.fs.mkdir(self._task_dir('spark', step_num, task_num=0))\n        # could potentially parse this for cause of error\n        stderr_path = self._task_stderr_path('spark', step_num, task_num=0)\n        stdout_path = self._task_output_path('spark', step_num, task_num=0)\n\n        self._create_dist_cache_dir(step_num)\n        wd = self._setup_working_dir('spark', step_num, task_num=0)\n\n        # use abspath() on input URIs before changing working dir\n        task_args = self._spark_script_args(step_num)\n\n        with open(stdout_path, 'wb') as stdout, \\\n                open(stderr_path, 'wb') as stderr:\n            with save_current_environment(), save_cwd(), save_sys_path(), \\\n                    save_sys_std():\n                os.environ.update(_fix_env(self._cmdenv()))\n                os.chdir(wd)\n                sys.path = [os.getcwd()] + sys.path\n\n                # pretend we redirected stdout and stderr\n                sys.stdout, sys.stderr = stdout, stderr\n\n                task = self._mrjob_cls(task_args)\n                task.execute()\n\n    def _log_cause_of_error(self, ex):\n        \"\"\"Just tell what file we were reading from (since they'll see\n        the stacktrace from the actual exception)\"\"\"\n        if self._error_while_reading_from:\n            log.error('\\nError while reading from %s:\\n' %\n                      self._error_while_reading_from)\n\n    def _spark_executors_have_own_wd(self):\n        return True  # because we fake it\n\n    def _spark_driver_has_own_wd(self):\n        return True  # because we fake it\n\n    def _wd_mirror(self):\n        return None  # no need for this, we set up the working dir (Spark too)"
+      },
+      {
+        "file": "mrjob/inline.py",
+        "name": "InlineMRJobRunner._run_step_on_spark",
+        "kind": "function",
+        "symbol": "mrjob.inline.InlineMRJobRunner._run_step_on_spark",
+        "start": 150,
+        "end": 184,
+        "code": "    def _run_step_on_spark(self, step, step_num):\n        \"\"\"Set up a fake working directory and environment, and call the Spark\n        method.\"\"\"\n        # this is kind of a Spark-specific mash-up of _run_streaming_step()\n        # (in sim.py) and _invoke_task_func(), above\n\n        # don't create the output dir for the step; that's Spark's job\n\n        # breaking the Spark step down into tasks is pyspark's job, so\n        # we just have a single dummy task\n\n        self.fs.mkdir(self._task_dir('spark', step_num, task_num=0))\n        # could potentially parse this for cause of error\n        stderr_path = self._task_stderr_path('spark', step_num, task_num=0)\n        stdout_path = self._task_output_path('spark', step_num, task_num=0)\n\n        self._create_dist_cache_dir(step_num)\n        wd = self._setup_working_dir('spark', step_num, task_num=0)\n\n        # use abspath() on input URIs before changing working dir\n        task_args = self._spark_script_args(step_num)\n\n        with open(stdout_path, 'wb') as stdout, \\\n                open(stderr_path, 'wb') as stderr:\n            with save_current_environment(), save_cwd(), save_sys_path(), \\\n                    save_sys_std():\n                os.environ.update(_fix_env(self._cmdenv()))\n                os.chdir(wd)\n                sys.path = [os.getcwd()] + sys.path\n\n                # pretend we redirected stdout and stderr\n                sys.stdout, sys.stderr = stdout, stderr\n\n                task = self._mrjob_cls(task_args)\n                task.execute()"
+      }
+    ],
+    "unresolved": [
+      "mrjob/util.py:line: 170",
+      "mrjob/util.py:class: None",
+      "mrjob/util.py:line: 198",
+      "mrjob/util.py:class: None",
+      "mrjob/util.py:line: 227",
+      "mrjob/util.py:class: None"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 2,
+    "unresolved_locations": 6,
+    "returned_code_chars": 13536
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 35471,
+    "completion_tokens": 842,
+    "total_tokens": 36313,
+    "seconds": 63.81703495979309,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 132.94714784622192,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

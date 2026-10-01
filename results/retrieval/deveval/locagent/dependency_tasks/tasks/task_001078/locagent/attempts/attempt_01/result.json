@@ -1,0 +1,116 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1078,
+  "namespace": "gunicorn.config.Config.worker_class",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 26629,
+      "input_estimate_after": 26629,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the analysis of the `gunicorn/config.py` file and the requirement to identify reusable dependencies for implementing the `worker_class` method in the `Config` class, I have identified the following key dependencies:\n\n1. **`worker_class_str` property** (lines 102-111): This property already implements the logic for determining the worker class string based on whether it's a sync worker with threads > 1. This is a direct dependency that should be reused.\n\n2. **`util.load_class` function** (lines 160-163): Used in the `logger_class` property to load classes by URI. This utility function is essential for loading the worker class from a URI string.\n\n3. **`WorkerClass` setting class** (lines 650-682): Defines the configuration setting for worker class with validation and defaults. This provides the configuration interface for worker class URIs.\n\n4. **`WorkerThreads` setting class** (lines 684-710): Defines the threads configuration setting. The `worker_class` method needs to check if `threads > 1` when dealing with sync workers.\n\n5. **`validate_class` validator function** (lines 412-418): Used by the `WorkerClass` setting to validate class URIs. This may be relevant for validating worker class URIs.\n\nHere are the specific locations:\n\n```\ngunicorn/config.py\nline: 102\nline: -111\nclass: Config\nproperty: worker_class_str\n\ngunicorn/config.py\nline: 160\nline: 163\nfunction: util.load_class\n\ngunicorn/config.py\nline: 650\nline: 682\nclass: WorkerClass\n\ngunicorn/config.py\nline: 684\nline: 710\nclass: WorkerThreads\n\ngunicorn/config.py\nline: 412\nline: 418\nfunction: validate_class\n```",
+  "final_locations": {
+    "files": [
+      "gunicorn/config.py"
+    ],
+    "entities": [
+      {
+        "file": "gunicorn/config.py",
+        "name": "Config",
+        "kind": "class",
+        "symbol": "gunicorn.config.Config",
+        "start": 46,
+        "end": 232,
+        "code": "class Config(object):\n\n    def __init__(self, usage=None, prog=None):\n        self.settings = make_settings()\n        self.usage = usage\n        self.prog = prog or os.path.basename(sys.argv[0])\n        self.env_orig = os.environ.copy()\n\n    def __str__(self):\n        lines = []\n        kmax = max(len(k) for k in self.settings)\n        for k in sorted(self.settings):\n            v = self.settings[k].value\n            if callable(v):\n                v = \"<{}()>\".format(v.__qualname__)\n            lines.append(\"{k:{kmax}} = {v}\".format(k=k, v=v, kmax=kmax))\n        return \"\\n\".join(lines)\n\n    def __getattr__(self, name):\n        if name not in self.settings:\n            raise AttributeError(\"No configuration setting for: %s\" % name)\n        return self.settings[name].get()\n\n    def __setattr__(self, name, value):\n        if name != \"settings\" and name in self.settings:\n            raise AttributeError(\"Invalid access!\")\n        super().__setattr__(name, value)\n\n    def set(self, name, value):\n        if name not in self.settings:\n            raise AttributeError(\"No configuration setting for: %s\" % name)\n        self.settings[name].set(value)\n\n    def get_cmd_args_from_env(self):\n        if 'GUNICORN_CMD_ARGS' in self.env_orig:\n            return shlex.split(self.env_orig['GUNICORN_CMD_ARGS'])\n        return []\n\n    def parser(self):\n        kwargs = {\n            \"usage\": self.usage,\n            \"prog\": self.prog\n        }\n        parser = argparse.ArgumentParser(**kwargs)\n        parser.add_argument(\"-v\", \"--version\",\n                            action=\"version\", default=argparse.SUPPRESS,\n                            version=\"%(prog)s (version \" + __version__ + \")\\n\",\n                            help=\"show program's version number and exit\")\n        parser.add_argument(\"args\", nargs=\"*\", help=argparse.SUPPRESS)\n\n        keys = sorted(self.settings, key=self.settings.__getitem__)\n        for k in keys:\n            self.settings[k].add_option(parser)\n\n        return parser\n\n    @property\n    def worker_class_str(self):\n        uri = self.settings['worker_class'].get()\n\n        # are we using a threaded worker?\n        is_sync = uri.endswith('SyncWorker') or uri == 'sync'\n        if is_sync and self.threads > 1:\n            return \"gthread\"\n        return uri\n\n    @property\n    def worker_class(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n    @property\n    def address(self):\n        s = self.settings['bind'].get()\n        return [util.parse_address(util.bytes_to_str(bind)) for bind in s]\n\n    @property\n    def uid(self):\n        return self.settings['user'].get()\n\n    @property\n    def gid(self):\n        return self.settings['group'].get()\n\n    @property\n    def proc_name(self):\n        pn = self.settings['proc_name'].get()\n        if pn is not None:\n            return pn\n        else:\n            return self.settings['default_proc_name'].get()\n\n    @property\n    def logger_class(self):\n        uri = self.settings['logger_class'].get()\n        if uri == \"simple\":\n            # support the default\n            uri = LoggerClass.default\n\n        # if default logger is in use, and statsd is on, automagically switch\n        # to the statsd logger\n        if uri == LoggerClass.default:\n            if 'statsd_host' in self.settings and self.settings['statsd_host'].value is not None:\n                uri = \"gunicorn.instrument.statsd.Statsd\"\n\n        logger_class = util.load_class(\n            uri,\n            default=\"gunicorn.glogging.Logger\",\n            section=\"gunicorn.loggers\")\n\n        if hasattr(logger_class, \"install\"):\n            logger_class.install()\n        return logger_class\n\n    @property\n    def is_ssl(self):\n        return self.certfile or self.keyfile\n\n    @property\n    def ssl_options(self):\n        opts = {}\n        for name, value in self.settings.items():\n            if value.section == 'SSL':\n                opts[name] = value.get()\n        return opts\n\n    @property\n    def env(self):\n        raw_env = self.settings['raw_env'].get()\n        env = {}\n\n        if not raw_env:\n            return env\n\n        for e in raw_env:\n            s = util.bytes_to_str(e)\n            try:\n                k, v = s.split('=', 1)\n            except ValueError:\n                raise RuntimeError(\"environment setting %r invalid\" % s)\n\n            env[k] = v\n\n        return env\n\n    @property\n    def sendfile(self):\n        if self.settings['sendfile'].get() is not None:\n            return False\n\n        if 'SENDFILE' in os.environ:\n            sendfile = os.environ['SENDFILE'].lower()\n            return sendfile in ['y', '1', 'yes', 'true']\n\n        return True\n\n    @property\n    def reuse_port(self):\n        return self.settings['reuse_port'].get()\n\n    @property\n    def paste_global_conf(self):\n        raw_global_conf = self.settings['raw_paste_global_conf'].get()\n        if raw_global_conf is None:\n            return None\n\n        global_conf = {}\n        for e in raw_global_conf:\n            s = util.bytes_to_str(e)\n            try:\n                k, v = re.split(r'(?<!\\\\)=', s, 1)\n            except ValueError:\n                raise RuntimeError(\"environment setting %r invalid\" % s)\n            k = k.replace('\\\\=', '=')\n            v = v.replace('\\\\=', '=')\n            global_conf[k] = v\n\n        return global_conf"
+      },
+      {
+        "file": "gunicorn/config.py",
+        "name": "Config.logger_class",
+        "kind": "function",
+        "symbol": "gunicorn.config.Config.logger_class",
+        "start": 148,
+        "end": 167,
+        "code": "    def logger_class(self):\n        uri = self.settings['logger_class'].get()\n        if uri == \"simple\":\n            # support the default\n            uri = LoggerClass.default\n\n        # if default logger is in use, and statsd is on, automagically switch\n        # to the statsd logger\n        if uri == LoggerClass.default:\n            if 'statsd_host' in self.settings and self.settings['statsd_host'].value is not None:\n                uri = \"gunicorn.instrument.statsd.Statsd\"\n\n        logger_class = util.load_class(\n            uri,\n            default=\"gunicorn.glogging.Logger\",\n            section=\"gunicorn.loggers\")\n\n        if hasattr(logger_class, \"install\"):\n            logger_class.install()\n        return logger_class"
+      },
+      {
+        "file": "gunicorn/config.py",
+        "name": "WorkerClass",
+        "kind": "class",
+        "symbol": "gunicorn.config.WorkerClass",
+        "start": 650,
+        "end": 681,
+        "code": "class WorkerClass(Setting):\n    name = \"worker_class\"\n    section = \"Worker Processes\"\n    cli = [\"-k\", \"--worker-class\"]\n    meta = \"STRING\"\n    validator = validate_class\n    default = \"sync\"\n    desc = \"\"\"\\\n        The type of workers to use.\n\n        The default class (``sync``) should handle most \"normal\" types of\n        workloads. You'll want to read :doc:`design` for information on when\n        you might want to choose one of the other worker classes. Required\n        libraries may be installed using setuptools' ``extras_require`` feature.\n\n        A string referring to one of the following bundled classes:\n\n        * ``sync``\n        * ``eventlet`` - Requires eventlet >= 0.24.1 (or install it via\n          ``pip install gunicorn[eventlet]``)\n        * ``gevent``   - Requires gevent >= 1.4 (or install it via\n          ``pip install gunicorn[gevent]``)\n        * ``tornado``  - Requires tornado >= 0.2 (or install it via\n          ``pip install gunicorn[tornado]``)\n        * ``gthread``  - Python 2 requires the futures package to be installed\n          (or install it via ``pip install gunicorn[gthread]``)\n\n        Optionally, you can provide your own worker by giving Gunicorn a\n        Python path to a subclass of ``gunicorn.workers.base.Worker``.\n        This alternative syntax will load the gevent class:\n        ``gunicorn.workers.ggevent.GeventWorker``.\n        \"\"\""
+      },
+      {
+        "file": "gunicorn/config.py",
+        "name": "WorkerThreads",
+        "kind": "class",
+        "symbol": "gunicorn.config.WorkerThreads",
+        "start": 684,
+        "end": 709,
+        "code": "class WorkerThreads(Setting):\n    name = \"threads\"\n    section = \"Worker Processes\"\n    cli = [\"--threads\"]\n    meta = \"INT\"\n    validator = validate_pos_int\n    type = int\n    default = 1\n    desc = \"\"\"\\\n        The number of worker threads for handling requests.\n\n        Run each worker with the specified number of threads.\n\n        A positive integer generally in the ``2-4 x $(NUM_CORES)`` range.\n        You'll want to vary this a bit to find the best for your particular\n        application's work load.\n\n        If it is not defined, the default is ``1``.\n\n        This setting only affects the Gthread worker type.\n\n        .. note::\n           If you try to use the ``sync`` worker type and set the ``threads``\n           setting to more than 1, the ``gthread`` worker type will be used\n           instead.\n        \"\"\""
+      },
+      {
+        "file": "gunicorn/config.py",
+        "name": "validate_class",
+        "kind": "function",
+        "symbol": "gunicorn.config.validate_class",
+        "start": 412,
+        "end": 417,
+        "code": "def validate_class(val):\n    if inspect.isfunction(val) or inspect.ismethod(val):\n        val = val()\n    if inspect.isclass(val):\n        return val\n    return validate_string(val)"
+      }
+    ],
+    "unresolved": [
+      "gunicorn/config.py:function: util.load_class",
+      "gunicorn/config.py:line: 682",
+      "gunicorn/config.py:line: 710",
+      "gunicorn/config.py:line: 418"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "gunicorn.config.Config.settings"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 4,
+    "returned_code_chars": 8446
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 30810,
+    "completion_tokens": 587,
+    "total_tokens": 31397,
+    "seconds": 33.580113649368286,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 36.789952754974365,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

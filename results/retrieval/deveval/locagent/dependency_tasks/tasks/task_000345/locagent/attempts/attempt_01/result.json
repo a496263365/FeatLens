@@ -1,0 +1,96 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 345,
+  "namespace": "boto.ec2.elb.ELBConnection.get_all_load_balancers",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3063,
+      "input_estimate_after": 3063,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboto/connection.py\nclass: AWSQueryConnection\n\nboto/__init__.py\nfunction: connect_elb\n\nboto/resultset.py\nclass: ResultSet\n\nboto/ec2/elb/__init__.py\nclass: LoadBalancer\n```",
+  "final_locations": {
+    "files": [
+      "boto/connection.py",
+      "boto/__init__.py",
+      "boto/resultset.py",
+      "boto/ec2/elb/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/connection.py",
+        "name": "AWSQueryConnection",
+        "kind": "class",
+        "symbol": "boto.connection.AWSQueryConnection",
+        "start": 1081,
+        "end": 1227,
+        "code": "class AWSQueryConnection(AWSAuthConnection):\n\n    APIVersion = ''\n    ResponseError = BotoServerError\n\n    def __init__(self, aws_access_key_id=None, aws_secret_access_key=None,\n                 is_secure=True, port=None, proxy=None, proxy_port=None,\n                 proxy_user=None, proxy_pass=None, host=None, debug=0,\n                 https_connection_factory=None, path='/', security_token=None,\n                 validate_certs=True, profile_name=None, provider='aws'):\n        super(AWSQueryConnection, self).__init__(\n            host, aws_access_key_id,\n            aws_secret_access_key,\n            is_secure, port, proxy,\n            proxy_port, proxy_user, proxy_pass,\n            debug, https_connection_factory, path,\n            security_token=security_token,\n            validate_certs=validate_certs,\n            profile_name=profile_name,\n            provider=provider)\n\n    def _required_auth_capability(self):\n        return []\n\n    def get_utf8_value(self, value):\n        return boto.utils.get_utf8_value(value)\n\n    def make_request(self, action, params=None, path='/', verb='GET'):\n        http_request = self.build_base_http_request(verb, path, None,\n                                                    params, {}, '',\n                                                    self.host)\n        if action:\n            http_request.params['Action'] = action\n        if self.APIVersion:\n            http_request.params['Version'] = self.APIVersion\n        return self._mexe(http_request)\n\n    def build_list_params(self, params, items, label):\n        if isinstance(items, six.string_types):\n            items = [items]\n        for i in range(1, len(items) + 1):\n            params['%s.%d' % (label, i)] = items[i - 1]\n\n    def build_complex_list_params(self, params, items, label, names):\n        \"\"\"Serialize a list of structures.\n\n        For example::\n\n            items = [('foo', 'bar', 'baz'), ('foo2', 'bar2', 'baz2')]\n            label = 'ParamName.member'\n            names = ('One', 'Two', 'Three')\n            self.build_complex_list_params(params, items, label, names)\n\n        would result in the params dict being updated with these params::\n\n            ParamName.member.1.One = foo\n            ParamName.member.1.Two = bar\n            ParamName.member.1.Three = baz\n\n            ParamName.member.2.One = foo2\n            ParamName.member.2.Two = bar2\n            ParamName.member.2.Three = baz2\n\n        :type params: dict\n        :param params: The params dict.  The complex list params\n            will be added to this dict.\n\n        :type items: list of tuples\n        :param items: The list to serialize.\n\n        :type label: string\n        :param label: The prefix to apply to the parameter.\n\n        :type names: tuple of strings\n        :param names: The names associated with each tuple element.\n\n        \"\"\"\n        for i, item in enumerate(items, 1):\n            current_prefix = '%s.%s' % (label, i)\n            for key, value in zip(names, item):\n                full_key = '%s.%s' % (current_prefix, key)\n                params[full_key] = value\n\n    # generics\n\n    def get_list(self, action, params, markers, path='/',\n                 parent=None, verb='GET'):\n        if not parent:\n            parent = self\n        response = self.make_request(action, params, path, verb)\n        body = response.read()\n        boto.log.debug(body)\n        if not body:\n            boto.log.error('Null body %s' % body)\n            raise self.ResponseError(response.status, response.reason, body)\n        elif response.status == 200:\n            rs = ResultSet(markers)\n            h = boto.handler.XmlHandler(rs, parent)\n            if isinstance(body, six.text_type):\n                body = body.encode('utf-8')\n            xml.sax.parseString(body, h)\n            return rs\n        else:\n            boto.log.error('%s %s' % (response.status, response.reason))\n            boto.log.error('%s' % body)\n            raise self.ResponseError(response.status, response.reason, body)\n\n    def get_object(self, action, params, cls, path='/',\n                   parent=None, verb='GET'):\n        if not parent:\n            parent = self\n        response = self.make_request(action, params, path, verb)\n        body = response.read()\n        boto.log.debug(body)\n        if not body:\n            boto.log.error('Null body %s' % body)\n            raise self.ResponseError(response.status, response.reason, body)\n        elif response.status == 200:\n            obj = cls(parent)\n            h = boto.handler.XmlHandler(obj, parent)\n            if isinstance(body, six.text_type):\n                body = body.encode('utf-8')\n            xml.sax.parseString(body, h)\n            return obj\n        else:\n            boto.log.error('%s %s' % (response.status, response.reason))\n            boto.log.error('%s' % body)\n            raise self.ResponseError(response.status, response.reason, body)\n\n    def get_status(self, action, params, path='/', parent=None, verb='GET'):\n        if not parent:\n            parent = self\n        response = self.make_request(action, params, path, verb)\n        body = response.read()\n        boto.log.debug(body)\n        if not body:\n            boto.log.error('Null body %s' % body)\n            raise self.ResponseError(response.status, response.reason, body)\n        elif response.status == 200:\n            rs = ResultSet()\n            h = boto.handler.XmlHandler(rs, parent)\n            xml.sax.parseString(body, h)\n            return rs.status\n        else:\n            boto.log.error('%s %s' % (response.status, response.reason))\n            boto.log.error('%s' % body)\n            raise self.ResponseError(response.status, response.reason, body)"
+      },
+      {
+        "file": "boto/__init__.py",
+        "name": "connect_elb",
+        "kind": "function",
+        "symbol": "boto.connect_elb",
+        "start": 174,
+        "end": 186,
+        "code": "def connect_elb(aws_access_key_id=None, aws_secret_access_key=None, **kwargs):\n    \"\"\"\n    :type aws_access_key_id: string\n    :param aws_access_key_id: Your AWS Access Key ID\n\n    :type aws_secret_access_key: string\n    :param aws_secret_access_key: Your AWS Secret Access Key\n\n    :rtype: :class:`boto.ec2.elb.ELBConnection`\n    :return: A connection to Amazon's Load Balancing Service\n    \"\"\"\n    from boto.ec2.elb import ELBConnection\n    return ELBConnection(aws_access_key_id, aws_secret_access_key, **kwargs)"
+      },
+      {
+        "file": "boto/resultset.py",
+        "name": "ResultSet",
+        "kind": "class",
+        "symbol": "boto.resultset.ResultSet",
+        "start": 25,
+        "end": 134,
+        "code": "class ResultSet(list):\n    \"\"\"\n    The ResultSet is used to pass results back from the Amazon services\n    to the client. It is light wrapper around Python's :py:class:`list` class,\n    with some additional methods for parsing XML results from AWS.\n    Because I don't really want any dependencies on external libraries,\n    I'm using the standard SAX parser that comes with Python. The good news is\n    that it's quite fast and efficient but it makes some things rather\n    difficult.\n\n    You can pass in, as the marker_elem parameter, a list of tuples.\n    Each tuple contains a string as the first element which represents\n    the XML element that the resultset needs to be on the lookout for\n    and a Python class as the second element of the tuple. Each time the\n    specified element is found in the XML, a new instance of the class\n    will be created and popped onto the stack.\n\n    :ivar str next_token: A hash used to assist in paging through very long\n        result sets. In most cases, passing this value to certain methods\n        will give you another 'page' of results.\n    \"\"\"\n    def __init__(self, marker_elem=None):\n        list.__init__(self)\n        if isinstance(marker_elem, list):\n            self.markers = marker_elem\n        else:\n            self.markers = []\n        self.marker = None\n        self.key_marker = None\n        self.next_marker = None  # avail when delimiter used\n        self.next_key_marker = None\n        self.next_upload_id_marker = None\n        self.next_version_id_marker = None\n        self.next_generation_marker = None\n        self.version_id_marker = None\n        self.is_truncated = False\n        self.next_token = None\n        self.status = True\n\n    def startElement(self, name, attrs, connection):\n        for t in self.markers:\n            if name == t[0]:\n                obj = t[1](connection)\n                self.append(obj)\n                return obj\n        if name == 'Owner':\n            # Makes owner available for get_service and\n            # perhaps other lists where not handled by\n            # another element.\n            self.owner = User()\n            return self.owner\n        return None\n\n    def to_boolean(self, value, true_value='true'):\n        if value == true_value:\n            return True\n        else:\n            return False\n\n    def endElement(self, name, value, connection):\n        if name == 'IsTruncated':\n            self.is_truncated = self.to_boolean(value)\n        elif name == 'Marker':\n            self.marker = value\n        elif name == 'KeyMarker':\n            self.key_marker = value\n        elif name == 'NextMarker':\n            self.next_marker = value\n        elif name == 'NextKeyMarker':\n            self.next_key_marker = value\n        elif name == 'VersionIdMarker':\n            self.version_id_marker = value\n        elif name == 'NextVersionIdMarker':\n            self.next_version_id_marker = value\n        elif name == 'NextGenerationMarker':\n            self.next_generation_marker = value\n        elif name == 'UploadIdMarker':\n            self.upload_id_marker = value\n        elif name == 'NextUploadIdMarker':\n            self.next_upload_id_marker = value\n        elif name == 'Bucket':\n            self.bucket = value\n        elif name == 'MaxUploads':\n            self.max_uploads = int(value)\n        elif name == 'MaxItems':\n            self.max_items = int(value)\n        elif name == 'Prefix':\n            self.prefix = value\n        elif name == 'return':\n            self.status = self.to_boolean(value)\n        elif name == 'StatusCode':\n            self.status = self.to_boolean(value, 'Success')\n        elif name == 'ItemName':\n            self.append(value)\n        elif name == 'NextToken':\n            self.next_token = value\n        elif name == 'nextToken':\n            self.next_token = value\n            # Code exists which expects nextToken to be available, so we\n            # set it here to remain backwards-compatibile.\n            self.nextToken = value\n        elif name == 'BoxUsage':\n            try:\n                connection.box_usage += float(value)\n            except:\n                pass\n        elif name == 'IsValid':\n            self.status = self.to_boolean(value, 'True')\n        else:\n            setattr(self, name, value)"
+      }
+    ],
+    "unresolved": [
+      "boto/ec2/elb/__init__.py:class: LoadBalancer"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 4,
+    "unresolved_locations": 1,
+    "returned_code_chars": 10518
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16104,
+    "completion_tokens": 1329,
+    "total_tokens": 17433,
+    "seconds": 58.71111845970154,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 121.60417056083679,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

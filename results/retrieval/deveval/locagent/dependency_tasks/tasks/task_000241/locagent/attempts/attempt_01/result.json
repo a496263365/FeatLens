@@ -1,0 +1,103 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 241,
+  "namespace": "litecli.packages.parseutils.extract_tables",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5657,
+      "input_estimate_after": 5657,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `extract_tables` function in `litecli/packages/parseutils.py`:\n\n```\nlitecli/packages/parseutils.py\nline: 66\nfunction: is_subselect\n\nlitecli/packages/parseutils.py\nline: 82\nfunction: extract_from_part\n\nlitecli/packages/parseutils.py\nline: 120\nfunction: extract_table_identifiers\n\nlitecli/packages/parseutils.py\nline: -1\nimports: sqlparse\nimports: sqlparse.sql.IdentifierList\nimports: sqlparse.sql.Identifier\nimports: sqlparse.sql.Function\nimports: sqlparse.tokens.Keyword\nimports: sqlparse.tokens.DML\nimports: sqlparse.tokens.Punctuation\n\nlitecli/packages/completion_engine.py\nline: -1\nimports: litecli/packages/parseutils.py:extract_tables\n```",
+  "final_locations": {
+    "files": [
+      "litecli/packages/parseutils.py",
+      "litecli/packages/completion_engine.py"
+    ],
+    "entities": [
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "is_subselect",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.is_subselect",
+        "start": 67,
+        "end": 79,
+        "code": "def is_subselect(parsed):\n    if not parsed.is_group:\n        return False\n    for item in parsed.tokens:\n        if item.ttype is DML and item.value.upper() in (\n            \"SELECT\",\n            \"INSERT\",\n            \"UPDATE\",\n            \"CREATE\",\n            \"DELETE\",\n        ):\n            return True\n    return False"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "extract_from_part",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.extract_from_part",
+        "start": 82,
+        "end": 117,
+        "code": "def extract_from_part(parsed, stop_at_punctuation=True):\n    tbl_prefix_seen = False\n    for item in parsed.tokens:\n        if tbl_prefix_seen:\n            if is_subselect(item):\n                for x in extract_from_part(item, stop_at_punctuation):\n                    yield x\n            elif stop_at_punctuation and item.ttype is Punctuation:\n                return\n            # An incomplete nested select won't be recognized correctly as a\n            # sub-select. eg: 'SELECT * FROM (SELECT id FROM user'. This causes\n            # the second FROM to trigger this elif condition resulting in a\n            # `return`. So we need to ignore the keyword if the keyword\n            # FROM.\n            # Also 'SELECT * FROM abc JOIN def' will trigger this elif\n            # condition. So we need to ignore the keyword JOIN and its variants\n            # INNER JOIN, FULL OUTER JOIN, etc.\n            elif (\n                item.ttype is Keyword\n                and (not item.value.upper() == \"FROM\")\n                and (not item.value.upper().endswith(\"JOIN\"))\n            ):\n                return\n            else:\n                yield item\n        elif (\n            item.ttype is Keyword or item.ttype is Keyword.DML\n        ) and item.value.upper() in (\"COPY\", \"FROM\", \"INTO\", \"UPDATE\", \"TABLE\", \"JOIN\"):\n            tbl_prefix_seen = True\n        # 'SELECT a, FROM abc' will detect FROM as part of the column list.\n        # So this check here is necessary.\n        elif isinstance(item, IdentifierList):\n            for identifier in item.get_identifiers():\n                if identifier.ttype is Keyword and identifier.value.upper() == \"FROM\":\n                    tbl_prefix_seen = True\n                    break"
+      },
+      {
+        "file": "litecli/packages/parseutils.py",
+        "name": "extract_table_identifiers",
+        "kind": "function",
+        "symbol": "litecli.packages.parseutils.extract_table_identifiers",
+        "start": 120,
+        "end": 145,
+        "code": "def extract_table_identifiers(token_stream):\n    \"\"\"yields tuples of (schema_name, table_name, table_alias)\"\"\"\n\n    for item in token_stream:\n        if isinstance(item, IdentifierList):\n            for identifier in item.get_identifiers():\n                # Sometimes Keywords (such as FROM ) are classified as\n                # identifiers which don't have the get_real_name() method.\n                try:\n                    schema_name = identifier.get_parent_name()\n                    real_name = identifier.get_real_name()\n                except AttributeError:\n                    continue\n                if real_name:\n                    yield (schema_name, real_name, identifier.get_alias())\n        elif isinstance(item, Identifier):\n            real_name = item.get_real_name()\n            schema_name = item.get_parent_name()\n\n            if real_name:\n                yield (schema_name, real_name, item.get_alias())\n            else:\n                name = item.get_name()\n                yield (None, name, item.get_alias() or name)\n        elif isinstance(item, Function):\n            yield (None, item.get_name(), item.get_name())"
+      }
+    ],
+    "unresolved": [
+      "litecli/packages/parseutils.py:line: 66",
+      "litecli/packages/parseutils.py:line: -1",
+      "litecli/packages/completion_engine.py:line: -1",
+      "imports: litecli/packages/parseutils.py:extract_tables"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "litecli.packages.parseutils.extract_from_part",
+      "litecli.packages.parseutils.extract_table_identifiers"
+    ],
+    "exact_hit_dependencies": [
+      "litecli.packages.parseutils.extract_from_part",
+      "litecli.packages.parseutils.extract_table_identifiers"
+    ],
+    "returned_entities": 3,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 3200
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21622,
+    "completion_tokens": 655,
+    "total_tokens": 22277,
+    "seconds": 44.77713942527771,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 46.12470626831055,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,112 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2184,
+  "namespace": "flower.utils.search.stringified_dict_contains_value",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4466,
+      "input_estimate_after": 4466,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `stringified_dict_contains_value` function. The function needs to check if a stringified dictionary (like `\"{'test': 5}\"`) contains a specific key/value pair without fully parsing the string into a dictionary.\n\nFrom the code analysis, I can see:\n\n1. The function is called from `satisfies_search_terms` (line 55 in search.py) to check kwargs in task search\n2. The function needs to handle stringified dictionaries efficiently\n3. The `task.kwargs` parameter passed to the function is a string representation of a dictionary\n\nKey reusable dependencies and related code locations:\n\n```\nflower/utils/search.py\nline: 55\nfunction: satisfies_search_terms\nline: 84\nfunction: preprocess_search_value\n\nflower/utils/tasks.py\nline: 40\nfunction: iter_tasks\nline: 4\nimport: flower.utils.search.satisfies_search_terms\n\nflower/utils/search.py\nline: 24-27\ncontext: kwargs parsing logic\nline: 87-90\nfunction: task_args_contains_search_args\n\nflower/utils/search.py\nline: 6-34\nfunction: parse_search_terms\nline: 27\ncontext: kwargs value preprocessing\n```",
+  "final_locations": {
+    "files": [
+      "flower/utils/search.py",
+      "flower/utils/tasks.py"
+    ],
+    "entities": [
+      {
+        "file": "flower/utils/search.py",
+        "name": "satisfies_search_terms",
+        "kind": "function",
+        "symbol": "flower.utils.search.satisfies_search_terms",
+        "start": 37,
+        "end": 59,
+        "code": "def satisfies_search_terms(task, search_terms):\n    any_value_search_term = search_terms.get('any')\n    result_search_term = search_terms.get('result')\n    args_search_terms = search_terms.get('args')\n    kwargs_search_terms = search_terms.get('kwargs')\n    state_search_terms = search_terms.get('state')\n\n    if not any([any_value_search_term, result_search_term, args_search_terms, kwargs_search_terms, state_search_terms]):\n        return True\n\n    terms = [\n        state_search_terms and task.state in state_search_terms,\n        any_value_search_term and any_value_search_term in '|'.join(\n            filter(None, [task.name, task.uuid, task.state,\n                          task.worker.hostname if task.worker else None,\n                          task.args, task.kwargs, safe_str(task.result)])),\n        result_search_term and task.result and result_search_term in task.result,\n        kwargs_search_terms and all(\n            stringified_dict_contains_value(k, v, task.kwargs) for k, v in kwargs_search_terms.items()\n        ),\n        args_search_terms and task_args_contains_search_args(task.args, args_search_terms)\n    ]\n    return any(terms)"
+      },
+      {
+        "file": "flower/utils/search.py",
+        "name": "preprocess_search_value",
+        "kind": "function",
+        "symbol": "flower.utils.search.preprocess_search_value",
+        "start": 83,
+        "end": 84,
+        "code": "def preprocess_search_value(raw_value):\n    return raw_value.strip('\" ') if raw_value else ''"
+      },
+      {
+        "file": "flower/utils/tasks.py",
+        "name": "iter_tasks",
+        "kind": "function",
+        "symbol": "flower.utils.tasks.iter_tasks",
+        "start": 8,
+        "end": 47,
+        "code": "def iter_tasks(events, limit=None, offset=0, type=None, worker=None, state=None,\n               sort_by=None, received_start=None, received_end=None,\n               started_start=None, started_end=None, search=None):\n    i = 0\n    tasks = events.state.tasks_by_timestamp()\n    if sort_by is not None:\n        tasks = sort_tasks(tasks, sort_by)\n\n    def convert(x):\n        return time.mktime(datetime.datetime.strptime(x, '%Y-%m-%d %H:%M').timetuple())\n\n    search_terms = parse_search_terms(search or {})\n\n    for uuid, task in tasks:\n        if type and task.name != type:\n            continue\n        if worker and task.worker and task.worker.hostname != worker:\n            continue\n        if state and task.state != state:\n            continue\n        if received_start and task.received and\\\n                task.received < convert(received_start):\n            continue\n        if received_end and task.received and\\\n                task.received > convert(received_end):\n            continue\n        if started_start and task.started and\\\n                task.started < convert(started_start):\n            continue\n        if started_end and task.started and\\\n                task.started > convert(started_end):\n            continue\n        if not satisfies_search_terms(task, search_terms):\n            continue\n        if i >= offset:\n            yield uuid, task\n        i += 1\n        if limit is not None:\n            if i == limit + offset:\n                break"
+      },
+      {
+        "file": "flower/utils/search.py",
+        "name": "parse_search_terms",
+        "kind": "function",
+        "symbol": "flower.utils.search.parse_search_terms",
+        "start": 6,
+        "end": 34,
+        "code": "def parse_search_terms(raw_search_value):\n    search_regexp = r'(?:[^\\s,\"]|\"(?:\\\\.|[^\"])*\")+'  # splits by space, ignores space in quotes\n    if not raw_search_value:\n        return {}\n    parsed_search = {}\n    for query_part in re.findall(search_regexp, raw_search_value):\n        if not query_part:\n            continue\n        if query_part.startswith('result:'):\n            parsed_search['result'] = preprocess_search_value(query_part[len('result:'):])\n        elif query_part.startswith('args:'):\n            if 'args' not in parsed_search:\n                parsed_search['args'] = []\n            parsed_search['args'].append(preprocess_search_value(query_part[len('args:'):]))\n        elif query_part.startswith('kwargs:'):\n            if 'kwargs'not in parsed_search:\n                parsed_search['kwargs'] = {}\n            try:\n                key, value = [p.strip() for p in query_part[len('kwargs:'):].split('=')]\n            except ValueError:\n                continue\n            parsed_search['kwargs'][key] = preprocess_search_value(value)\n        elif query_part.startswith('state'):\n            if 'state' not in parsed_search:\n                parsed_search['state'] = []\n            parsed_search['state'].append(preprocess_search_value(query_part[len('state:'):]))\n        else:\n            parsed_search['any'] = preprocess_search_value(query_part)\n    return parsed_search"
+      },
+      {
+        "file": "flower/utils/search.py",
+        "name": "task_args_contains_search_args",
+        "kind": "function",
+        "symbol": "flower.utils.search.task_args_contains_search_args",
+        "start": 87,
+        "end": 90,
+        "code": "def task_args_contains_search_args(task_args, search_args):\n    if not task_args:\n        return False\n    return all(a in task_args for a in search_args)"
+      }
+    ],
+    "unresolved": [
+      "flower/utils/tasks.py:line: 4"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4275
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18027,
+    "completion_tokens": 693,
+    "total_tokens": 18720,
+    "seconds": 65.2837986946106,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 66.40508151054382,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

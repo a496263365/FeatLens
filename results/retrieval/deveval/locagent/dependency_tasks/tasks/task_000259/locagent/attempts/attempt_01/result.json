@@ -1,0 +1,157 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 259,
+  "namespace": "mssqlcli.packages.sqlcompletion.suggest_type",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12016,
+      "input_estimate_after": 12016,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the key reusable dependencies needed to implement the `suggest_type` function in `mssqlcli/packages/sqlcompletion.py`. The function needs to analyze SQL text and cursor position to suggest completion types, and several existing modules provide the necessary functionality.\n\n```\nmssqlcli/packages/parseutils/utils.py\nline: 19\nfunction: last_word\nline: 65\nfunction: find_prev_keyword\nline: 119\nfunction: parse_partial_identifier\n\nmssqlcli/packages/parseutils/tables.py\nfunction: extract_tables\n\nmssqlcli/packages/parseutils/ctes.py\nfunction: isolate_query_ctes\n\nmssqlcli/packages/special/main.py\nfunction: parse_special_command\n\nmssqlcli/packages/sqlcompletion.py\nline: 57\nclass: SqlStatement\nline: 244\nfunction: suggest_special\nline: 294\nfunction: suggest_based_on_last_token\n```",
+  "final_locations": {
+    "files": [
+      "mssqlcli/packages/parseutils/utils.py",
+      "mssqlcli/packages/parseutils/tables.py",
+      "mssqlcli/packages/parseutils/ctes.py",
+      "mssqlcli/packages/special/main.py",
+      "mssqlcli/packages/sqlcompletion.py"
+    ],
+    "entities": [
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "last_word",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.last_word",
+        "start": 19,
+        "end": 62,
+        "code": "def last_word(text, include='alphanum_underscore'):\n    r\"\"\"\n    Find the last word in a sentence.\n\n    >>> last_word('abc')\n    'abc'\n    >>> last_word(' abc')\n    'abc'\n    >>> last_word('')\n    ''\n    >>> last_word(' ')\n    ''\n    >>> last_word('abc ')\n    ''\n    >>> last_word('abc def')\n    'def'\n    >>> last_word('abc def ')\n    ''\n    >>> last_word('abc def;')\n    ''\n    >>> last_word('bac $def')\n    'def'\n    >>> last_word('bac $def', include='most_punctuations')\n    '$def'\n    >>> last_word('bac \\def', include='most_punctuations')\n    '\\\\\\\\def'\n    >>> last_word('bac \\def;', include='most_punctuations')\n    '\\\\\\\\def;'\n    >>> last_word('bac::def', include='most_punctuations')\n    'def'\n    >>> last_word('\"foo*bar', include='most_punctuations')\n    '\"foo*bar'\n    \"\"\"\n\n    if not text:   # Empty string\n        return ''\n\n    if text[-1].isspace():\n        return ''\n    regex = cleanup_regex[include]\n    matches = regex.search(text)\n    if matches:\n        return matches.group(0)\n    return ''"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "find_prev_keyword",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.find_prev_keyword",
+        "start": 65,
+        "end": 99,
+        "code": "def find_prev_keyword(sql, n_skip=0):\n    \"\"\" Find the last sql keyword in an SQL statement\n\n    Returns the value of the last keyword, and the text of the query with\n    everything after the last keyword stripped\n    \"\"\"\n    if not sql.strip():\n        return None, ''\n\n    parsed = sqlparse.parse(sql)[0]\n    flattened = list(parsed.flatten())\n    flattened = flattened[:len(flattened) - n_skip]\n\n    logical_operators = ('AND', 'OR', 'NOT', 'BETWEEN')\n\n    for t in reversed(flattened):\n        if t.value == '(' or (t.is_keyword and\n                              (t.value.upper() not in logical_operators)\n                             ):\n            # Find the location of token t in the original parsed statement\n            # We can't use parsed.token_index(t) because t may be a child token\n            # inside a TokenList, in which case token_index thows an error\n            # Minimal example:\n            #   p = sqlparse.parse('select * from foo where bar')\n            #   t = list(p.flatten())[-3]  # The \"Where\" token\n            #   p.token_index(t)  # Throws ValueError: not in list\n            idx = flattened.index(t)\n\n            # Combine the string values of all tokens in the original list\n            # up to and including the target keyword token t, to produce a\n            # query string with everything after the keyword token removed\n            text = ''.join(tok.value for tok in flattened[:idx + 1])\n            return t, text\n\n    return None, ''"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/utils.py",
+        "name": "parse_partial_identifier",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.utils.parse_partial_identifier",
+        "start": 119,
+        "end": 138,
+        "code": "def parse_partial_identifier(word):\n    \"\"\"Attempt to parse a (partially typed) word as an identifier\n\n    word may include a schema qualification, like `schema_name.partial_name`\n    or `schema_name.` There may also be unclosed quotation marks, like\n    `\"schema`, or `schema.\"partial_name`\n\n    :param word: string representing a (partially complete) identifier\n    :return: sqlparse.sql.Identifier, or None\n    \"\"\"\n\n    p = sqlparse.parse(word)[0]\n    n_tok = len(p.tokens)\n    if n_tok == 1 and isinstance(p.tokens[0], Identifier):\n        return p.tokens[0]\n    if p.token_next_by(m=(Error, '\"'))[1]:\n        # An unmatched double quote, e.g. '\"foo', 'foo.\"', or 'foo.\"bar'\n        # Close the double quote, then reparse\n        return parse_partial_identifier(word + '\"')\n    return None"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/tables.py",
+        "name": "extract_tables",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.tables.extract_tables",
+        "start": 121,
+        "end": 146,
+        "code": "def extract_tables(sql):\n    \"\"\"Extract the table names from an SQL statment.\n\n    Returns a list of TableReference namedtuples\n\n    \"\"\"\n    parsed = sqlparse.parse(sql)\n    if not parsed:\n        return ()\n\n    # INSERT statements must stop looking for tables at the sign of first\n    # Punctuation. eg: INSERT INTO abc (col1, col2) VALUES (1, 2)\n    # abc is the table name, but if we don't stop at the first lparen, then\n    # we'll identify abc, col1 and col2 as table names.\n    insert_stmt = parsed[0].token_first().value.lower() == 'insert'\n    stream = extract_from_part(parsed[0], stop_at_punctuation=insert_stmt)\n\n    # Kludge: sqlparse mistakenly identifies insert statements as\n    # function calls due to the parenthesized column list, e.g. interprets\n    # \"insert into foo (bar, baz)\" as a function call to foo with arguments\n    # (bar, baz). So don't allow any identifiers in insert statements\n    # to have is_function=True\n    identifiers = extract_table_identifiers(stream,\n                                            allow_functions=not insert_stmt)\n    # In the case 'sche.<cursor>', we get an empty TableReference; remove that\n    return tuple(i for i in identifiers if i.name)"
+      },
+      {
+        "file": "mssqlcli/packages/parseutils/ctes.py",
+        "name": "isolate_query_ctes",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.parseutils.ctes.isolate_query_ctes",
+        "start": 17,
+        "end": 46,
+        "code": "def isolate_query_ctes(full_text, text_before_cursor):\n    \"\"\"Simplify a query by converting CTEs into table metadata objects\n    \"\"\"\n\n    if not full_text:\n        return full_text, text_before_cursor, tuple()\n\n    ctes, _ = extract_ctes(full_text)\n    if not ctes:\n        return full_text, text_before_cursor, ()\n\n    current_position = len(text_before_cursor)\n    meta = []\n\n    for cte in ctes:\n        if cte.start < current_position < cte.stop:\n            # Currently editing a cte - treat its body as the current full_text\n            text_before_cursor = full_text[cte.start:current_position]\n            full_text = full_text[cte.start:cte.stop]\n            return full_text, text_before_cursor, meta\n\n        # Append this cte to the list of available table metadata\n        cols = (ColumnMetadata(name, None, ()) for name in cte.columns)\n        meta.append(TableMetadata(cte.name, cols))\n\n    # Editing past the last cte (ie the main body of the query)\n    full_text = full_text[ctes[-1].stop:]\n    text_before_cursor = text_before_cursor[ctes[-1].stop:current_position]\n\n    return full_text, text_before_cursor, tuple(meta)"
+      },
+      {
+        "file": "mssqlcli/packages/special/main.py",
+        "name": "parse_special_command",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.special.main.parse_special_command",
+        "start": 27,
+        "end": 31,
+        "code": "def parse_special_command(sql):\n    command, _, arg = sql.partition(' ')\n    verbose = '+' in command\n    command = command.strip().replace('+', '')\n    return (command, verbose, arg.strip())"
+      },
+      {
+        "file": "mssqlcli/packages/sqlcompletion.py",
+        "name": "SqlStatement",
+        "kind": "class",
+        "symbol": "mssqlcli.packages.sqlcompletion.SqlStatement",
+        "start": 57,
+        "end": 130,
+        "code": "class SqlStatement:\n    def __init__(self, full_text, text_before_cursor):\n        self.identifier = None\n        self.word_before_cursor = word_before_cursor = last_word(\n            text_before_cursor, include='many_punctuations')\n        full_text = _strip_named_query(full_text)\n        text_before_cursor = _strip_named_query(text_before_cursor)\n\n        full_text, text_before_cursor, self.local_tables = \\\n            isolate_query_ctes(full_text, text_before_cursor)\n\n        self.text_before_cursor_including_last_word = text_before_cursor\n\n        # If we've partially typed a word then word_before_cursor won't be an\n        # empty string. In that case we want to remove the partially typed\n        # string before sending it to the sqlparser. Otherwise the last token\n        # will always be the partially typed string which renders the smart\n        # completion useless because it will always return the list of\n        # keywords as completion.\n        if self.word_before_cursor:\n            if word_before_cursor[-1] == '(' or word_before_cursor[0] == '\\\\':\n                parsed = sqlparse.parse(text_before_cursor)\n            else:\n                text_before_cursor = text_before_cursor[:-\n                                                        len(word_before_cursor)]\n                parsed = sqlparse.parse(text_before_cursor)\n                self.identifier = parse_partial_identifier(word_before_cursor)\n        else:\n            parsed = sqlparse.parse(text_before_cursor)\n\n        full_text, text_before_cursor, parsed = \\\n            _split_multiple_statements(full_text, text_before_cursor, parsed)\n\n        self.full_text = full_text\n        self.text_before_cursor = text_before_cursor\n        self.parsed = parsed\n\n        self.last_token = parsed.token_prev(len(parsed.tokens))[1] \\\n            if parsed and parsed.token_prev(len(parsed.tokens))[1] else ''\n\n    def is_insert(self):\n        return self.parsed.token_first().value.lower() == 'insert'\n\n    def get_tables(self, scope='full'):\n        \"\"\" Gets the tables available in the statement.\n        param `scope:` possible values: 'full', 'insert', 'before'\n        If 'insert', only the first table is returned.\n        If 'before', only tables before the cursor are returned.\n        If not 'insert' and the stmt is an insert, the first table is skipped.\n        \"\"\"\n        tables = extract_tables(\n            self.full_text if scope == 'full' else self.text_before_cursor)\n        if scope == 'insert':\n            tables = tables[:1]\n        elif self.is_insert():\n            tables = tables[1:]\n        return tables\n\n    def get_previous_token(self, token):\n        return self.parsed.token_prev(self.parsed.token_index(token))[1]\n\n    def get_identifier_schema(self):\n        schema = self.identifier.get_parent_name() \\\n            if (self.identifier and self.identifier.get_parent_name()) else None\n        # If schema name is unquoted, lower-case it\n        if schema and self.identifier.value[0] != '\"':\n            schema = schema.lower()\n\n        return schema\n\n    def reduce_to_prev_keyword(self, n_skip=0):\n        prev_keyword, self.text_before_cursor = \\\n            find_prev_keyword(self.text_before_cursor, n_skip=n_skip)\n        return prev_keyword"
+      },
+      {
+        "file": "mssqlcli/packages/sqlcompletion.py",
+        "name": "suggest_special",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.sqlcompletion.suggest_special",
+        "start": 244,
+        "end": 291,
+        "code": "def suggest_special(text):\n    text = text.lstrip()\n    cmd, _, arg = parse_special_command(text)\n\n    if cmd == text:\n        # Trying to complete the special command itself\n        return (Special(),)\n\n    if cmd in ('\\\\c', '\\\\connect'):\n        return (Database(),)\n\n    if cmd == '\\\\ls':\n        return (Schema(),)\n\n    if arg:\n        # Try to distinguish \"\\d name\" from \"\\d schema.name\"\n        # Note that this will fail to obtain a schema name if wildcards are\n        # used, e.g. \"\\d schema???.name\"\n        parsed = sqlparse.parse(arg)[0].tokens[0]\n        try:\n            schema = parsed.get_parent_name()\n        except AttributeError:\n            schema = None\n    else:\n        schema = None\n\n    if cmd[1:] == 'd':\n        # \\d can describe tables or views\n        if schema:\n            return (Table(schema=schema),\n                    View(schema=schema),)\n        return (Schema(),\n                Table(schema=None),\n                View(schema=None),)\n    if cmd[1:] in SPECIALS_SUGGESTION:\n        rel_type = SPECIALS_SUGGESTION[cmd[1:]]\n        if schema:\n            if rel_type == Function:\n                return (Function(schema=schema, usage='special'),)\n            return (rel_type(schema=schema),)\n        if rel_type == Function:\n            return (Schema(), Function(schema=None, usage='special'),)\n        return (Schema(), rel_type(schema=None))\n\n    if cmd in ['\\\\n', '\\\\sn', '\\\\dn']:\n        return (NamedQuery(),)\n\n    return (Keyword(), Special())"
+      },
+      {
+        "file": "mssqlcli/packages/sqlcompletion.py",
+        "name": "suggest_based_on_last_token",
+        "kind": "function",
+        "symbol": "mssqlcli.packages.sqlcompletion.suggest_based_on_last_token",
+        "start": 294,
+        "end": 525,
+        "code": "def suggest_based_on_last_token(token, stmt):\n\n    if isinstance(token, string_types):\n        token_v = token.lower()\n    elif isinstance(token, Comparison):\n        # If 'token' is a Comparison type such as\n        # 'select * FROM abc a JOIN def d ON a.id = d.'. Then calling\n        # token.value on the comparison type will only return the lhs of the\n        # comparison. In this case a.id. So we need to do token.tokens to get\n        # both sides of the comparison and pick the last token out of that\n        # list.\n        token_v = token.tokens[-1].value.lower()\n    elif isinstance(token, Where):\n        # sqlparse groups all tokens from the where clause into a single token\n        # list. This means that token.value may be something like\n        # 'where foo > 5 and '. We need to look \"inside\" token.tokens to handle\n        # suggestions in complicated where clauses correctly\n        prev_keyword = stmt.reduce_to_prev_keyword()\n        return suggest_based_on_last_token(prev_keyword, stmt)\n    elif isinstance(token, Identifier):\n        # If the previous token is an identifier, we can suggest datatypes if\n        # we're in a parenthesized column/field list, e.g.:\n        #       CREATE TABLE foo (Identifier <CURSOR>\n        #       CREATE FUNCTION foo (Identifier <CURSOR>\n        # If we're not in a parenthesized list, the most likely scenario is the\n        # user is about to specify an alias, e.g.:\n        #       SELECT Identifier <CURSOR>\n        #       SELECT foo FROM Identifier <CURSOR>\n        prev_keyword, _ = find_prev_keyword(stmt.text_before_cursor)\n        if prev_keyword and prev_keyword.value == '(':\n            # Suggest datatypes\n            return suggest_based_on_last_token('type', stmt)\n        return (Keyword(),)\n    else:\n        token_v = token.value.lower()\n\n    if not token:\n        return (Keyword(), Special())\n    if token_v.endswith('('):\n        p = sqlparse.parse(stmt.text_before_cursor)[0]\n\n        if p.tokens and isinstance(p.tokens[-1], Where):\n            # Four possibilities:\n            #  1 - Parenthesized clause like \"WHERE foo AND (\"\n            #        Suggest columns/functions\n            #  2 - Function call like \"WHERE foo(\"\n            #        Suggest columns/functions\n            #  3 - Subquery expression like \"WHERE EXISTS (\"\n            #        Suggest keywords, in order to do a subquery\n            #  4 - Subquery OR array comparison like \"WHERE foo = ANY(\"\n            #        Suggest columns/functions AND keywords. (If we wanted to be\n            #        really fancy, we could suggest only array-typed columns)\n\n            column_suggestions = suggest_based_on_last_token('where', stmt)\n\n            # Check for a subquery expression (cases 3 & 4)\n            where = p.tokens[-1]\n            prev_tok = where.token_prev(len(where.tokens) - 1)[1]\n\n            if isinstance(prev_tok, Comparison):\n                # e.g. \"SELECT foo FROM bar WHERE foo = ANY(\"\n                prev_tok = prev_tok.tokens[-1]\n\n            prev_tok = prev_tok.value.lower()\n            if prev_tok == 'exists':\n                return (Keyword(),)\n            return column_suggestions\n\n        # Get the token before the parens\n        prev_tok = p.token_prev(len(p.tokens) - 1)[1]\n\n        if (prev_tok and prev_tok.value and prev_tok.value.lower().split(' ')[-1] == 'using'):\n            # tbl1 INNER JOIN tbl2 USING (col1, col2)\n            tables = stmt.get_tables('before')\n\n            # suggest columns that are present in more than one table\n            return (Column(table_refs=tables,\n                           require_last_table=True,\n                           local_tables=stmt.local_tables),)\n\n        if p.token_first().value.lower() == 'select':\n            # If the lparen is preceeded by a space chances are we're about to\n            # do a sub-select.\n            if last_word(stmt.text_before_cursor,\n                         'all_punctuations').startswith('('):\n                return (Keyword(),)\n        prev_prev_tok = prev_tok and p.token_prev(p.token_index(prev_tok))[1]\n        if prev_prev_tok and prev_prev_tok.normalized == 'INTO':\n            return (\n                Column(table_refs=stmt.get_tables('insert'), context='insert'),\n            )\n        # We're probably in a function argument list\n        return (Column(table_refs=extract_tables(stmt.full_text),\n                       local_tables=stmt.local_tables, qualifiable=True),)\n    if token_v == 'set':\n        return (Column(table_refs=stmt.get_tables(),\n                       local_tables=stmt.local_tables),)\n    if token_v in ('select', 'where', 'having', 'by', 'distinct'):\n        # Check for a table alias or schema qualification\n        parent = stmt.identifier.get_parent_name() \\\n            if (stmt.identifier and stmt.identifier.get_parent_name()) else []\n        tables = stmt.get_tables()\n        if parent:\n            tables = tuple(t for t in tables if identifies(parent, t))\n            return (Column(table_refs=tables, local_tables=stmt.local_tables),\n                    Table(schema=parent),\n                    View(schema=parent),\n                    Function(schema=parent),)\n        return (Column(table_refs=tables, local_tables=stmt.local_tables,\n                       qualifiable=True),\n                Function(schema=None),\n                Keyword(token_v.upper()),)\n    if token_v == 'as':\n        # Don't suggest anything for aliases\n        return ()\n    if (token_v.endswith('join') and token.is_keyword) or \\\n         token_v in ('copy', 'from', 'update', 'into', 'describe', 'truncate'):\n\n        schema = stmt.get_identifier_schema()\n        tables = extract_tables(stmt.text_before_cursor)\n        is_join = token_v.endswith('join') and token.is_keyword\n\n        # Suggest tables from either the currently-selected schema or the\n        # public schema if no schema has been specified\n        suggest = []\n\n        if not schema:\n            # Suggest schemas\n            suggest.insert(0, Schema())\n\n        if token_v == 'from' or is_join:\n            suggest.append(FromClauseItem(schema=schema,\n                                          table_refs=tables,\n                                          local_tables=stmt.local_tables))\n        elif token_v == 'truncate':\n            suggest.append(Table(schema))\n        else:\n            suggest.extend((Table(schema), View(schema)))\n\n        if is_join and _allow_join(stmt.parsed):\n            tables = stmt.get_tables('before')\n            suggest.append(Join(table_refs=tables, schema=schema))\n\n        return tuple(suggest)\n\n    if token_v == 'function':\n        schema = stmt.get_identifier_schema()\n        # stmt.get_previous_token will fail for e.g. `SELECT 1 FROM functions\n        # WHERE function:`\n        try:\n            prev = stmt.get_previous_token(token).value.lower()\n            if prev in('drop', 'alter', 'create', 'create or replace'):\n                return (Function(schema=schema, usage='signature'),)\n        except ValueError:\n            pass\n        return tuple()\n\n    if token_v in ('table', 'view'):\n        # E.g. 'ALTER TABLE <tablname>'\n        rel_type = {\n            'table': Table,\n            'view': View,\n            'function': Function}[token_v]\n        schema = stmt.get_identifier_schema()\n        if schema:\n            return (rel_type(schema=schema),)\n        return (Schema(), rel_type(schema=schema))\n\n    if token_v == 'column':\n        # E.g. 'ALTER TABLE foo ALTER COLUMN bar\n        return (Column(table_refs=stmt.get_tables()),)\n\n    if token_v == 'on':\n        tables = stmt.get_tables('before')\n        parent = stmt.identifier.get_parent_name() \\\n            if (stmt.identifier and stmt.identifier.get_parent_name()) else None\n        if parent:\n            # \"ON parent.<suggestion>\"\n            # parent can be either a schema name or table alias\n            filteredtables = tuple(t for t in tables if identifies(parent, t))\n            sugs = [Column(table_refs=filteredtables,\n                           local_tables=stmt.local_tables),\n                    Table(schema=parent),\n                    View(schema=parent),\n                    Function(schema=parent)]\n            if filteredtables and _allow_join_condition(stmt.parsed):\n                sugs.append(JoinCondition(table_refs=tables,\n                                          parent=filteredtables[-1]))\n            return tuple(sugs)\n        # ON <suggestion>\n        # Use table alias if there is one, otherwise the table name\n        aliases = tuple(t.ref for t in tables)\n        if _allow_join_condition(stmt.parsed):\n            return (Alias(aliases=aliases), JoinCondition(\n                table_refs=tables, parent=None))\n        return (Alias(aliases=aliases),)\n\n    if token_v in ('c', 'use', 'database', 'template'):\n        # \"\\c <db\", \"use <db>\", \"DROP DATABASE <db>\",\n        # \"CREATE DATABASE <newdb> WITH TEMPLATE <db>\"\n        return (Database(),)\n    if token_v == 'schema':\n        # DROP SCHEMA schema_name, SET SCHEMA schema name\n        prev_keyword = stmt.reduce_to_prev_keyword(n_skip=2)\n        quoted = prev_keyword and prev_keyword.value.lower() == 'set'\n        return (Schema(quoted),)\n    if token_v.endswith(',') or token_v in ('=', 'and', 'or'):\n        prev_keyword = stmt.reduce_to_prev_keyword()\n        if prev_keyword:\n            return suggest_based_on_last_token(prev_keyword, stmt)\n        return ()\n    if token_v in ('type', '::'):\n        #   ALTER TABLE foo SET DATA TYPE bar\n        #   SELECT foo::bar\n        # Note that tables are a form of composite type in postgresql, so\n        # they're suggested here as well\n        schema = stmt.get_identifier_schema()\n        suggestions = [Datatype(schema=schema),\n                       Table(schema=schema)]\n        if not schema:\n            suggestions.append(Schema())\n        return tuple(suggestions)\n    if token_v in {'alter', 'create', 'drop'}:\n        return (Keyword(token_v.upper()),)\n    if token.is_keyword:\n        # token is a keyword we haven't implemented any special handling for\n        # go backwards in the query until we find one we do recognize\n        prev_keyword = stmt.reduce_to_prev_keyword(n_skip=1)\n        if prev_keyword:\n            return suggest_based_on_last_token(prev_keyword, stmt)\n        return (Keyword(token_v.upper()),)\n    return (Keyword(),)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "mssqlcli.packages.sqlcompletion.SqlStatement",
+      "mssqlcli.packages.sqlcompletion.suggest_based_on_last_token",
+      "mssqlcli.packages.sqlcompletion.suggest_special"
+    ],
+    "exact_hit_dependencies": [
+      "mssqlcli.packages.sqlcompletion.SqlStatement",
+      "mssqlcli.packages.sqlcompletion.suggest_based_on_last_token",
+      "mssqlcli.packages.sqlcompletion.suggest_special"
+    ],
+    "returned_entities": 9,
+    "returned_files": 5,
+    "unresolved_locations": 0,
+    "returned_code_chars": 20962
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 34382,
+    "completion_tokens": 614,
+    "total_tokens": 34996,
+    "seconds": 131.83262181282043,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 135.82341694831848,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

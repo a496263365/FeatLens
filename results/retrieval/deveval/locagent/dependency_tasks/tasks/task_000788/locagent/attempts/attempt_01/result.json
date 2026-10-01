@@ -1,0 +1,115 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 788,
+  "namespace": "ydata_profiling.model.summary_algorithms.histogram_compute",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11281,
+      "input_estimate_after": 11281,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies for implementing the `histogram_compute` function:\n\n```\nsrc/ydata_profiling/config.py:Histogram\nline: 145-151\n\nsrc/ydata_profiling/visualisation/plot.py:_plot_histogram\nline: 49-121\n\nsrc/ydata_profiling/model/describe.py:describe\nline: 30-195\n\nsrc/ydata_profiling/model/summary_algorithms.py:chi_square\nline: 51-57\n\nsrc/ydata_profiling/model/spark/describe_date_spark.py:describe_date_1d_spark\nline: 23-53\n```",
+  "final_locations": {
+    "files": [
+      "src/ydata_profiling/config.py",
+      "src/ydata_profiling/visualisation/plot.py",
+      "src/ydata_profiling/model/describe.py",
+      "src/ydata_profiling/model/summary_algorithms.py",
+      "src/ydata_profiling/model/spark/describe_date_spark.py"
+    ],
+    "entities": [
+      {
+        "file": "src/ydata_profiling/config.py",
+        "name": "Histogram",
+        "kind": "class",
+        "symbol": "ydata_profiling.config.Histogram",
+        "start": 145,
+        "end": 151,
+        "code": "class Histogram(BaseModel):\n    # Number of bins (set to 0 to automatically detect the bin size)\n    bins: int = 50\n    # Maximum number of bins (when bins=0)\n    max_bins: int = 250\n    x_axis_labels: bool = True\n    density: bool = False"
+      },
+      {
+        "file": "src/ydata_profiling/visualisation/plot.py",
+        "name": "_plot_histogram",
+        "kind": "function",
+        "symbol": "ydata_profiling.visualisation.plot._plot_histogram",
+        "start": 49,
+        "end": 121,
+        "code": "def _plot_histogram(\n    config: Settings,\n    series: np.ndarray,\n    bins: Union[int, np.ndarray],\n    figsize: tuple = (6, 4),\n    date: bool = False,\n    hide_yaxis: bool = False,\n) -> plt.Figure:\n    \"\"\"Plot a histogram from the data and return the AxesSubplot object.\n\n    Args:\n        config: the Settings object\n        series: The data to plot\n        bins: number of bins (int for equal size, ndarray for variable size)\n        figsize: The size of the figure (width, height) in inches, default (6,4)\n        date: is the x-axis of date type\n\n    Returns:\n        The histogram plot.\n    \"\"\"\n    # we have precomputed the histograms...\n    if isinstance(bins, list):\n        n_labels = len(config.html.style._labels)\n        fig = plt.figure(figsize=figsize)\n        plot = fig.add_subplot(111)\n\n        for idx in reversed(list(range(n_labels))):\n            diff = np.diff(bins[idx])\n            plot.bar(\n                bins[idx][:-1] + diff / 2,  # type: ignore\n                series[idx],\n                diff,\n                facecolor=config.html.style.primary_colors[idx],\n                alpha=0.6,\n            )\n\n            if date:\n                plot.xaxis.set_major_formatter(FuncFormatter(format_fn))\n\n            if not config.plot.histogram.x_axis_labels:\n                plot.set_xticklabels([])\n\n            if hide_yaxis:\n                plot.yaxis.set_visible(False)\n\n        if not config.plot.histogram.x_axis_labels:\n            fig.xticklabels([])\n\n        if not hide_yaxis:\n            fig.supylabel(\"Frequency\")\n    else:\n        fig = plt.figure(figsize=figsize)\n        plot = fig.add_subplot(111)\n        if not hide_yaxis:\n            plot.set_ylabel(\"Frequency\")\n        else:\n            plot.axes.get_yaxis().set_visible(False)\n\n        diff = np.diff(bins)\n        plot.bar(\n            bins[:-1] + diff / 2,  # type: ignore\n            series,\n            diff,\n            facecolor=config.html.style.primary_colors[0],\n        )\n\n        if date:\n            plot.xaxis.set_major_formatter(FuncFormatter(format_fn))\n\n        if not config.plot.histogram.x_axis_labels:\n            plot.set_xticklabels([])\n\n    return plot"
+      },
+      {
+        "file": "src/ydata_profiling/model/describe.py",
+        "name": "describe",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.describe.describe",
+        "start": 30,
+        "end": 195,
+        "code": "def describe(\n    config: Settings,\n    df: pd.DataFrame,\n    summarizer: BaseSummarizer,\n    typeset: VisionsTypeset,\n    sample: Optional[dict] = None,\n) -> BaseDescription:\n    \"\"\"Calculate the statistics for each series in this DataFrame.\n\n    Args:\n        config: report Settings object\n        df: DataFrame.\n        summarizer: summarizer object\n        typeset: visions typeset\n        sample: optional, dict with custom sample\n\n    Returns:\n        This function returns a dictionary containing:\n            - table: overall statistics.\n            - variables: descriptions per series.\n            - correlations: correlation matrices.\n            - missing: missing value diagrams.\n            - alerts: direct special attention to these patterns in your data.\n            - package: package details.\n    \"\"\"\n\n    if df is None:\n        raise ValueError(\"Can not describe a `lazy` ProfileReport without a DataFrame.\")\n\n    check_dataframe(df)\n    df = preprocess(config, df)\n\n    number_of_tasks = 5\n\n    with tqdm(\n        total=number_of_tasks,\n        desc=\"Summarize dataset\",\n        disable=not config.progress_bar,\n        position=0,\n    ) as pbar:\n        date_start = datetime.utcnow()\n\n        # Variable-specific\n        pbar.total += len(df.columns)\n        series_description = get_series_descriptions(\n            config, df, summarizer, typeset, pbar\n        )\n\n        pbar.set_postfix_str(\"Get variable types\")\n        pbar.total += 1\n        variables = {\n            column: description[\"type\"]\n            for column, description in series_description.items()\n        }\n        supported_columns = [\n            column\n            for column, type_name in variables.items()\n            if type_name != \"Unsupported\"\n        ]\n        interval_columns = [\n            column\n            for column, type_name in variables.items()\n            if type_name in {\"Numeric\", \"TimeSeries\"}\n        ]\n        pbar.update()\n\n        # Table statistics\n        table_stats = progress(get_table_stats, pbar, \"Get dataframe statistics\")(\n            config, df, series_description\n        )\n\n        # Get correlations\n        if table_stats[\"n\"] != 0:\n            correlation_names = get_active_correlations(config)\n            pbar.total += len(correlation_names)\n\n            correlations = {\n                correlation_name: progress(\n                    calculate_correlation,\n                    pbar,\n                    f\"Calculate {correlation_name} correlation\",\n                )(config, df, correlation_name, series_description)\n                for correlation_name in correlation_names\n            }\n\n            # make sure correlations is not None\n            correlations = {\n                key: value for key, value in correlations.items() if value is not None\n            }\n        else:\n            correlations = {}\n\n        # Scatter matrix\n        pbar.set_postfix_str(\"Get scatter matrix\")\n        scatter_tasks = get_scatter_tasks(config, interval_columns)\n        pbar.total += len(scatter_tasks)\n        scatter_matrix: Dict[Any, Dict[Any, Any]] = {\n            x: {y: None} for x, y in scatter_tasks\n        }\n        for x, y in scatter_tasks:\n            scatter_matrix[x][y] = progress(\n                get_scatter_plot, pbar, f\"scatter {x}, {y}\"\n            )(config, df, x, y, interval_columns)\n\n        # missing diagrams\n        missing_map = get_missing_active(config, table_stats)\n        pbar.total += len(missing_map)\n        missing = {\n            name: progress(get_missing_diagram, pbar, f\"Missing diagram {name}\")(\n                config, df, settings\n            )\n            for name, settings in missing_map.items()\n        }\n        missing = {name: value for name, value in missing.items() if value is not None}\n\n        # Sample\n        pbar.set_postfix_str(\"Take sample\")\n        if sample is None:\n            samples = get_sample(config, df)\n        else:\n            samples = get_custom_sample(sample)\n        pbar.update()\n\n        # Duplicates\n        metrics, duplicates = progress(get_duplicates, pbar, \"Detecting duplicates\")(\n            config, df, supported_columns\n        )\n        table_stats.update(metrics)\n\n        alerts = progress(get_alerts, pbar, \"Get alerts\")(\n            config, table_stats, series_description, correlations\n        )\n\n        if config.vars.timeseries.active:\n            tsindex_description = get_time_index_description(config, df, table_stats)\n\n        pbar.set_postfix_str(\"Get reproduction details\")\n        package = {\n            \"ydata_profiling_version\": __version__,\n            \"ydata_profiling_config\": config.json(),\n        }\n        pbar.update()\n\n        pbar.set_postfix_str(\"Completed\")\n\n        date_end = datetime.utcnow()\n\n    analysis = BaseAnalysis(config.title, date_start, date_end)\n    time_index_analysis = None\n    if config.vars.timeseries.active and tsindex_description:\n        time_index_analysis = TimeIndexAnalysis(**tsindex_description)\n\n    description = BaseDescription(\n        analysis=analysis,\n        time_index_analysis=time_index_analysis,\n        table=table_stats,\n        variables=series_description,\n        scatter=scatter_matrix,\n        correlations=correlations,\n        missing=missing,\n        alerts=alerts,\n        package=package,\n        sample=samples,\n        duplicates=duplicates,\n    )\n    return description"
+      },
+      {
+        "file": "src/ydata_profiling/model/summary_algorithms.py",
+        "name": "chi_square",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.summary_algorithms.chi_square",
+        "start": 51,
+        "end": 57,
+        "code": "def chi_square(\n    values: Optional[np.ndarray] = None, histogram: Optional[np.ndarray] = None\n) -> dict:\n    if histogram is None:\n        bins = np.histogram_bin_edges(values, bins=\"auto\")\n        histogram, _ = np.histogram(values, bins=bins)\n    return dict(chisquare(histogram)._asdict())"
+      },
+      {
+        "file": "src/ydata_profiling/model/spark/describe_date_spark.py",
+        "name": "describe_date_1d_spark",
+        "kind": "function",
+        "symbol": "ydata_profiling.model.spark.describe_date_spark.describe_date_1d_spark",
+        "start": 23,
+        "end": 53,
+        "code": "def describe_date_1d_spark(\n    config: Settings, df: DataFrame, summary: dict\n) -> Tuple[Settings, DataFrame, dict]:\n    \"\"\"Describe a date series.\n\n    Args:\n        series: The Series to describe.\n        summary: The dict containing the series description so far.\n\n    Returns:\n        A dict containing calculated series description values.\n    \"\"\"\n    col_name = df.columns[0]\n    stats = date_stats_spark(df, summary)\n\n    summary.update({\"min\": stats[\"min\"], \"max\": stats[\"max\"]})\n\n    summary[\"range\"] = summary[\"max\"] - summary[\"min\"]\n\n    # Convert date to numeric so we can compute the histogram\n    df = df.withColumn(col_name, F.unix_timestamp(df[col_name]))\n\n    # Get the number of bins\n    bins = config.plot.histogram.bins\n    bins_arg = \"auto\" if bins == 0 else min(bins, summary[\"n_distinct\"])\n\n    # Run the histogram\n    bin_edges, hist = df.select(col_name).rdd.flatMap(lambda x: x).histogram(bins_arg)\n\n    summary.update({\"histogram\": (array(hist), array(bin_edges))})\n    return config, df, summary"
+      }
+    ],
+    "unresolved": [
+      "src/ydata_profiling/config.py:function: Histogram"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 5,
+    "unresolved_locations": 1,
+    "returned_code_chars": 9120
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 29131,
+    "completion_tokens": 540,
+    "total_tokens": 29671,
+    "seconds": 58.06141805648804,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 76.57752871513367,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

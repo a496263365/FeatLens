@@ -1,0 +1,115 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 301,
+  "namespace": "boto.dynamodb.types.Dynamizer.encode",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4897,
+      "input_estimate_after": 4897,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboto/dynamodb/types.py\nline: 102\nfunction: get_dynamodb_type\n\nboto/dynamodb/types.py\nline: 137\nfunction: dynamize_value\n\nboto/dynamodb/types.py\nline: 264\nfunction: Dynamizer._get_dynamodb_type\n\nboto/dynamodb/types.py\nline: 194\nfunction: Binary.encode\n\nboto/dynamodb/types.py\nline: 231\nclass: Dynamizer\n```",
+  "final_locations": {
+    "files": [
+      "boto/dynamodb/types.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/dynamodb/types.py",
+        "name": "get_dynamodb_type",
+        "kind": "function",
+        "symbol": "boto.dynamodb.types.get_dynamodb_type",
+        "start": 102,
+        "end": 134,
+        "code": "def get_dynamodb_type(val, use_boolean=True):\n    \"\"\"\n    Take a scalar Python value and return a string representing\n    the corresponding Amazon DynamoDB type.  If the value passed in is\n    not a supported type, raise a TypeError.\n    \"\"\"\n    dynamodb_type = None\n    if val is None:\n        dynamodb_type = 'NULL'\n    elif is_num(val):\n        if isinstance(val, bool) and use_boolean:\n            dynamodb_type = 'BOOL'\n        else:\n            dynamodb_type = 'N'\n    elif is_str(val):\n        dynamodb_type = 'S'\n    elif isinstance(val, (set, frozenset)):\n        if False not in map(is_num, val):\n            dynamodb_type = 'NS'\n        elif False not in map(is_str, val):\n            dynamodb_type = 'SS'\n        elif False not in map(is_binary, val):\n            dynamodb_type = 'BS'\n    elif is_binary(val):\n        dynamodb_type = 'B'\n    elif isinstance(val, Mapping):\n        dynamodb_type = 'M'\n    elif isinstance(val, list):\n        dynamodb_type = 'L'\n    if dynamodb_type is None:\n        msg = 'Unsupported type \"%s\" for value \"%s\"' % (type(val), val)\n        raise TypeError(msg)\n    return dynamodb_type"
+      },
+      {
+        "file": "boto/dynamodb/types.py",
+        "name": "dynamize_value",
+        "kind": "function",
+        "symbol": "boto.dynamodb.types.dynamize_value",
+        "start": 137,
+        "end": 159,
+        "code": "def dynamize_value(val):\n    \"\"\"\n    Take a scalar Python value and return a dict consisting\n    of the Amazon DynamoDB type specification and the value that\n    needs to be sent to Amazon DynamoDB.  If the type of the value\n    is not supported, raise a TypeError\n    \"\"\"\n    dynamodb_type = get_dynamodb_type(val)\n    if dynamodb_type == 'N':\n        val = {dynamodb_type: serialize_num(val)}\n    elif dynamodb_type == 'S':\n        val = {dynamodb_type: val}\n    elif dynamodb_type == 'NS':\n        val = {dynamodb_type: list(map(serialize_num, val))}\n    elif dynamodb_type == 'SS':\n        val = {dynamodb_type: [n for n in val]}\n    elif dynamodb_type == 'B':\n        if isinstance(val, bytes):\n            val = Binary(val)\n        val = {dynamodb_type: val.encode()}\n    elif dynamodb_type == 'BS':\n        val = {dynamodb_type: [n.encode() for n in val]}\n    return val"
+      },
+      {
+        "file": "boto/dynamodb/types.py",
+        "name": "Dynamizer._get_dynamodb_type",
+        "kind": "function",
+        "symbol": "boto.dynamodb.types.Dynamizer._get_dynamodb_type",
+        "start": 264,
+        "end": 265,
+        "code": "    def _get_dynamodb_type(self, attr):\n        return get_dynamodb_type(attr)"
+      },
+      {
+        "file": "boto/dynamodb/types.py",
+        "name": "Binary.encode",
+        "kind": "function",
+        "symbol": "boto.dynamodb.types.Binary.encode",
+        "start": 194,
+        "end": 195,
+        "code": "        def encode(self):\n            return base64.b64encode(self).decode('utf-8')"
+      },
+      {
+        "file": "boto/dynamodb/types.py",
+        "name": "Dynamizer",
+        "kind": "class",
+        "symbol": "boto.dynamodb.types.Dynamizer",
+        "start": 231,
+        "end": 377,
+        "code": "class Dynamizer(object):\n    \"\"\"Control serialization/deserialization of types.\n\n    This class controls the encoding of python types to the\n    format that is expected by the DynamoDB API, as well as\n    taking DynamoDB types and constructing the appropriate\n    python types.\n\n    If you want to customize this process, you can subclass\n    this class and override the encoding/decoding of\n    specific types.  For example::\n\n        'foo'      (Python type)\n            |\n            v\n        encode('foo')\n            |\n            v\n        _encode_s('foo')\n            |\n            v\n        {'S': 'foo'}  (Encoding sent to/received from DynamoDB)\n            |\n            V\n        decode({'S': 'foo'})\n            |\n            v\n        _decode_s({'S': 'foo'})\n            |\n            v\n        'foo'     (Python type)\n\n    \"\"\"\n    def _get_dynamodb_type(self, attr):\n        return get_dynamodb_type(attr)\n\n    def encode(self, attr):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n    def _encode_n(self, attr):\n        try:\n            if isinstance(attr, float) and not hasattr(Decimal, 'from_float'):\n                # python2.6 does not support creating Decimals directly\n                # from floats so we have to do this ourself.\n                n = str(float_to_decimal(attr))\n            else:\n                n = str(DYNAMODB_CONTEXT.create_decimal(attr))\n            if list(filter(lambda x: x in n, ('Infinity', 'NaN'))):\n                raise TypeError('Infinity and NaN not supported')\n            return n\n        except (TypeError, DecimalException) as e:\n            msg = '{0} numeric for `{1}`\\n{2}'.format(\n                e.__class__.__name__, attr, str(e) or '')\n        raise DynamoDBNumberError(msg)\n\n    def _encode_s(self, attr):\n        if isinstance(attr, bytes):\n            attr = attr.decode('utf-8')\n        elif not isinstance(attr, six.text_type):\n            attr = str(attr)\n        return attr\n\n    def _encode_ns(self, attr):\n        return list(map(self._encode_n, attr))\n\n    def _encode_ss(self, attr):\n        return [self._encode_s(n) for n in attr]\n\n    def _encode_b(self, attr):\n        if isinstance(attr, bytes):\n            attr = Binary(attr)\n        return attr.encode()\n\n    def _encode_bs(self, attr):\n        return [self._encode_b(n) for n in attr]\n\n    def _encode_null(self, attr):\n        return True\n\n    def _encode_bool(self, attr):\n        return attr\n\n    def _encode_m(self, attr):\n        return dict([(k, self.encode(v)) for k, v in attr.items()])\n\n    def _encode_l(self, attr):\n        return [self.encode(i) for i in attr]\n\n    def decode(self, attr):\n        \"\"\"\n        Takes the format returned by DynamoDB and constructs\n        the appropriate python type.\n\n        \"\"\"\n        if len(attr) > 1 or not attr or is_str(attr):\n            return attr\n        dynamodb_type = list(attr.keys())[0]\n        if dynamodb_type.lower() == dynamodb_type:\n            # It's not an actual type, just a single character attr that\n            # overlaps with the DDB types. Return it.\n            return attr\n        try:\n            decoder = getattr(self, '_decode_%s' % dynamodb_type.lower())\n        except AttributeError:\n            return attr\n        return decoder(attr[dynamodb_type])\n\n    def _decode_n(self, attr):\n        return DYNAMODB_CONTEXT.create_decimal(attr)\n\n    def _decode_s(self, attr):\n        return attr\n\n    def _decode_ns(self, attr):\n        return set(map(self._decode_n, attr))\n\n    def _decode_ss(self, attr):\n        return set(map(self._decode_s, attr))\n\n    def _decode_b(self, attr):\n        return convert_binary(attr)\n\n    def _decode_bs(self, attr):\n        return set(map(self._decode_b, attr))\n\n    def _decode_null(self, attr):\n        return None\n\n    def _decode_bool(self, attr):\n        return attr\n\n    def _decode_m(self, attr):\n        return dict([(k, self.decode(v)) for k, v in attr.items()])\n\n    def _decode_l(self, attr):\n        return [self.decode(i) for i in attr]"
+      }
+    ],
+    "unresolved": [
+      "boto/dynamodb/types.py:function: Binary.encode"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "boto.dynamodb.types.Dynamizer._get_dynamodb_type"
+    ],
+    "exact_hit_dependencies": [
+      "boto.dynamodb.types.Dynamizer._get_dynamodb_type"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 6144
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 20432,
+    "completion_tokens": 2517,
+    "total_tokens": 22949,
+    "seconds": 70.53369855880737,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 173.72131729125977,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

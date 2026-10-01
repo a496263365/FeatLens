@@ -1,0 +1,129 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1031,
+  "namespace": "boltons.ioutils.SpooledStringIO.tell",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4111,
+      "input_estimate_after": 4111,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboltons/ioutils.py\nline: 401-511\nclass: SpooledStringIO\nfunction: SpooledStringIO.write\nfunction: SpooledStringIO.read\nfunction: SpooledStringIO.seek\nfunction: SpooledStringIO._traverse_codepoints\n\nboltons/ioutils.py\nline: 383-400\nclass: SpooledStringIO\nfunction: SpooledStringIO.__init__\n\nboltons/ioutils.py\nline: 507-508\nfunction: SpooledStringIO.rollover\n```",
+  "final_locations": {
+    "files": [
+      "boltons/ioutils.py"
+    ],
+    "entities": [
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO.__init__",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO.__init__",
+        "start": 401,
+        "end": 403,
+        "code": "    def __init__(self, *args, **kwargs):\n        self._tell = 0\n        super(SpooledStringIO, self).__init__(*args, **kwargs)"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO",
+        "kind": "class",
+        "symbol": "boltons.ioutils.SpooledStringIO",
+        "start": 383,
+        "end": 525,
+        "code": "class SpooledStringIO(SpooledIOBase):\n    \"\"\"\n    SpooledStringIO is a spooled file-like-object that only accepts unicode\n    values. On Python 2.x this means the 'unicode' type and on Python 3.x this\n    means the 'str' type. Values are accepted as unicode and then coerced into\n    utf-8 encoded bytes for storage. On retrieval, the values are returned as\n    unicode.\n\n    Example::\n\n        >>> from boltons import ioutils\n        >>> with ioutils.SpooledStringIO() as f:\n        ...     f.write(u\"\\u2014 Hey, an emdash!\")\n        ...     _ = f.seek(0)\n        ...     isinstance(f.read(), ioutils.text_type)\n        True\n\n    \"\"\"\n    def __init__(self, *args, **kwargs):\n        self._tell = 0\n        super(SpooledStringIO, self).__init__(*args, **kwargs)\n\n    def read(self, n=-1):\n        self._checkClosed()\n        ret = self.buffer.reader.read(n, n)\n        self._tell = self.tell() + len(ret)\n        return ret\n\n    def write(self, s):\n        self._checkClosed()\n        if not isinstance(s, text_type):\n            raise TypeError(\"{} expected, got {}\".format(\n                text_type.__name__,\n                type(s).__name__\n            ))\n        current_pos = self.tell()\n        if self.buffer.tell() + len(s.encode('utf-8')) >= self._max_size:\n            self.rollover()\n        self.buffer.write(s.encode('utf-8'))\n        self._tell = current_pos + len(s)\n\n    def _traverse_codepoints(self, current_position, n):\n        \"\"\"Traverse from current position to the right n codepoints\"\"\"\n        dest = current_position + n\n        while True:\n            if current_position == dest:\n                # By chance we've landed on the right position, break\n                break\n\n            # If the read would take us past the intended position then\n            # seek only enough to cover the offset\n            if current_position + READ_CHUNK_SIZE > dest:\n                self.read(dest - current_position)\n                break\n            else:\n                ret = self.read(READ_CHUNK_SIZE)\n\n            # Increment our current position\n            current_position += READ_CHUNK_SIZE\n\n            # If we kept reading but there was nothing here, break\n            # as we are at the end of the file\n            if not ret:\n                break\n\n        return dest\n\n    def seek(self, pos, mode=0):\n        \"\"\"Traverse from offset to the specified codepoint\"\"\"\n        self._checkClosed()\n        # Seek to position from the start of the file\n        if mode == os.SEEK_SET:\n            self.buffer.seek(0)\n            self._traverse_codepoints(0, pos)\n            self._tell = pos\n        # Seek to new position relative to current position\n        elif mode == os.SEEK_CUR:\n            start_pos = self.tell()\n            self._traverse_codepoints(self.tell(), pos)\n            self._tell = start_pos + pos\n        elif mode == os.SEEK_END:\n            self.buffer.seek(0)\n            dest_position = self.len - pos\n            self._traverse_codepoints(0, dest_position)\n            self._tell = dest_position\n        else:\n            raise ValueError(\n                \"Invalid whence ({0}, should be 0, 1, or 2)\".format(mode)\n            )\n        return self.tell()\n\n    def readline(self, length=None):\n        self._checkClosed()\n        ret = self.buffer.readline(length).decode('utf-8')\n        self._tell = self.tell() + len(ret)\n        return ret\n\n    def readlines(self, sizehint=0):\n        ret = [x.decode('utf-8') for x in self.buffer.readlines(sizehint)]\n        self._tell = self.tell() + sum((len(x) for x in ret))\n        return ret\n\n    @property\n    def buffer(self):\n        try:\n            return self._buffer\n        except AttributeError:\n            self._buffer = EncodedFile(BytesIO(), data_encoding='utf-8')\n        return self._buffer\n\n    @property\n    def _rolled(self):\n        return not isinstance(self.buffer.stream, BytesIO)\n\n    def rollover(self):\n        \"\"\"Roll the buffer over to a TempFile\"\"\"\n        if not self._rolled:\n            tmp = EncodedFile(TemporaryFile(dir=self._dir),\n                              data_encoding='utf-8')\n            pos = self.buffer.tell()\n            tmp.write(self.buffer.getvalue())\n            tmp.seek(pos)\n            self.buffer.close()\n            self._buffer = tmp\n\n    def tell(self):\n        pass\n\n\n\n    @property\n    def len(self):\n        \"\"\"Determine the number of codepoints in the file\"\"\"\n        pos = self.buffer.tell()\n        self.buffer.seek(0)\n        total = 0\n        while True:\n            ret = self.read(READ_CHUNK_SIZE)\n            if not ret:\n                break\n            total += len(ret)\n        self.buffer.seek(pos)\n        return total"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO.write",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO.write",
+        "start": 411,
+        "end": 422,
+        "code": "    def write(self, s):\n        self._checkClosed()\n        if not isinstance(s, text_type):\n            raise TypeError(\"{} expected, got {}\".format(\n                text_type.__name__,\n                type(s).__name__\n            ))\n        current_pos = self.tell()\n        if self.buffer.tell() + len(s.encode('utf-8')) >= self._max_size:\n            self.rollover()\n        self.buffer.write(s.encode('utf-8'))\n        self._tell = current_pos + len(s)"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO.read",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO.read",
+        "start": 405,
+        "end": 409,
+        "code": "    def read(self, n=-1):\n        self._checkClosed()\n        ret = self.buffer.reader.read(n, n)\n        self._tell = self.tell() + len(ret)\n        return ret"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO.seek",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO.seek",
+        "start": 450,
+        "end": 472,
+        "code": "    def seek(self, pos, mode=0):\n        \"\"\"Traverse from offset to the specified codepoint\"\"\"\n        self._checkClosed()\n        # Seek to position from the start of the file\n        if mode == os.SEEK_SET:\n            self.buffer.seek(0)\n            self._traverse_codepoints(0, pos)\n            self._tell = pos\n        # Seek to new position relative to current position\n        elif mode == os.SEEK_CUR:\n            start_pos = self.tell()\n            self._traverse_codepoints(self.tell(), pos)\n            self._tell = start_pos + pos\n        elif mode == os.SEEK_END:\n            self.buffer.seek(0)\n            dest_position = self.len - pos\n            self._traverse_codepoints(0, dest_position)\n            self._tell = dest_position\n        else:\n            raise ValueError(\n                \"Invalid whence ({0}, should be 0, 1, or 2)\".format(mode)\n            )\n        return self.tell()"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO._traverse_codepoints",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO._traverse_codepoints",
+        "start": 424,
+        "end": 448,
+        "code": "    def _traverse_codepoints(self, current_position, n):\n        \"\"\"Traverse from current position to the right n codepoints\"\"\"\n        dest = current_position + n\n        while True:\n            if current_position == dest:\n                # By chance we've landed on the right position, break\n                break\n\n            # If the read would take us past the intended position then\n            # seek only enough to cover the offset\n            if current_position + READ_CHUNK_SIZE > dest:\n                self.read(dest - current_position)\n                break\n            else:\n                ret = self.read(READ_CHUNK_SIZE)\n\n            # Increment our current position\n            current_position += READ_CHUNK_SIZE\n\n            # If we kept reading but there was nothing here, break\n            # as we are at the end of the file\n            if not ret:\n                break\n\n        return dest"
+      },
+      {
+        "file": "boltons/ioutils.py",
+        "name": "SpooledStringIO.rollover",
+        "kind": "function",
+        "symbol": "boltons.ioutils.SpooledStringIO.rollover",
+        "start": 497,
+        "end": 506,
+        "code": "    def rollover(self):\n        \"\"\"Roll the buffer over to a TempFile\"\"\"\n        if not self._rolled:\n            tmp = EncodedFile(TemporaryFile(dir=self._dir),\n                              data_encoding='utf-8')\n            pos = self.buffer.tell()\n            tmp.write(self.buffer.getvalue())\n            tmp.seek(pos)\n            self.buffer.close()\n            self._buffer = tmp"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "boltons.ioutils.SpooledStringIO._tell"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 7636
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 19181,
+    "completion_tokens": 1393,
+    "total_tokens": 20574,
+    "seconds": 50.02352809906006,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 57.54269361495972,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

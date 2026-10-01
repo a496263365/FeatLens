@@ -1,0 +1,110 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2213,
+  "namespace": "wal_e.tar_partition._fsync_files",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13072,
+      "input_estimate_after": 13072,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify reusable dependencies for implementing the `_fsync_files` function. The function needs to call `fsync()` on each file and also on the directory where each file is created. Here are the key reusable dependencies:\n\n```\nwal_e/tar_partition.py\nline: 158\nfunction: _fsync_files\nline: -1\nclass: TarPartition\nfunction: tarfile_extract\nline: 258\nline: 308-312\n\nwal_e/tar_partition.py\nline: 187\nfunction: cat_extract\nline: 217\nclass: files.DeleteOnError\n\nwal_e/files.py\nline: -1\nclass: DeleteOnError\nfunction: __enter__\nfunction: __exit__\n\nwal_e/tar_partition.py\nline: 43\nimport: os\nimport: errno\n\nwal_e/tar_partition.py\nline: 49\nimport: wal_e.files\n```",
+  "final_locations": {
+    "files": [
+      "wal_e/tar_partition.py",
+      "wal_e/files.py"
+    ],
+    "entities": [
+      {
+        "file": "wal_e/tar_partition.py",
+        "name": "TarPartition",
+        "kind": "class",
+        "symbol": "wal_e.tar_partition.TarPartition",
+        "start": 231,
+        "end": 348,
+        "code": "class TarPartition(list):\n\n    def __init__(self, name, *args, **kwargs):\n        self.name = name\n        list.__init__(self, *args, **kwargs)\n\n    @staticmethod\n    def _padded_tar_add(tar, et_info):\n        try:\n            with open(et_info.submitted_path, 'rb') as raw_file:\n                with StreamPadFileObj(raw_file,\n                                      et_info.tarinfo.size) as f:\n                    tar.addfile(et_info.tarinfo, f)\n\n        except EnvironmentError as e:\n            if (e.errno == errno.ENOENT and\n                e.filename == et_info.submitted_path):\n                # log a NOTICE/INFO that the file was unlinked.\n                # Ostensibly harmless (such unlinks should be replayed\n                # in the WAL) but good to know.\n                logger.debug(\n                    msg='tar member additions skipping an unlinked file',\n                    detail='Skipping {0}.'.format(et_info.submitted_path))\n            else:\n                raise\n\n    @staticmethod\n    def tarfile_extract(fileobj, dest_path):\n        \"\"\"Extract a tarfile described by a file object to a specified path.\n\n        Args:\n            fileobj (file): File object wrapping the target tarfile.\n            dest_path (str): Path to extract the contents of the tarfile to.\n        \"\"\"\n        # Though this method doesn't fit cleanly into the TarPartition object,\n        # tarballs are only ever extracted for partitions so the logic jives\n        # for the most part.\n        tar = tarfile.open(mode='r|', fileobj=fileobj,\n                           bufsize=pipebuf.PIPE_BUF_BYTES)\n\n        # canonicalize dest_path so the prefix check below works\n        dest_path = os.path.realpath(dest_path)\n\n        # list of files that need fsyncing\n        extracted_files = []\n\n        # Iterate through each member of the tarfile individually. We must\n        # approach it this way because we are dealing with a pipe and the\n        # getmembers() method will consume it before we extract any data.\n        for member in tar:\n            assert not member.name.startswith('/')\n            relpath = os.path.join(dest_path, member.name)\n\n            # Workaround issue with tar handling of symlink, see:\n            # https://bugs.python.org/issue12800\n            if member.issym():\n                target_path = os.path.join(dest_path, member.name)\n                try:\n                    os.symlink(member.linkname, target_path)\n                except OSError as e:\n                    if e.errno == errno.EEXIST:\n                        os.remove(target_path)\n                        os.symlink(member.linkname, target_path)\n                    else:\n                        raise\n                continue\n\n            if member.isreg() and member.size >= pipebuf.PIPE_BUF_BYTES:\n                cat_extract(tar, member, relpath)\n            else:\n                tar.extract(member, path=dest_path)\n\n            filename = os.path.realpath(relpath)\n            extracted_files.append(filename)\n\n            # avoid accumulating an unbounded list of strings which\n            # could be quite large for a large database\n            if len(extracted_files) > 1000:\n                _fsync_files(extracted_files)\n                del extracted_files[:]\n        tar.close()\n        _fsync_files(extracted_files)\n\n    def tarfile_write(self, fileobj):\n        tar = None\n        try:\n            tar = tarfile.open(fileobj=fileobj, mode='w|',\n                               bufsize=pipebuf.PIPE_BUF_BYTES)\n\n            for et_info in self:\n                # Treat files specially because they may grow, shrink,\n                # or may be unlinked in the meanwhile.\n                if et_info.tarinfo.isfile():\n                    self._padded_tar_add(tar, et_info)\n                else:\n                    tar.addfile(et_info.tarinfo)\n        finally:\n            if tar is not None:\n                tar.close()\n\n    @property\n    def total_member_size(self):\n        \"\"\"\n        Compute the sum of the size of expanded TAR member\n\n        Expressed in bytes.\n\n        \"\"\"\n        return sum(et_info.tarinfo.size for et_info in self)\n\n    def format_manifest(self):\n        parts = []\n        for tpart in self:\n            for et_info in tpart:\n                tarinfo = et_info.tarinfo\n                parts.append('\\t'.join([tarinfo.name, tarinfo.size]))\n\n        return '\\n'.join(parts)"
+      },
+      {
+        "file": "wal_e/tar_partition.py",
+        "name": "TarPartition.tarfile_extract",
+        "kind": "function",
+        "symbol": "wal_e.tar_partition.TarPartition.tarfile_extract",
+        "start": 258,
+        "end": 312,
+        "code": "    def tarfile_extract(fileobj, dest_path):\n        \"\"\"Extract a tarfile described by a file object to a specified path.\n\n        Args:\n            fileobj (file): File object wrapping the target tarfile.\n            dest_path (str): Path to extract the contents of the tarfile to.\n        \"\"\"\n        # Though this method doesn't fit cleanly into the TarPartition object,\n        # tarballs are only ever extracted for partitions so the logic jives\n        # for the most part.\n        tar = tarfile.open(mode='r|', fileobj=fileobj,\n                           bufsize=pipebuf.PIPE_BUF_BYTES)\n\n        # canonicalize dest_path so the prefix check below works\n        dest_path = os.path.realpath(dest_path)\n\n        # list of files that need fsyncing\n        extracted_files = []\n\n        # Iterate through each member of the tarfile individually. We must\n        # approach it this way because we are dealing with a pipe and the\n        # getmembers() method will consume it before we extract any data.\n        for member in tar:\n            assert not member.name.startswith('/')\n            relpath = os.path.join(dest_path, member.name)\n\n            # Workaround issue with tar handling of symlink, see:\n            # https://bugs.python.org/issue12800\n            if member.issym():\n                target_path = os.path.join(dest_path, member.name)\n                try:\n                    os.symlink(member.linkname, target_path)\n                except OSError as e:\n                    if e.errno == errno.EEXIST:\n                        os.remove(target_path)\n                        os.symlink(member.linkname, target_path)\n                    else:\n                        raise\n                continue\n\n            if member.isreg() and member.size >= pipebuf.PIPE_BUF_BYTES:\n                cat_extract(tar, member, relpath)\n            else:\n                tar.extract(member, path=dest_path)\n\n            filename = os.path.realpath(relpath)\n            extracted_files.append(filename)\n\n            # avoid accumulating an unbounded list of strings which\n            # could be quite large for a large database\n            if len(extracted_files) > 1000:\n                _fsync_files(extracted_files)\n                del extracted_files[:]\n        tar.close()\n        _fsync_files(extracted_files)"
+      },
+      {
+        "file": "wal_e/tar_partition.py",
+        "name": "cat_extract",
+        "kind": "function",
+        "symbol": "wal_e.tar_partition.cat_extract",
+        "start": 187,
+        "end": 228,
+        "code": "def cat_extract(tar, member, targetpath):\n    \"\"\"Extract a regular file member using cat for async-like I/O\n\n    Mostly adapted from tarfile.py.\n\n    \"\"\"\n    assert member.isreg()\n\n    # Fetch the TarInfo object for the given name and build the\n    # destination pathname, replacing forward slashes to platform\n    # specific separators.\n    targetpath = targetpath.rstrip(\"/\")\n    targetpath = targetpath.replace(\"/\", os.sep)\n\n    # Create all upper directories.\n    upperdirs = os.path.dirname(targetpath)\n    if upperdirs and not os.path.exists(upperdirs):\n        try:\n            # Create directories that are not part of the archive with\n            # default permissions.\n            os.makedirs(upperdirs)\n        except EnvironmentError as e:\n            if e.errno == errno.EEXIST:\n                # Ignore an error caused by the race of\n                # the directory being created between the\n                # check for the path and the creation.\n                pass\n            else:\n                raise\n\n    with files.DeleteOnError(targetpath) as dest:\n        with pipeline.get_cat_pipeline(pipeline.PIPE, dest.f) as pl:\n            fp = tar.extractfile(member)\n            copyfileobj.copyfileobj(fp, pl.stdin)\n\n    if sys.version_info < (3, 5):\n        tar.chown(member, targetpath)\n    else:\n        tar.chown(member, targetpath, False)\n\n    tar.chmod(member, targetpath)\n    tar.utime(member, targetpath)"
+      },
+      {
+        "file": "wal_e/files.py",
+        "name": "DeleteOnError",
+        "kind": "class",
+        "symbol": "wal_e.files.DeleteOnError",
+        "start": 5,
+        "end": 24,
+        "code": "class DeleteOnError(object):\n    def __init__(self, where):\n        self.where = where\n        self.f = None\n        self.remove_regardless = False\n\n    def __enter__(self):\n        self.f = open(self.where, 'wb')\n        return self\n\n    def __exit__(self, typ, value, traceback):\n        try:\n            if typ is not None or self.remove_regardless:\n                os.unlink(self.where)\n        except EnvironmentError as e:\n            if e.errno != errno.ENOENT:\n                raise\n        finally:\n            if self.f:\n                self.f.close()"
+      }
+    ],
+    "unresolved": [
+      "wal_e/tar_partition.py:line: -1",
+      "wal_e/tar_partition.py:function: tarfile_extract",
+      "wal_e/tar_partition.py:class: files.DeleteOnError",
+      "wal_e/files.py:line: -1",
+      "wal_e/files.py:function: __enter__",
+      "wal_e/files.py:function: __exit__",
+      "wal_e/tar_partition.py:line: 43",
+      "wal_e/tar_partition.py:line: 49"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 8,
+    "returned_code_chars": 8707
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 40120,
+    "completion_tokens": 575,
+    "total_tokens": 40695,
+    "seconds": 37.904114723205566,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 49.258278369903564,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,108 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 85,
+  "namespace": "twilio.jwt.client.ClientCapabilityToken.allow_event_stream",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4336,
+      "input_estimate_after": 4336,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ntwilio/jwt/client/__init__.py\nclass: ClientCapabilityToken\nfunction: _generate_payload\n\ntwilio/jwt/__init__.py\nclass: Jwt\nfunction: _generate_payload\n\ntwilio/jwt/access_token/__init__.py\nclass: AccessToken\nfunction: add_grant\n\ntwilio/jwt/client/__init__.py\nclass: ClientCapabilityToken\nfunction: allow_client_outgoing\n\ntwilio/jwt/client/__init__.py\nline: 49\nline: 50\nfunction: __init__\n```",
+  "final_locations": {
+    "files": [
+      "twilio/jwt/client/__init__.py",
+      "twilio/jwt/__init__.py",
+      "twilio/jwt/access_token/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "twilio/jwt/client/__init__.py",
+        "name": "ClientCapabilityToken",
+        "kind": "class",
+        "symbol": "twilio.jwt.client.ClientCapabilityToken",
+        "start": 6,
+        "end": 93,
+        "code": "class ClientCapabilityToken(Jwt):\n    \"\"\"A token to control permissions with Twilio Client\"\"\"\n\n    ALGORITHM = \"HS256\"\n\n    def __init__(\n        self,\n        account_sid,\n        auth_token,\n        nbf=Jwt.GENERATE,\n        ttl=3600,\n        valid_until=None,\n        **kwargs\n    ):\n        \"\"\"\n        :param str account_sid: The account sid to which this token is granted access.\n        :param str auth_token: The secret key used to sign the token. Note, this auth token is not\n                               visible to the user of the token.\n        :param int nbf: Time in secs from epic before which this token is considered invalid.\n        :param int ttl: the amount of time in seconds from generation that this token is valid for.\n        :param kwargs:\n\n\n        :returns: A new CapabilityToken with zero permissions\n        \"\"\"\n        super(ClientCapabilityToken, self).__init__(\n            algorithm=self.ALGORITHM,\n            secret_key=auth_token,\n            issuer=account_sid,\n            nbf=nbf,\n            ttl=ttl,\n            valid_until=None,\n        )\n\n        self.account_sid = account_sid\n        self.auth_token = auth_token\n        self.client_name = None\n        self.capabilities = {}\n\n        if \"allow_client_outgoing\" in kwargs:\n            self.allow_client_outgoing(**kwargs[\"allow_client_outgoing\"])\n        if \"allow_client_incoming\" in kwargs:\n            self.allow_client_incoming(**kwargs[\"allow_client_incoming\"])\n        if \"allow_event_stream\" in kwargs:\n            self.allow_event_stream(**kwargs[\"allow_event_stream\"])\n\n    def allow_client_outgoing(self, application_sid, **kwargs):\n        \"\"\"\n        Allow the user of this token to make outgoing connections. Keyword arguments are passed\n        to the application.\n\n        :param str application_sid: Application to contact\n        \"\"\"\n        scope = ScopeURI(\"client\", \"outgoing\", {\"appSid\": application_sid})\n        if kwargs:\n            scope.add_param(\"appParams\", urlencode(kwargs, doseq=True))\n\n        self.capabilities[\"outgoing\"] = scope\n\n    def allow_client_incoming(self, client_name):\n        \"\"\"\n        Allow the user of this token to accept incoming connections.\n\n        :param str client_name: Client name to accept calls from\n        \"\"\"\n        self.client_name = client_name\n        self.capabilities[\"incoming\"] = ScopeURI(\n            \"client\", \"incoming\", {\"clientName\": client_name}\n        )\n\n    def allow_event_stream(self, **kwargs):\n        pass\n\n\n\n\n\n\n\n\n    def _generate_payload(self):\n        if \"outgoing\" in self.capabilities and self.client_name is not None:\n            self.capabilities[\"outgoing\"].add_param(\"clientName\", self.client_name)\n\n        scope_uris = [\n            scope_uri.to_payload() for scope_uri in self.capabilities.values()\n        ]\n        return {\"scope\": \" \".join(scope_uris)}"
+      },
+      {
+        "file": "twilio/jwt/__init__.py",
+        "name": "Jwt",
+        "kind": "class",
+        "symbol": "twilio.jwt.Jwt",
+        "start": 12,
+        "end": 161,
+        "code": "class Jwt(object):\n    \"\"\"Base class for building a Json Web Token\"\"\"\n\n    GENERATE = object()\n    ALGORITHM = \"HS256\"\n\n    def __init__(\n        self,\n        secret_key,\n        issuer,\n        subject=None,\n        algorithm=None,\n        nbf=GENERATE,\n        ttl=3600,\n        valid_until=None,\n    ):\n        self.secret_key = secret_key\n        \"\"\":type str: The secret used to encode the JWT\"\"\"\n        self.issuer = issuer\n        \"\"\":type str: The issuer of this JWT\"\"\"\n        self.subject = subject\n        \"\"\":type str: The subject of this JWT, omitted from payload by default\"\"\"\n        self.algorithm = algorithm or self.ALGORITHM\n        \"\"\":type str: The algorithm used to encode the JWT, defaults to 'HS256'\"\"\"\n        self.nbf = nbf\n        \"\"\":type int: Time in secs since epoch before which this JWT is invalid. Defaults to now.\"\"\"\n        self.ttl = ttl\n        \"\"\":type int: Time to live of the JWT in seconds, defaults to 1 hour\"\"\"\n        self.valid_until = valid_until\n        \"\"\":type int: Time in secs since epoch this JWT is valid for. Overrides ttl if provided.\"\"\"\n\n        self.__decoded_payload = None\n        self.__decoded_headers = None\n\n    def _generate_payload(self):\n        \"\"\":rtype: dict the payload of the JWT to send\"\"\"\n        raise NotImplementedError(\"Subclass must provide a payload.\")\n\n    def _generate_headers(self):\n        \"\"\":rtype dict: Additional headers to include in the JWT, defaults to an empty dict\"\"\"\n        return {}\n\n    @classmethod\n    def _from_jwt(cls, headers, payload, key=None):\n        \"\"\"\n        Class specific implementation of from_jwt which should take jwt components and return\n        and instance of this Class with jwt information loaded.\n        :return: Jwt object containing the headers, payload and key\n        \"\"\"\n        jwt = Jwt(\n            secret_key=key,\n            issuer=payload.get(\"iss\", None),\n            subject=payload.get(\"sub\", None),\n            algorithm=headers.get(\"alg\", None),\n            valid_until=payload.get(\"exp\", None),\n            nbf=payload.get(\"nbf\", None),\n        )\n        jwt.__decoded_payload = payload\n        jwt.__decoded_headers = headers\n        return jwt\n\n    @property\n    def payload(self):\n        if self.__decoded_payload:\n            return self.__decoded_payload\n\n        payload = self._generate_payload().copy()\n        payload[\"iss\"] = self.issuer\n        payload[\"exp\"] = int(time.time()) + self.ttl\n        if self.nbf is not None:\n            if self.nbf == self.GENERATE:\n                payload[\"nbf\"] = int(time.time())\n            else:\n                payload[\"nbf\"] = self.nbf\n        if self.valid_until:\n            payload[\"exp\"] = self.valid_until\n        if self.subject:\n            payload[\"sub\"] = self.subject\n\n        return payload\n\n    @property\n    def headers(self):\n        if self.__decoded_headers:\n            return self.__decoded_headers\n\n        headers = self._generate_headers().copy()\n        headers[\"typ\"] = \"JWT\"\n        headers[\"alg\"] = self.algorithm\n        return headers\n\n    def to_jwt(self, ttl=None):\n        \"\"\"\n        Encode this JWT object into a JWT string\n        :param int ttl: override the ttl configured in the constructor\n        :rtype: str The JWT string\n        \"\"\"\n\n        if not self.secret_key:\n            raise ValueError(\"JWT does not have a signing key configured.\")\n\n        headers = self.headers.copy()\n\n        payload = self.payload.copy()\n        if ttl:\n            payload[\"exp\"] = int(time.time()) + ttl\n\n        return jwt_lib.encode(\n            payload, self.secret_key, algorithm=self.algorithm, headers=headers\n        )\n\n    @classmethod\n    def from_jwt(cls, jwt, key=\"\"):\n        \"\"\"\n        Decode a JWT string into a Jwt object\n        :param str jwt: JWT string\n        :param Optional[str] key: key used to verify JWT signature, if not provided then validation\n                                  is skipped.\n        :raises JwtDecodeError if decoding JWT fails for any reason.\n        :return: A DecodedJwt object containing the jwt information.\n        \"\"\"\n        verify = True if key else False\n\n        try:\n            headers = jwt_lib.get_unverified_header(jwt)\n\n            alg = headers.get(\"alg\")\n            if alg != cls.ALGORITHM:\n                raise ValueError(\n                    f\"Incorrect decoding algorithm {alg}, \"\n                    f\"expecting {cls.ALGORITHM}.\"\n                )\n\n            payload = jwt_lib.decode(\n                jwt,\n                key,\n                algorithms=[cls.ALGORITHM],\n                options={\n                    \"verify_signature\": verify,\n                    \"verify_exp\": True,\n                    \"verify_nbf\": True,\n                },\n            )\n        except Exception as e:\n            raise JwtDecodeError(getattr(e, \"message\", str(e)))\n\n        return cls._from_jwt(headers, payload, key)\n\n    def __str__(self):\n        return \"<JWT {}>\".format(self.to_jwt())"
+      },
+      {
+        "file": "twilio/jwt/access_token/__init__.py",
+        "name": "AccessToken",
+        "kind": "class",
+        "symbol": "twilio.jwt.access_token.AccessToken",
+        "start": 22,
+        "end": 81,
+        "code": "class AccessToken(Jwt):\n    \"\"\"Access Token containing one or more AccessTokenGrants used to access Twilio Resources\"\"\"\n\n    ALGORITHM = \"HS256\"\n\n    def __init__(\n        self,\n        account_sid,\n        signing_key_sid,\n        secret,\n        grants=None,\n        identity=None,\n        nbf=Jwt.GENERATE,\n        ttl=3600,\n        valid_until=None,\n        region=None,\n    ):\n        grants = grants or []\n        if any(not isinstance(g, AccessTokenGrant) for g in grants):\n            raise ValueError(\"Grants must be instances of AccessTokenGrant.\")\n\n        self.account_sid = account_sid\n        self.signing_key_sid = signing_key_sid\n        self.identity = identity\n        self.region = region\n        self.grants = grants\n        super(AccessToken, self).__init__(\n            secret_key=secret,\n            algorithm=self.ALGORITHM,\n            issuer=signing_key_sid,\n            subject=self.account_sid,\n            nbf=nbf,\n            ttl=ttl,\n            valid_until=valid_until,\n        )\n\n    def add_grant(self, grant):\n        \"\"\"Add a grant to this AccessToken\"\"\"\n        if not isinstance(grant, AccessTokenGrant):\n            raise ValueError(\"Grant must be an instance of AccessTokenGrant.\")\n        self.grants.append(grant)\n\n    def _generate_headers(self):\n        headers = {\"cty\": \"twilio-fpa;v=1\"}\n        if self.region and isinstance(self.region, str):\n            headers[\"twr\"] = self.region\n        return headers\n\n    def _generate_payload(self):\n        now = int(time.time())\n        payload = {\n            \"jti\": \"{}-{}\".format(self.signing_key_sid, now),\n            \"grants\": {grant.key: grant.to_payload() for grant in self.grants},\n        }\n        if self.identity:\n            payload[\"grants\"][\"identity\"] = self.identity\n        return payload\n\n    def __str__(self):\n        return \"<{} {}>\".format(self.__class__.__name__, self.to_jwt())"
+      },
+      {
+        "file": "twilio/jwt/client/__init__.py",
+        "name": "ClientCapabilityToken.__init__",
+        "kind": "function",
+        "symbol": "twilio.jwt.client.ClientCapabilityToken.__init__",
+        "start": 11,
+        "end": 50,
+        "code": "    def __init__(\n        self,\n        account_sid,\n        auth_token,\n        nbf=Jwt.GENERATE,\n        ttl=3600,\n        valid_until=None,\n        **kwargs\n    ):\n        \"\"\"\n        :param str account_sid: The account sid to which this token is granted access.\n        :param str auth_token: The secret key used to sign the token. Note, this auth token is not\n                               visible to the user of the token.\n        :param int nbf: Time in secs from epic before which this token is considered invalid.\n        :param int ttl: the amount of time in seconds from generation that this token is valid for.\n        :param kwargs:\n\n\n        :returns: A new CapabilityToken with zero permissions\n        \"\"\"\n        super(ClientCapabilityToken, self).__init__(\n            algorithm=self.ALGORITHM,\n            secret_key=auth_token,\n            issuer=account_sid,\n            nbf=nbf,\n            ttl=ttl,\n            valid_until=None,\n        )\n\n        self.account_sid = account_sid\n        self.auth_token = auth_token\n        self.client_name = None\n        self.capabilities = {}\n\n        if \"allow_client_outgoing\" in kwargs:\n            self.allow_client_outgoing(**kwargs[\"allow_client_outgoing\"])\n        if \"allow_client_incoming\" in kwargs:\n            self.allow_client_incoming(**kwargs[\"allow_client_incoming\"])\n        if \"allow_event_stream\" in kwargs:\n            self.allow_event_stream(**kwargs[\"allow_event_stream\"])"
+      }
+    ],
+    "unresolved": [
+      "twilio/jwt/client/__init__.py:function: _generate_payload",
+      "twilio/jwt/__init__.py:function: _generate_payload",
+      "twilio/jwt/access_token/__init__.py:function: add_grant",
+      "twilio/jwt/client/__init__.py:function: allow_client_outgoing",
+      "twilio/jwt/client/__init__.py:function: __init__"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 4,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 5,
+    "returned_code_chars": 11166
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16643,
+    "completion_tokens": 2962,
+    "total_tokens": 19605,
+    "seconds": 93.82763838768005,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 251.72784233093262,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

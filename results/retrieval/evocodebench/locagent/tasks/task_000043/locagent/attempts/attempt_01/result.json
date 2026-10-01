@@ -1,0 +1,132 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 43,
+  "namespace": "litdata.processing.data_processor._wait_for_file_to_exist",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 17403,
+      "input_estimate_after": 17403,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `_wait_for_file_to_exist` function:\n\n```\nlitdata/streaming/client.py\nline: 14\nclass: S3Client\nproperty: client\n\nlitdata/processing/data_processor.py\nline: 16\nimport: from time import sleep, time\nline: 18\nimport: from urllib import parse\nline: 48\nimport: if _BOTO3_AVAILABLE: import botocore\nline: 102\nfunction: _wait_for_disk_usage_higher_than_threshold\nline: 106\nline: sleep(sleep_time)\n\nlitdata/processing/data_processor.py\nline: 782\nline: _wait_for_file_to_exist(s3, obj)\nline: 783\nline: with open(node_index_filepath, \"wb\") as f:\nline: 784\nline: s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)\n\nlitdata/processing/data_processor.py\nline: 156\nline: s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)\nline: 224\nline: s3.client.upload_file(local_filepath, obj.netloc, output_filepath)\nline: 761\nline: s3.client.upload_file(local_filepath, obj.netloc, os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath)))\n\nlitdata/constants.py\nline: 24\nconstant: _BOTO3_AVAILABLE\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/client.py",
+      "litdata/processing/data_processor.py",
+      "litdata/constants.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/client.py",
+        "name": "S3Client",
+        "kind": "class",
+        "symbol": "litdata.streaming.client.S3Client",
+        "start": 14,
+        "end": 53,
+        "code": "class S3Client:\n    # TODO: Generalize to support more cloud providers.\n\n    def __init__(self, refetch_interval: int = 3300) -> None:\n        self._refetch_interval = refetch_interval\n        self._last_time: Optional[float] = None\n        self._client: Optional[Any] = None\n\n    def _create_client(self) -> None:\n        has_shared_credentials_file = (\n            os.getenv(\"AWS_SHARED_CREDENTIALS_FILE\") == os.getenv(\"AWS_CONFIG_FILE\") == \"/.credentials/.aws_credentials\"\n        )\n\n        if has_shared_credentials_file or not _IS_IN_STUDIO:\n            self._client = boto3.client(\n                \"s3\", config=botocore.config.Config(retries={\"max_attempts\": 1000, \"mode\": \"adaptive\"})\n            )\n        else:\n            provider = InstanceMetadataProvider(iam_role_fetcher=InstanceMetadataFetcher(timeout=3600, num_attempts=5))\n            credentials = provider.load()\n            self._client = boto3.client(\n                \"s3\",\n                aws_access_key_id=credentials.access_key,\n                aws_secret_access_key=credentials.secret_key,\n                aws_session_token=credentials.token,\n                config=botocore.config.Config(retries={\"max_attempts\": 1000, \"mode\": \"adaptive\"}),\n            )\n\n    @property\n    def client(self) -> Any:\n        if self._client is None:\n            self._create_client()\n            self._last_time = time()\n\n        # Re-generate credentials for EC2\n        if self._last_time is None or (time() - self._last_time) > self._refetch_interval:\n            self._create_client()\n            self._last_time = time()\n\n        return self._client"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_wait_for_disk_usage_higher_than_threshold",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._wait_for_disk_usage_higher_than_threshold",
+        "start": 102,
+        "end": 109,
+        "code": "def _wait_for_disk_usage_higher_than_threshold(input_dir: str, threshold_in_gb: int = 25, sleep_time: int = 3) -> None:\n    usage = shutil.disk_usage(input_dir)\n\n    while (usage.free / 1000 / 1000 / 1000) <= threshold_in_gb:\n        sleep(sleep_time)\n        usage = shutil.disk_usage(input_dir)\n\n    return"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "DataChunkRecipe._upload_index",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor.DataChunkRecipe._upload_index",
+        "start": 748,
+        "end": 790,
+        "code": "    def _upload_index(self, output_dir: Dir, cache_dir: str, num_nodes: int, node_rank: Optional[int]) -> None:\n        \"\"\"This method upload the index file to the remote cloud directory.\"\"\"\n        if output_dir.path is None and output_dir.url is None:\n            return\n\n        obj = parse.urlparse(output_dir.url if output_dir.url else output_dir.path)\n        if num_nodes > 1:\n            local_filepath = os.path.join(cache_dir, f\"{node_rank}-{_INDEX_FILENAME}\")\n        else:\n            local_filepath = os.path.join(cache_dir, _INDEX_FILENAME)\n\n        if obj.scheme == \"s3\":\n            s3 = S3Client()\n            s3.client.upload_file(\n                local_filepath, obj.netloc, os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath))\n            )\n        elif output_dir.path and os.path.isdir(output_dir.path):\n            shutil.copyfile(local_filepath, os.path.join(output_dir.path, os.path.basename(local_filepath)))\n\n        if num_nodes == 1 or node_rank is None:\n            return\n\n        # Merge the index files generated by each node.\n        # Note: When using the Data Optimizer, they should be a single process on each node executing this section\n        # So no risk to get race conditon.\n        if num_nodes == node_rank + 1:\n            # Get the index file locally\n            for node_rank in range(num_nodes - 1):\n                output_dir_path = output_dir.url if output_dir.url else output_dir.path\n                assert output_dir_path\n                remote_filepath = os.path.join(output_dir_path, f\"{node_rank}-{_INDEX_FILENAME}\")\n                node_index_filepath = os.path.join(cache_dir, os.path.basename(remote_filepath))\n                if obj.scheme == \"s3\":\n                    obj = parse.urlparse(remote_filepath)\n                    _wait_for_file_to_exist(s3, obj)\n                    with open(node_index_filepath, \"wb\") as f:\n                        s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)\n                elif output_dir.path and os.path.isdir(output_dir.path):\n                    shutil.copyfile(remote_filepath, node_index_filepath)\n\n            merge_cache = Cache(cache_dir, chunk_bytes=1)\n            merge_cache._merge_no_wait()\n            self._upload_index(output_dir, cache_dir, 1, None)"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_download_data_target",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._download_data_target",
+        "start": 112,
+        "end": 166,
+        "code": "def _download_data_target(input_dir: Dir, cache_dir: str, queue_in: Queue, queue_out: Queue) -> None:\n    \"\"\"This function is used to download data from a remote directory to a cache directory to optimise reading.\"\"\"\n    s3 = S3Client()\n\n    while True:\n        # 2. Fetch from the queue\n        r: Optional[Tuple[int, List[str]]] = queue_in.get()\n\n        # 3. Terminate the process if we received a termination signal\n        if r is None:\n            queue_out.put(None)\n            return\n\n        # 4. Unpack\n        index, paths = r\n\n        # 5. Check whether all the files are already downloaded\n        if input_dir.path and all(\n            os.path.exists(p.replace(input_dir.path, cache_dir) if input_dir else p) for p in paths\n        ):\n            queue_out.put(index)\n            continue\n\n        if input_dir.url is not None or input_dir.path is not None:\n            if input_dir.url:\n                # 6. Wait for the removers to catch up when we are downloading data.\n                _wait_for_disk_usage_higher_than_threshold(\"/\", 25)\n\n            # 7. Download all the required paths to unblock the current index\n            for path in paths:\n                if input_dir.path:\n                    local_path = path.replace(input_dir.path, cache_dir)\n\n                if input_dir.url and input_dir.path:\n                    path = path.replace(input_dir.path, input_dir.url)\n\n                obj = parse.urlparse(path)\n\n                if obj.scheme == \"s3\":\n                    dirpath = os.path.dirname(local_path)\n\n                    os.makedirs(dirpath, exist_ok=True)\n\n                    with open(local_path, \"wb\") as f:\n                        s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)\n\n                elif os.path.isfile(path):\n                    if not path.startswith(\"/teamspace/studios/this_studio\"):\n                        os.makedirs(os.path.dirname(local_path), exist_ok=True)\n                        shutil.copyfile(path, local_path)\n                else:\n                    raise ValueError(f\"The provided {input_dir.url} isn't supported.\")\n\n        # 7. Inform the worker the current files are available\n        queue_out.put(index)"
+      },
+      {
+        "file": "litdata/processing/data_processor.py",
+        "name": "_upload_fn",
+        "kind": "function",
+        "symbol": "litdata.processing.data_processor._upload_fn",
+        "start": 192,
+        "end": 245,
+        "code": "def _upload_fn(upload_queue: Queue, remove_queue: Queue, cache_dir: str, output_dir: Dir) -> None:\n    \"\"\"This function is used to upload optimised chunks from a local to remote dataset directory.\"\"\"\n    obj = parse.urlparse(output_dir.url if output_dir.url else output_dir.path)\n\n    if obj.scheme == \"s3\":\n        s3 = S3Client()\n\n    while True:\n        data: Optional[Union[str, Tuple[str, str]]] = upload_queue.get()\n\n        tmpdir = None\n\n        if isinstance(data, str) or data is None:\n            local_filepath = data\n        else:\n            tmpdir, local_filepath = data\n\n        # Terminate the process if we received a termination signal\n        if local_filepath is None:\n            return\n\n        # Upload the file to the target cloud storage\n        if not local_filepath.startswith(cache_dir):\n            local_filepath = os.path.join(cache_dir, local_filepath)\n\n        if obj.scheme == \"s3\":\n            try:\n                if tmpdir is None:\n                    output_filepath = os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath))\n                else:\n                    output_filepath = os.path.join(str(obj.path).lstrip(\"/\"), local_filepath.replace(tmpdir, \"\")[1:])\n\n                s3.client.upload_file(\n                    local_filepath,\n                    obj.netloc,\n                    output_filepath,\n                )\n            except Exception as e:\n                print(e)\n\n        elif output_dir.path:\n            if tmpdir is None:\n                output_filepath = os.path.join(output_dir.path, os.path.basename(local_filepath))\n            else:\n                output_filepath = os.path.join(output_dir.path, local_filepath.replace(tmpdir, \"\")[1:])\n\n            os.makedirs(os.path.dirname(output_filepath), exist_ok=True)\n            shutil.move(local_filepath, output_filepath)\n        else:\n            raise ValueError(f\"The provided {output_dir.path} isn't supported.\")\n\n        # Inform the remover to delete the file\n        if remove_queue and os.path.exists(local_filepath):\n            remove_queue.put([local_filepath])"
+      },
+      {
+        "file": "litdata/constants.py",
+        "name": "_DEFAULT_CACHE_DIR",
+        "kind": "variable",
+        "symbol": "litdata.constants._DEFAULT_CACHE_DIR",
+        "start": 24,
+        "end": 24,
+        "code": "_DEFAULT_CACHE_DIR = os.path.join(Path.home(), \".lightning\", \"chunks\")"
+      }
+    ],
+    "unresolved": [
+      "litdata/processing/data_processor.py:line: 16",
+      "litdata/processing/data_processor.py:line: 18",
+      "litdata/processing/data_processor.py:line: 48",
+      "litdata/processing/data_processor.py:line: s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)",
+      "litdata/processing/data_processor.py:line: s3.client.download_fileobj(obj.netloc, obj.path.lstrip(\"/\"), f)",
+      "litdata/processing/data_processor.py:line: s3.client.upload_file(local_filepath, obj.netloc, output_filepath)",
+      "litdata/processing/data_processor.py:line: s3.client.upload_file(local_filepath, obj.netloc, os.path.join(str(obj.path).lstrip(\"/\"), os.path.basename(local_filepath)))"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "litdata.streaming.client.S3Client"
+    ],
+    "exact_hit_dependencies": [
+      "litdata.streaming.client.S3Client"
+    ],
+    "returned_entities": 6,
+    "returned_files": 3,
+    "unresolved_locations": 7,
+    "returned_code_chars": 8603
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 44583,
+    "completion_tokens": 765,
+    "total_tokens": 45348,
+    "seconds": 66.12992358207703,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 137.9229416847229,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

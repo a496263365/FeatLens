@@ -1,0 +1,139 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2078,
+  "namespace": "sumy.summarizers.lex_rank.LexRankSummarizer._compute_idf",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10929,
+      "input_estimate_after": 10929,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I need to identify reusable dependencies for implementing the `_compute_idf` function in `sumy/summarizers/lex_rank.py`. The function needs to compute inverse document frequency (IDF) for terms across sentences. Looking at the repository structure and existing code, I can identify several key locations that contain reusable patterns, utilities, or similar functionality.\n\nKey observations:\n1. The `_compute_idf` function needs to work with sentences (as lists of words) and return a dictionary of IDF values for each term.\n2. IDF formula is typically: `idf(t) = log(N / (df(t) + 1))` where N is total number of documents (sentences) and df(t) is document frequency of term t.\n3. The existing `_compute_tf` method in the same file shows how to process sentences and compute term frequencies.\n4. Other summarizers in the repository show similar text processing patterns.\n\nHere are the reusable dependencies:\n\n```\nsumy/summarizers/lex_rank.py\nline: 58\nfunction: LexRankSummarizer._compute_tf\nline: 73\nfunction: LexRankSummarizer._find_tf_max\n\nsumy/models/tf.py\nline: 13\nclass: TfDocumentModel\nline: 25\nline: 26\nfunction: TfDocumentModel.__init__\n\nsumy/summarizers/lex_rank.py\nline: 119\nfunction: LexRankSummarizer.cosine_similarity\nline: 142\nline: 144\n\nsumy/summarizers/kl.py\nline: 54\nfunction: KLSummarizer.compute_tf\nline: 60\nline: 63\n\nsumy/summarizers/lsa.py\nline: 89\nfunction: LsaSummarizer._compute_term_frequency\nline: 97\nline: 104\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/lex_rank.py",
+      "sumy/models/tf.py",
+      "sumy/summarizers/kl.py",
+      "sumy/summarizers/lsa.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/lex_rank.py",
+        "name": "LexRankSummarizer._compute_tf",
+        "kind": "function",
+        "symbol": "sumy.summarizers.lex_rank.LexRankSummarizer._compute_tf",
+        "start": 58,
+        "end": 71,
+        "code": "    def _compute_tf(self, sentences):\n        tf_values = map(Counter, sentences)\n\n        tf_metrics = []\n        for sentence in tf_values:\n            metrics = {}\n            max_tf = self._find_tf_max(sentence)\n\n            for term, tf in sentence.items():\n                metrics[term] = tf / max_tf\n\n            tf_metrics.append(metrics)\n\n        return tf_metrics"
+      },
+      {
+        "file": "sumy/summarizers/lex_rank.py",
+        "name": "LexRankSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.lex_rank.LexRankSummarizer",
+        "start": 16,
+        "end": 170,
+        "code": "class LexRankSummarizer(AbstractSummarizer):\n    \"\"\"\n    LexRank: Graph-based Centrality as Salience in Text Summarization\n    Source: http://tangra.si.umich.edu/~radev/lexrank/lexrank.pdf\n    \"\"\"\n    threshold = 0.1\n    epsilon = 0.1\n    _stop_words = frozenset()\n\n    @property\n    def stop_words(self):\n        return self._stop_words\n\n    @stop_words.setter\n    def stop_words(self, words):\n        self._stop_words = frozenset(map(self.normalize_word, words))\n\n    def __call__(self, document, sentences_count):\n        self._ensure_dependencies_installed()\n\n        sentences_words = [self._to_words_set(s) for s in document.sentences]\n        if not sentences_words:\n            return tuple()\n\n        tf_metrics = self._compute_tf(sentences_words)\n        idf_metrics = self._compute_idf(sentences_words)\n\n        matrix = self._create_matrix(sentences_words, self.threshold, tf_metrics, idf_metrics)\n        scores = self.power_method(matrix, self.epsilon)\n        ratings = dict(zip(document.sentences, scores))\n\n        return self._get_best_sentences(document.sentences, sentences_count, ratings)\n\n    @staticmethod\n    def _ensure_dependencies_installed():\n        if numpy is None:\n            raise ValueError(\"LexRank summarizer requires NumPy. Please, install it by command 'pip install numpy'.\")\n\n    def _to_words_set(self, sentence):\n        words = map(self.normalize_word, sentence.words)\n        return [self.stem_word(w) for w in words if w not in self._stop_words]\n\n    def _compute_tf(self, sentences):\n        tf_values = map(Counter, sentences)\n\n        tf_metrics = []\n        for sentence in tf_values:\n            metrics = {}\n            max_tf = self._find_tf_max(sentence)\n\n            for term, tf in sentence.items():\n                metrics[term] = tf / max_tf\n\n            tf_metrics.append(metrics)\n\n        return tf_metrics\n\n    @staticmethod\n    def _find_tf_max(terms):\n        return max(terms.values()) if terms else 1\n\n    @staticmethod\n    def _compute_idf(sentences):\n        pass\n\n\n\n\n\n\n\n\n\n\n    def _create_matrix(self, sentences, threshold, tf_metrics, idf_metrics):\n        \"\"\"\n        Creates matrix of shape |sentences|×|sentences|.\n        \"\"\"\n        # create matrix |sentences|×|sentences| filled with zeroes\n        sentences_count = len(sentences)\n        matrix = numpy.zeros((sentences_count, sentences_count))\n        degrees = numpy.zeros((sentences_count, ))\n\n        for row, (sentence1, tf1) in enumerate(zip(sentences, tf_metrics)):\n            for col, (sentence2, tf2) in enumerate(zip(sentences, tf_metrics)):\n                matrix[row, col] = self.cosine_similarity(sentence1, sentence2, tf1, tf2, idf_metrics)\n\n                if matrix[row, col] > threshold:\n                    matrix[row, col] = 1.0\n                    degrees[row] += 1\n                else:\n                    matrix[row, col] = 0\n\n        for row in range(sentences_count):\n            for col in range(sentences_count):\n                if degrees[row] == 0:\n                    degrees[row] = 1\n\n                matrix[row][col] = matrix[row][col] / degrees[row]\n\n        return matrix\n\n    @staticmethod\n    def cosine_similarity(sentence1, sentence2, tf1, tf2, idf_metrics):\n        \"\"\"\n        We compute idf-modified-cosine(sentence1, sentence2) here.\n        It's cosine similarity of these two sentences (vectors) A, B computed as cos(x, y) = A . B / (|A| . |B|)\n        Sentences are represented as vector TF*IDF metrics.\n\n        :param sentence1:\n            Iterable object where every item represents word of 1st sentence.\n        :param sentence2:\n            Iterable object where every item represents word of 2nd sentence.\n        :type tf1: dict\n        :param tf1:\n            Term frequencies of words from 1st sentence.\n        :type tf2: dict\n        :param tf2:\n            Term frequencies of words from 2nd sentence\n        :type idf_metrics: dict\n        :param idf_metrics:\n            Inverted document metrics of the sentences. Every sentence is treated as document for this algorithm.\n        :rtype: float\n        :return:\n            Returns -1.0 for opposite similarity, 1.0 for the same sentence and zero for no similarity between sentences.\n        \"\"\"\n        unique_words1 = frozenset(sentence1)\n        unique_words2 = frozenset(sentence2)\n        common_words = unique_words1 & unique_words2\n\n        numerator = 0.0\n        for term in common_words:\n            numerator += tf1[term]*tf2[term] * idf_metrics[term]**2\n\n        denominator1 = sum((tf1[t]*idf_metrics[t])**2 for t in unique_words1)\n        denominator2 = sum((tf2[t]*idf_metrics[t])**2 for t in unique_words2)\n\n        if denominator1 > 0 and denominator2 > 0:\n            return numerator / (math.sqrt(denominator1) * math.sqrt(denominator2))\n        else:\n            return 0.0\n\n    @staticmethod\n    def power_method(matrix, epsilon):\n        transposed_matrix = matrix.T\n        sentences_count = len(matrix)\n        p_vector = numpy.array([1.0 / sentences_count] * sentences_count)\n        lambda_val = 1.0\n\n        while lambda_val > epsilon:\n            next_p = numpy.dot(transposed_matrix, p_vector)\n            lambda_val = numpy.linalg.norm(numpy.subtract(next_p, p_vector))\n            p_vector = next_p\n\n        return p_vector"
+      },
+      {
+        "file": "sumy/summarizers/lex_rank.py",
+        "name": "LexRankSummarizer._find_tf_max",
+        "kind": "function",
+        "symbol": "sumy.summarizers.lex_rank.LexRankSummarizer._find_tf_max",
+        "start": 74,
+        "end": 75,
+        "code": "    def _find_tf_max(terms):\n        return max(terms.values()) if terms else 1"
+      },
+      {
+        "file": "sumy/models/tf.py",
+        "name": "TfDocumentModel",
+        "kind": "class",
+        "symbol": "sumy.models.tf.TfDocumentModel",
+        "start": 13,
+        "end": 88,
+        "code": "class TfDocumentModel(object):\n    \"\"\"Term-Frequency document model (term = word).\"\"\"\n    def __init__(self, words, tokenizer=None):\n        if isinstance(words, string_types) and tokenizer is None:\n            raise ValueError(\n                \"Tokenizer has to be given if ``words`` is not a sequence.\")\n        elif isinstance(words, string_types):\n            words = tokenizer.to_words(to_unicode(words))\n        elif not isinstance(words, Sequence):\n            raise ValueError(\n                \"Parameter ``words`` has to be sequence or string with tokenizer given.\")\n\n        self._terms = Counter(map(unicode.lower, words))\n        self._max_frequency = max(self._terms.values()) if self._terms else 1\n\n    @property\n    def magnitude(self):\n        \"\"\"\n        Lenght/norm/magnitude of vector representation of document.\n        This is usually denoted by ||d||.\n        \"\"\"\n        return math.sqrt(sum(t**2 for t in self._terms.values()))\n\n    @property\n    def terms(self):\n        return self._terms.keys()\n\n    def most_frequent_terms(self, count=0):\n        \"\"\"\n        Returns ``count`` of terms sorted by their frequency\n        in descending order.\n\n        :parameter int count:\n            Max. number of returned terms. Value 0 means no limit (default).\n        \"\"\"\n        # sort terms by number of occurrences in descending order\n        terms = sorted(self._terms.items(), key=lambda i: -i[1])\n\n        terms = tuple(i[0] for i in terms)\n        if count == 0:\n            return terms\n        elif count > 0:\n            return terms[:count]\n        else:\n            raise ValueError(\n                \"Only non-negative values are allowed for count of terms.\")\n\n    def term_frequency(self, term):\n        \"\"\"\n        Returns frequency of term in document.\n\n        :returns int:\n            Returns count of words in document.\n        \"\"\"\n        return self._terms.get(term, 0)\n\n    def normalized_term_frequency(self, term, smooth=0.0):\n        \"\"\"\n        Returns normalized frequency of term in document.\n        http://nlp.stanford.edu/IR-book/html/htmledition/maximum-tf-normalization-1.html\n\n        :parameter float smooth:\n            0.0 <= smooth <= 1.0, generally set to 0.4, although some\n            early work used the value 0.5. The term is a smoothing term\n            whose role is to damp the contribution of the second term.\n            It may be viewed as a scaling down of TF by the largest TF\n            value in document.\n        :returns float:\n            0.0 <= frequency <= 1.0, where 0 means no occurrence in document\n            and 1 the most frequent term in document.\n        \"\"\"\n        frequency = self.term_frequency(term) / self._max_frequency\n        return smooth + (1.0 - smooth)*frequency\n\n    def __repr__(self):\n        return \"<TfDocumentModel %s>\" % pformat(self._terms)"
+      },
+      {
+        "file": "sumy/models/tf.py",
+        "name": "TfDocumentModel.__init__",
+        "kind": "function",
+        "symbol": "sumy.models.tf.TfDocumentModel.__init__",
+        "start": 15,
+        "end": 26,
+        "code": "    def __init__(self, words, tokenizer=None):\n        if isinstance(words, string_types) and tokenizer is None:\n            raise ValueError(\n                \"Tokenizer has to be given if ``words`` is not a sequence.\")\n        elif isinstance(words, string_types):\n            words = tokenizer.to_words(to_unicode(words))\n        elif not isinstance(words, Sequence):\n            raise ValueError(\n                \"Parameter ``words`` has to be sequence or string with tokenizer given.\")\n\n        self._terms = Counter(map(unicode.lower, words))\n        self._max_frequency = max(self._terms.values()) if self._terms else 1"
+      },
+      {
+        "file": "sumy/summarizers/lex_rank.py",
+        "name": "LexRankSummarizer.cosine_similarity",
+        "kind": "function",
+        "symbol": "sumy.summarizers.lex_rank.LexRankSummarizer.cosine_similarity",
+        "start": 119,
+        "end": 156,
+        "code": "    def cosine_similarity(sentence1, sentence2, tf1, tf2, idf_metrics):\n        \"\"\"\n        We compute idf-modified-cosine(sentence1, sentence2) here.\n        It's cosine similarity of these two sentences (vectors) A, B computed as cos(x, y) = A . B / (|A| . |B|)\n        Sentences are represented as vector TF*IDF metrics.\n\n        :param sentence1:\n            Iterable object where every item represents word of 1st sentence.\n        :param sentence2:\n            Iterable object where every item represents word of 2nd sentence.\n        :type tf1: dict\n        :param tf1:\n            Term frequencies of words from 1st sentence.\n        :type tf2: dict\n        :param tf2:\n            Term frequencies of words from 2nd sentence\n        :type idf_metrics: dict\n        :param idf_metrics:\n            Inverted document metrics of the sentences. Every sentence is treated as document for this algorithm.\n        :rtype: float\n        :return:\n            Returns -1.0 for opposite similarity, 1.0 for the same sentence and zero for no similarity between sentences.\n        \"\"\"\n        unique_words1 = frozenset(sentence1)\n        unique_words2 = frozenset(sentence2)\n        common_words = unique_words1 & unique_words2\n\n        numerator = 0.0\n        for term in common_words:\n            numerator += tf1[term]*tf2[term] * idf_metrics[term]**2\n\n        denominator1 = sum((tf1[t]*idf_metrics[t])**2 for t in unique_words1)\n        denominator2 = sum((tf2[t]*idf_metrics[t])**2 for t in unique_words2)\n\n        if denominator1 > 0 and denominator2 > 0:\n            return numerator / (math.sqrt(denominator1) * math.sqrt(denominator2))\n        else:\n            return 0.0"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer.compute_tf",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer.compute_tf",
+        "start": 54,
+        "end": 64,
+        "code": "    def compute_tf(self, sentences):\n        \"\"\"\n        Computes the normalized term frequency as explained in http://www.tfidf.com/\n\n        :type sentences: [sumy.models.dom.Sentence]\n        \"\"\"\n        content_words = self._get_all_content_words_in_doc(sentences)\n        content_words_count = len(content_words)\n        content_words_freq = self._compute_word_freq(content_words)\n        content_word_tf = dict((w, f / content_words_count) for w, f in content_words_freq.items())\n        return content_word_tf"
+      },
+      {
+        "file": "sumy/summarizers/lsa.py",
+        "name": "LsaSummarizer._compute_term_frequency",
+        "kind": "function",
+        "symbol": "sumy.summarizers.lsa.LsaSummarizer._compute_term_frequency",
+        "start": 89,
+        "end": 106,
+        "code": "    def _compute_term_frequency(self, matrix, smooth=0.4):\n        \"\"\"\n        Computes TF metrics for each sentence (column) in the given matrix.\n        You can read more about smoothing parameter at URL below:\n        http://nlp.stanford.edu/IR-book/html/htmledition/maximum-tf-normalization-1.html\n        \"\"\"\n        assert 0.0 <= smooth < 1.0\n\n        max_word_frequencies = numpy.max(matrix, axis=0)\n        rows, cols = matrix.shape\n        for row in range(rows):\n            for col in range(cols):\n                max_word_frequency = max_word_frequencies[col]\n                if max_word_frequency != 0:\n                    frequency = matrix[row, col]/max_word_frequency\n                    matrix[row, col] = smooth + (1.0 - smooth)*frequency\n\n        return matrix"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 4,
+    "unresolved_locations": 0,
+    "returned_code_chars": 12186
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26042,
+    "completion_tokens": 803,
+    "total_tokens": 26845,
+    "seconds": 130.87393164634705,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 137.30818367004395,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

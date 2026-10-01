@@ -1,0 +1,88 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 421,
+  "namespace": "rest_framework.templatetags.rest_framework.add_query_param",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13112,
+      "input_estimate_after": 13112,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nrest_framework/request.py\nclass: Request\nfunction: build_absolute_uri\n\nrest_framework/compat.py\nfunction: urlparse\n\nrest_framework/reverse.py\nfunction: reverse\n\ndjango/utils/encoding.py\nfunction: iri_to_uri\n```",
+  "final_locations": {
+    "files": [
+      "rest_framework/request.py",
+      "rest_framework/compat.py",
+      "rest_framework/reverse.py"
+    ],
+    "entities": [
+      {
+        "file": "rest_framework/request.py",
+        "name": "Request",
+        "kind": "class",
+        "symbol": "rest_framework.request.Request",
+        "start": 140,
+        "end": 455,
+        "code": "class Request:\n    \"\"\"\n    Wrapper allowing to enhance a standard `HttpRequest` instance.\n\n    Kwargs:\n        - request(HttpRequest). The original request instance.\n        - parsers(list/tuple). The parsers to use for parsing the\n          request content.\n        - authenticators(list/tuple). The authenticators used to try\n          authenticating the request's user.\n    \"\"\"\n\n    def __init__(self, request, parsers=None, authenticators=None,\n                 negotiator=None, parser_context=None):\n        assert isinstance(request, HttpRequest), (\n            'The `request` argument must be an instance of '\n            '`django.http.HttpRequest`, not `{}.{}`.'\n            .format(request.__class__.__module__, request.__class__.__name__)\n        )\n\n        self._request = request\n        self.parsers = parsers or ()\n        self.authenticators = authenticators or ()\n        self.negotiator = negotiator or self._default_negotiator()\n        self.parser_context = parser_context\n        self._data = Empty\n        self._files = Empty\n        self._full_data = Empty\n        self._content_type = Empty\n        self._stream = Empty\n\n        if self.parser_context is None:\n            self.parser_context = {}\n        self.parser_context['request'] = self\n        self.parser_context['encoding'] = request.encoding or settings.DEFAULT_CHARSET\n\n        force_user = getattr(request, '_force_auth_user', None)\n        force_token = getattr(request, '_force_auth_token', None)\n        if force_user is not None or force_token is not None:\n            forced_auth = ForcedAuthentication(force_user, force_token)\n            self.authenticators = (forced_auth,)\n\n    def __repr__(self):\n        return '<%s.%s: %s %r>' % (\n            self.__class__.__module__,\n            self.__class__.__name__,\n            self.method,\n            self.get_full_path())\n\n    def _default_negotiator(self):\n        return api_settings.DEFAULT_CONTENT_NEGOTIATION_CLASS()\n\n    @property\n    def content_type(self):\n        meta = self._request.META\n        return meta.get('CONTENT_TYPE', meta.get('HTTP_CONTENT_TYPE', ''))\n\n    @property\n    def stream(self):\n        \"\"\"\n        Returns an object that may be used to stream the request content.\n        \"\"\"\n        if not _hasattr(self, '_stream'):\n            self._load_stream()\n        return self._stream\n\n    @property\n    def query_params(self):\n        \"\"\"\n        More semantically correct name for request.GET.\n        \"\"\"\n        return self._request.GET\n\n    @property\n    def data(self):\n        if not _hasattr(self, '_full_data'):\n            self._load_data_and_files()\n        return self._full_data\n\n    @property\n    def user(self):\n        \"\"\"\n        Returns the user associated with the current request, as authenticated\n        by the authentication classes provided to the request.\n        \"\"\"\n        if not hasattr(self, '_user'):\n            with wrap_attributeerrors():\n                self._authenticate()\n        return self._user\n\n    @user.setter\n    def user(self, value):\n        \"\"\"\n        Sets the user on the current request. This is necessary to maintain\n        compatibility with django.contrib.auth where the user property is\n        set in the login and logout functions.\n\n        Note that we also set the user on Django's underlying `HttpRequest`\n        instance, ensuring that it is available to any middleware in the stack.\n        \"\"\"\n        self._user = value\n        self._request.user = value\n\n    @property\n    def auth(self):\n        \"\"\"\n        Returns any non-user authentication information associated with the\n        request, such as an authentication token.\n        \"\"\"\n        if not hasattr(self, '_auth'):\n            with wrap_attributeerrors():\n                self._authenticate()\n        return self._auth\n\n    @auth.setter\n    def auth(self, value):\n        \"\"\"\n        Sets any non-user authentication information associated with the\n        request, such as an authentication token.\n        \"\"\"\n        self._auth = value\n        self._request.auth = value\n\n    @property\n    def successful_authenticator(self):\n        \"\"\"\n        Return the instance of the authentication instance class that was used\n        to authenticate the request, or `None`.\n        \"\"\"\n        if not hasattr(self, '_authenticator'):\n            with wrap_attributeerrors():\n                self._authenticate()\n        return self._authenticator\n\n    def _load_data_and_files(self):\n        \"\"\"\n        Parses the request content into `self.data`.\n        \"\"\"\n        if not _hasattr(self, '_data'):\n            self._data, self._files = self._parse()\n            if self._files:\n                self._full_data = self._data.copy()\n                self._full_data.update(self._files)\n            else:\n                self._full_data = self._data\n\n            # if a form media type, copy data & files refs to the underlying\n            # http request so that closable objects are handled appropriately.\n            if is_form_media_type(self.content_type):\n                self._request._post = self.POST\n                self._request._files = self.FILES\n\n    def _load_stream(self):\n        \"\"\"\n        Return the content body of the request, as a stream.\n        \"\"\"\n        meta = self._request.META\n        try:\n            content_length = int(\n                meta.get('CONTENT_LENGTH', meta.get('HTTP_CONTENT_LENGTH', 0))\n            )\n        except (ValueError, TypeError):\n            content_length = 0\n\n        if content_length == 0:\n            self._stream = None\n        elif not self._request._read_started:\n            self._stream = self._request\n        else:\n            self._stream = io.BytesIO(self.body)\n\n    def _supports_form_parsing(self):\n        \"\"\"\n        Return True if this requests supports parsing form data.\n        \"\"\"\n        form_media = (\n            'application/x-www-form-urlencoded',\n            'multipart/form-data'\n        )\n        return any(parser.media_type in form_media for parser in self.parsers)\n\n    def _parse(self):\n        \"\"\"\n        Parse the request content, returning a two-tuple of (data, files)\n\n        May raise an `UnsupportedMediaType`, or `ParseError` exception.\n        \"\"\"\n        media_type = self.content_type\n        try:\n            stream = self.stream\n        except RawPostDataException:\n            if not hasattr(self._request, '_post'):\n                raise\n            # If request.POST has been accessed in middleware, and a method='POST'\n            # request was made with 'multipart/form-data', then the request stream\n            # will already have been exhausted.\n            if self._supports_form_parsing():\n                return (self._request.POST, self._request.FILES)\n            stream = None\n\n        if stream is None or media_type is None:\n            if media_type and is_form_media_type(media_type):\n                empty_data = QueryDict('', encoding=self._request._encoding)\n            else:\n                empty_data = {}\n            empty_files = MultiValueDict()\n            return (empty_data, empty_files)\n\n        parser = self.negotiator.select_parser(self, self.parsers)\n\n        if not parser:\n            raise exceptions.UnsupportedMediaType(media_type)\n\n        try:\n            parsed = parser.parse(stream, media_type, self.parser_context)\n        except Exception:\n            # If we get an exception during parsing, fill in empty data and\n            # re-raise.  Ensures we don't simply repeat the error when\n            # attempting to render the browsable renderer response, or when\n            # logging the request or similar.\n            self._data = QueryDict('', encoding=self._request._encoding)\n            self._files = MultiValueDict()\n            self._full_data = self._data\n            raise\n\n        # Parser classes may return the raw data, or a\n        # DataAndFiles object.  Unpack the result as required.\n        try:\n            return (parsed.data, parsed.files)\n        except AttributeError:\n            empty_files = MultiValueDict()\n            return (parsed, empty_files)\n\n    def _authenticate(self):\n        \"\"\"\n        Attempt to authenticate the request using each authentication instance\n        in turn.\n        \"\"\"\n        for authenticator in self.authenticators:\n            try:\n                user_auth_tuple = authenticator.authenticate(self)\n            except exceptions.APIException:\n                self._not_authenticated()\n                raise\n\n            if user_auth_tuple is not None:\n                self._authenticator = authenticator\n                self.user, self.auth = user_auth_tuple\n                return\n\n        self._not_authenticated()\n\n    def _not_authenticated(self):\n        \"\"\"\n        Set authenticator, user & authtoken representing an unauthenticated request.\n\n        Defaults are None, AnonymousUser & None.\n        \"\"\"\n        self._authenticator = None\n\n        if api_settings.UNAUTHENTICATED_USER:\n            self.user = api_settings.UNAUTHENTICATED_USER()\n        else:\n            self.user = None\n\n        if api_settings.UNAUTHENTICATED_TOKEN:\n            self.auth = api_settings.UNAUTHENTICATED_TOKEN()\n        else:\n            self.auth = None\n\n    def __getattr__(self, attr):\n        \"\"\"\n        If an attribute does not exist on this instance, then we also attempt\n        to proxy it to the underlying HttpRequest object.\n        \"\"\"\n        try:\n            return getattr(self._request, attr)\n        except AttributeError:\n            return self.__getattribute__(attr)\n\n    @property\n    def DATA(self):\n        raise NotImplementedError(\n            '`request.DATA` has been deprecated in favor of `request.data` '\n            'since version 3.0, and has been fully removed as of version 3.2.'\n        )\n\n    @property\n    def POST(self):\n        # Ensure that request.POST uses our request parsing.\n        if not _hasattr(self, '_data'):\n            self._load_data_and_files()\n        if is_form_media_type(self.content_type):\n            return self._data\n        return QueryDict('', encoding=self._request._encoding)\n\n    @property\n    def FILES(self):\n        # Leave this one alone for backwards compat with Django's request.FILES\n        # Different from the other two cases, which are not valid property\n        # names on the WSGIRequest class.\n        if not _hasattr(self, '_files'):\n            self._load_data_and_files()\n        return self._files\n\n    @property\n    def QUERY_PARAMS(self):\n        raise NotImplementedError(\n            '`request.QUERY_PARAMS` has been deprecated in favor of `request.query_params` '\n            'since version 3.0, and has been fully removed as of version 3.2.'\n        )\n\n    def force_plaintext_errors(self, value):\n        # Hack to allow our exception handler to force choice of\n        # plaintext or html error responses.\n        self._request.is_ajax = lambda: value"
+      },
+      {
+        "file": "rest_framework/reverse.py",
+        "name": "reverse",
+        "kind": "function",
+        "symbol": "rest_framework.reverse.reverse",
+        "start": 32,
+        "end": 49,
+        "code": "def reverse(viewname, args=None, kwargs=None, request=None, format=None, **extra):\n    \"\"\"\n    If versioning is being used then we pass any `reverse` calls through\n    to the versioning scheme instance, so that the resulting URL\n    can be modified if needed.\n    \"\"\"\n    scheme = getattr(request, 'versioning_scheme', None)\n    if scheme is not None:\n        try:\n            url = scheme.reverse(viewname, args, kwargs, request, format, **extra)\n        except NoReverseMatch:\n            # In case the versioning scheme reversal fails, fallback to the\n            # default implementation\n            url = _reverse(viewname, args, kwargs, request, format, **extra)\n    else:\n        url = _reverse(viewname, args, kwargs, request, format, **extra)\n\n    return preserve_builtin_query_params(url, request)"
+      }
+    ],
+    "unresolved": [
+      "rest_framework/request.py:function: build_absolute_uri",
+      "rest_framework/compat.py:function: urlparse",
+      "django/utils/encoding.py"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 2,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 11750
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 35146,
+    "completion_tokens": 2089,
+    "total_tokens": 37235,
+    "seconds": 73.49669981002808,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 96.58980083465576,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

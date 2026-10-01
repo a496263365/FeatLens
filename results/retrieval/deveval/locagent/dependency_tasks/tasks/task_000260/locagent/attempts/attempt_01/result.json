@@ -1,0 +1,120 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 260,
+  "namespace": "mssqlcli.telemetry.conclude",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4818,
+      "input_estimate_after": 4818,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmssqlcli/telemetry.py\nline: 128\nclass: TelemetrySession\n\nmssqlcli/telemetry.py\nline: 133\nfunction: telemetry.upload_payload\n\nmssqlcli/telemetry_core.py\nline: 1\nmodule: telemetry_core\n\nmssqlcli/main.py\nline: 76\nfunction: main\n\nmssqlcli/telemetry.py\nline: 117\nfunction: telemetry.start\n```",
+  "final_locations": {
+    "files": [
+      "mssqlcli/telemetry.py",
+      "mssqlcli/main.py"
+    ],
+    "entities": [
+      {
+        "file": "mssqlcli/telemetry.py",
+        "name": "TelemetrySession",
+        "kind": "class",
+        "symbol": "mssqlcli.telemetry.TelemetrySession",
+        "start": 39,
+        "end": 108,
+        "code": "class TelemetrySession:\n    start_time = None\n    end_time = None\n    correlation_id = str(uuid.uuid4())\n    exceptions = []\n    server_version = None\n    server_edition = None\n    connection_type = None\n\n    def add_exception(self, fault_type, description=None):\n        details = {\n            'Reserved.DataModel.EntityType': 'Fault',\n            'Reserved.DataModel.Fault.Description': description or fault_type,\n            'Reserved.DataModel.Correlation.1': '{},UserTask,'.format(self.correlation_id),\n        }\n        fault_name = '{}/{}'.format(PRODUCT_NAME, fault_type.lower())\n\n        self.exceptions.append((fault_name, details))\n\n    @decorators.suppress_all_exceptions(raise_in_diagnostics=True, fallback_return=None)\n    def generate_payload(self):\n        events = []\n        base = self._get_base_properties()\n\n        events.append({'name': PRODUCT_NAME, 'properties': base})\n        for name, props in self.exceptions:\n            props.update(base)\n            props.update({'Reserved.DataModel.CorrelationId': str(uuid.uuid4()),\n                          'Reserved.EventId': str(uuid.uuid4())})\n            events.append({'name': name, 'properties': props})\n\n        payload = json.dumps(events)\n        return _remove_symbols(payload)\n\n    def _get_base_properties(self):\n\n        # Generic data model used by SQL Telemetry.\n        return {\n            'Reserved.ChannelUsed': 'aivortex',\n            'Reserved.SequenceNumber': 1,\n            'Reserved.EventId': str(uuid.uuid4()),\n            'Reserved.SessionId': str(uuid.uuid4()),\n            'Reserved.TimeSinceSessionStart': 0,\n\n            'Reserved.DataModel.Source': 'DataModelAPI',\n            'Reserved.DataModel.EntitySchemaVersion': 4,\n            'Reserved.DataModel.Severity': 0,\n            'Reserved.DataModel.CorrelationId': self.correlation_id,\n\n            'Context.Default.SQLTools.ExeName': PRODUCT_NAME,\n            'Context.Default.SQLTools.ExeVersion': _get_mssql_cli_version(),\n            'Context.Default.SQLTools.OS.Type': platform.system().lower(),\n            'Context.Default.SQLTools.OS.Version': platform.release().lower(),\n            'Context.Default.SQLTools.IsDocker': bool(os.environ.get(MSSQL_CLI_IN_DOCKER, False)),\n            'Context.Default.SQLTools.User.Id': _get_user_id(),\n            'Context.Default.SQLTools.User.IsMicrosoftInternal': 'False',\n            'Context.Default.SQLTools.User.IsOptedIn': 'True',\n            'Context.Default.SQLTools.ShellType': _get_shell_type(),\n            'Context.Default.SQLTools.EnvironmentVariables': _get_env_string(),\n            'Context.Default.SQLTools.Locale': '{},{}'.format(locale.getdefaultlocale()[0],\n                                                              locale.getdefaultlocale()[1]),\n            'Context.Default.SQLTools.StartTime': str(self.start_time),\n            'Context.Default.SQLTools.EndTime': str(self.end_time),\n            'Context.Default.SQLTools.SessionDuration': str((self.end_time - self.start_time)\n                                                            .total_seconds()),\n            'Context.Default.SQLTools.PythonVersion': platform.python_version(),\n            'Context.Default.SQLTools.ServerVersion': self.server_version,\n            'Context.Default.SQLTools.ServerEdition': self.server_edition,\n            'Context.Default.SQLTools.ConnectionType': self.connection_type,\n        }"
+      },
+      {
+        "file": "mssqlcli/telemetry.py",
+        "name": "upload_payload",
+        "kind": "function",
+        "symbol": "mssqlcli.telemetry.upload_payload",
+        "start": 133,
+        "end": 142,
+        "code": "def upload_payload(payload, service_endpoint_uri, separate_process):\n    payload_uploaded = None\n    if payload:\n        if not separate_process:\n            telemetry_core.upload(payload, service_endpoint_uri)\n        else:\n            subprocess.Popen([sys.executable, os.path.realpath(telemetry_core.__file__),\n                              payload, service_endpoint_uri])\n        payload_uploaded = payload\n    return payload_uploaded"
+      },
+      {
+        "file": "mssqlcli/main.py",
+        "name": "configure_and_update_options",
+        "kind": "function",
+        "symbol": "mssqlcli.main.configure_and_update_options",
+        "start": 76,
+        "end": 88,
+        "code": "def configure_and_update_options(options):\n    if options.dac_connection and options.server and not \\\n            options.server.lower().startswith(\"admin:\"):\n        options.server = \"admin:\" + options.server\n\n    if not options.integrated_auth:\n        if not options.username:\n            options.username = input(u'Username (press enter for sa):') or u'sa'\n        if not options.password:\n            pw = getpass.getpass()\n            if pw is not None:\n                pw = pw.replace('\\r', '').replace('\\n', '')\n            options.password = pw"
+      },
+      {
+        "file": "mssqlcli/main.py",
+        "name": "main",
+        "kind": "function",
+        "symbol": "mssqlcli.main.main",
+        "start": 110,
+        "end": 118,
+        "code": "def main():\n    try:\n        telemetry_session.start()\n        mssqlcli_options_parser = create_parser()\n        mssqlcli_options = mssqlcli_options_parser.parse_args(sys.argv[1:])\n        run_cli_with(mssqlcli_options)\n    finally:\n        # Upload telemetry async in a separate process.\n        telemetry_session.conclude()"
+      },
+      {
+        "file": "mssqlcli/telemetry.py",
+        "name": "start",
+        "kind": "function",
+        "symbol": "mssqlcli.telemetry.start",
+        "start": 117,
+        "end": 118,
+        "code": "def start():\n    _session.start_time = datetime.now()"
+      }
+    ],
+    "unresolved": [
+      "mssqlcli/telemetry.py:line: 128",
+      "mssqlcli/telemetry.py:function: telemetry.upload_payload",
+      "mssqlcli/telemetry_core.py",
+      "mssqlcli/telemetry.py:function: telemetry.start"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.4,
+    "exact_entity_dr": 0.2,
+    "dependency_count": 5,
+    "hit_dependencies": [
+      "mssqlcli.telemetry._session",
+      "mssqlcli.telemetry.upload_payload"
+    ],
+    "exact_hit_dependencies": [
+      "mssqlcli.telemetry.upload_payload"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 4766
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 22246,
+    "completion_tokens": 2539,
+    "total_tokens": 24785,
+    "seconds": 88.47075963020325,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 98.71604442596436,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

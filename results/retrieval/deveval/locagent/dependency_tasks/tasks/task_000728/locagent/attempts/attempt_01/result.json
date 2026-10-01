@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 728,
+  "namespace": "pyt.vulnerabilities.vulnerabilities.find_triggers",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8271,
+      "input_estimate_after": 8271,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I have identified the following locations containing reusable dependencies for implementing the `find_triggers` function:\n\n```\npyt/vulnerabilities/vulnerabilities.py\nline: 50\nline: 55\nfunction: identify_triggers\n\npyt/vulnerabilities/vulnerabilities.py\nline: 151\nfunction: label_contains\n\npyt/vulnerabilities/vulnerability_helper.py\nclass: TriggerNode\n\npyt/vulnerabilities/trigger_definitions_parser.py\nclass: Source\n\npyt/vulnerabilities/vulnerabilities.py\nline: -1\nfunction: filter_cfg_nodes\n```",
+  "final_locations": {
+    "files": [
+      "pyt/vulnerabilities/vulnerabilities.py",
+      "pyt/vulnerabilities/vulnerability_helper.py",
+      "pyt/vulnerabilities/trigger_definitions_parser.py"
+    ],
+    "entities": [
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "identify_triggers",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.identify_triggers",
+        "start": 24,
+        "end": 59,
+        "code": "def identify_triggers(\n    cfg,\n    sources,\n    sinks,\n    lattice,\n    nosec_lines\n):\n    \"\"\"Identify sources, sinks and sanitisers in a CFG.\n\n    Args:\n        cfg(CFG): CFG to find sources, sinks and sanitisers in.\n        sources(tuple): list of sources, a source is a (source, sanitiser) tuple.\n        sinks(tuple): list of sources, a sink is a (sink, sanitiser) tuple.\n        nosec_lines(set): lines with # nosec whitelisting\n\n    Returns:\n        Triggers tuple with sink and source nodes and a sanitiser node dict.\n    \"\"\"\n    assignment_nodes = filter_cfg_nodes(cfg, AssignmentNode)\n    tainted_nodes = filter_cfg_nodes(cfg, TaintedNode)\n    tainted_trigger_nodes = [\n        TriggerNode(\n            Source('Framework function URL parameter'),\n            cfg_node=node\n        ) for node in tainted_nodes\n    ]\n    sources_in_file = find_triggers(assignment_nodes, sources, nosec_lines)\n    sources_in_file.extend(tainted_trigger_nodes)\n\n    find_secondary_sources(assignment_nodes, sources_in_file, lattice)\n\n    sinks_in_file = find_triggers(cfg.nodes, sinks, nosec_lines)\n\n    sanitiser_node_dict = build_sanitiser_node_dict(cfg, sinks_in_file)\n\n    return Triggers(sources_in_file, sinks_in_file, sanitiser_node_dict)"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "label_contains",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.label_contains",
+        "start": 151,
+        "end": 167,
+        "code": "def label_contains(\n    node,\n    triggers\n):\n    \"\"\"Determine if node contains any of the trigger_words provided.\n\n    Args:\n        node(Node): CFG node to check.\n        trigger_words(list[Union[Sink, Source]]): list of trigger words to look for.\n\n    Returns:\n        Iterable of TriggerNodes found. Can be multiple because multiple\n        trigger_words can be in one node.\n    \"\"\"\n    for trigger in triggers:\n        if trigger.trigger_word in node.label:\n            yield TriggerNode(trigger, node)"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerability_helper.py",
+        "name": "TriggerNode",
+        "kind": "class",
+        "symbol": "pyt.vulnerabilities.vulnerability_helper.TriggerNode",
+        "start": 160,
+        "end": 199,
+        "code": "class TriggerNode():\n    def __init__(\n        self,\n        trigger,\n        cfg_node,\n        secondary_nodes=[]\n    ):\n        self.trigger = trigger\n        self.cfg_node = cfg_node\n        self.secondary_nodes = secondary_nodes\n\n    @property\n    def trigger_word(self):\n        return self.trigger.trigger_word\n\n    @property\n    def sanitisers(self):\n        return self.trigger.sanitisers if hasattr(self.trigger, 'sanitisers') else []\n\n    def append(self, cfg_node):\n        if not cfg_node == self.cfg_node:\n            if self.secondary_nodes and cfg_node not in self.secondary_nodes:\n                self.secondary_nodes.append(cfg_node)\n            elif not self.secondary_nodes:\n                self.secondary_nodes = [cfg_node]\n\n    def __repr__(self):\n        output = 'TriggerNode('\n\n        if self.trigger_word:\n            output = '{} trigger_word is {}, '.format(\n                output,\n                self.trigger_word\n            )\n\n        return (\n            output +\n            'sanitisers are {}, '.format(self.sanitisers) +\n            'cfg_node is {})\\n'.format(self.cfg_node)\n        )"
+      },
+      {
+        "file": "pyt/vulnerabilities/trigger_definitions_parser.py",
+        "name": "Source",
+        "kind": "variable",
+        "symbol": "pyt.vulnerabilities.trigger_definitions_parser.Source",
+        "start": 13,
+        "end": 13,
+        "code": "Source = namedtuple('Source', ('trigger_word'))"
+      },
+      {
+        "file": "pyt/vulnerabilities/vulnerabilities.py",
+        "name": "filter_cfg_nodes",
+        "kind": "function",
+        "symbol": "pyt.vulnerabilities.vulnerabilities.filter_cfg_nodes",
+        "start": 62,
+        "end": 66,
+        "code": "def filter_cfg_nodes(\n    cfg,\n    cfg_node_type\n):\n    return [node for node in cfg.nodes if isinstance(node, cfg_node_type)]"
+      }
+    ],
+    "unresolved": [
+      "pyt/vulnerabilities/vulnerabilities.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "pyt.vulnerabilities.vulnerabilities.label_contains"
+    ],
+    "exact_hit_dependencies": [
+      "pyt.vulnerabilities.vulnerabilities.label_contains"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 3036
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26625,
+    "completion_tokens": 530,
+    "total_tokens": 27155,
+    "seconds": 30.877955198287964,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 34.72000432014465,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

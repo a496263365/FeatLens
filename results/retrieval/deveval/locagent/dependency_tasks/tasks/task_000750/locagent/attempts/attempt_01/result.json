@@ -1,0 +1,201 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 750,
+  "namespace": "zxcvbn.scoring.estimate_guesses",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 16332,
+      "input_estimate_after": 16332,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the reusable dependencies needed to implement the `estimate_guesses` function. The function needs to estimate guesses for different match patterns, and I can see that specific guess estimation functions already exist for each pattern type. Here are the key reusable dependencies:\n\n```\nzxcvbn/scoring.py\nline: 250\nfunction: bruteforce_guesses\n\nzxcvbn/scoring.py\nline: 263\nfunction: dictionary_guesses\n\nzxcvbn/scoring.py\nline: 274\nfunction: repeat_guesses\n\nzxcvbn/scoring.py\nline: 278\nfunction: sequence_guesses\n\nzxcvbn/scoring.py\nline: 297\nfunction: regex_guesses\n\nzxcvbn/scoring.py\nline: 318\nfunction: date_guesses\n\nzxcvbn/scoring.py\nline: 335\nfunction: spatial_guesses\n\nzxcvbn/scoring.py\nline: 20\nvariable: BRUTEFORCE_CARDINALITY\n\nzxcvbn/scoring.py\nline: 21\nvariable: MIN_GUESSES_BEFORE_GROWING_SEQUENCE\n\nzxcvbn/scoring.py\nline: 22\nvariable: MIN_SUBMATCH_GUESSES_SINGLE_CHAR\n\nzxcvbn/scoring.py\nline: 23\nvariable: MIN_SUBMATCH_GUESSES_MULTI_CHAR\n\nzxcvbn/scoring.py\nline: 25\nvariable: MIN_YEAR_SPACE\n\nzxcvbn/scoring.py\nline: 26\nvariable: REFERENCE_YEAR\n```",
+  "final_locations": {
+    "files": [
+      "zxcvbn/scoring.py"
+    ],
+    "entities": [
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "bruteforce_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.bruteforce_guesses",
+        "start": 250,
+        "end": 260,
+        "code": "def bruteforce_guesses(match):\n    guesses = BRUTEFORCE_CARDINALITY ** len(match['token'])\n    # small detail: make bruteforce matches at minimum one guess bigger than\n    # smallest allowed submatch guesses, such that non-bruteforce submatches\n    # over the same [i..j] take precedence.\n    if len(match['token']) == 1:\n        min_guesses = MIN_SUBMATCH_GUESSES_SINGLE_CHAR + 1\n    else:\n        min_guesses = MIN_SUBMATCH_GUESSES_MULTI_CHAR + 1\n\n    return max(guesses, min_guesses)"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "dictionary_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.dictionary_guesses",
+        "start": 263,
+        "end": 271,
+        "code": "def dictionary_guesses(match):\n    # keep these as properties for display purposes\n    match['base_guesses'] = match['rank']\n    match['uppercase_variations'] = uppercase_variations(match)\n    match['l33t_variations'] = l33t_variations(match)\n    reversed_variations = match.get('reversed', False) and 2 or 1\n\n    return match['base_guesses'] * match['uppercase_variations'] * \\\n        match['l33t_variations'] * reversed_variations"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "repeat_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.repeat_guesses",
+        "start": 274,
+        "end": 275,
+        "code": "def repeat_guesses(match):\n    return match['base_guesses'] * Decimal(match['repeat_count'])"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "sequence_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.sequence_guesses",
+        "start": 278,
+        "end": 294,
+        "code": "def sequence_guesses(match):\n    first_chr = match['token'][:1]\n    # lower guesses for obvious starting points\n    if first_chr in ['a', 'A', 'z', 'Z', '0', '1', '9']:\n        base_guesses = 4\n    else:\n        if re.compile(r'\\d').match(first_chr):\n            base_guesses = 10  # digits\n        else:\n            # could give a higher base for uppercase,\n            # assigning 26 to both upper and lower sequences is more\n            # conservative.\n            base_guesses = 26\n    if not match['ascending']:\n        base_guesses *= 2\n\n    return base_guesses * len(match['token'])"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "regex_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.regex_guesses",
+        "start": 297,
+        "end": 315,
+        "code": "def regex_guesses(match):\n    char_class_bases = {\n        'alpha_lower': 26,\n        'alpha_upper': 26,\n        'alpha': 52,\n        'alphanumeric': 62,\n        'digits': 10,\n        'symbols': 33,\n    }\n    if match['regex_name'] in char_class_bases:\n        return char_class_bases[match['regex_name']] ** len(match['token'])\n    elif match['regex_name'] == 'recent_year':\n        # conservative estimate of year space: num years from REFERENCE_YEAR.\n        # if year is close to REFERENCE_YEAR, estimate a year space of\n        # MIN_YEAR_SPACE.\n        year_space = abs(int(match['regex_match'].group(0)) - REFERENCE_YEAR)\n        year_space = max(year_space, MIN_YEAR_SPACE)\n\n        return year_space"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "date_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.date_guesses",
+        "start": 318,
+        "end": 324,
+        "code": "def date_guesses(match):\n    year_space = max(abs(match['year'] - REFERENCE_YEAR), MIN_YEAR_SPACE)\n    guesses = year_space * 365\n    if match.get('separator', False):\n        guesses *= 4\n\n    return guesses"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "spatial_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.spatial_guesses",
+        "start": 335,
+        "end": 365,
+        "code": "def spatial_guesses(match):\n    if match['graph'] in ['qwerty', 'dvorak']:\n        s = KEYBOARD_STARTING_POSITIONS\n        d = KEYBOARD_AVERAGE_DEGREE\n    else:\n        s = KEYPAD_STARTING_POSITIONS\n        d = KEYPAD_AVERAGE_DEGREE\n    guesses = 0\n    L = len(match['token'])\n    t = match['turns']\n    # estimate the number of possible patterns w/ length L or less with t turns\n    # or less.\n    for i in range(2, L + 1):\n        possible_turns = min(t, i - 1) + 1\n        for j in range(1, possible_turns):\n            guesses += nCk(i - 1, j - 1) * s * pow(d, j)\n    # add extra guesses for shifted keys. (% instead of 5, A instead of a.)\n    # math is similar to extra guesses of l33t substitutions in dictionary\n    # matches.\n    if match['shifted_count']:\n        S = match['shifted_count']\n        U = len(match['token']) - match['shifted_count']  # unshifted count\n        if S == 0 or U == 0:\n            guesses *= 2\n        else:\n            shifted_variations = 0\n            for i in range(1, min(S, U) + 1):\n                shifted_variations += nCk(S + U, i)\n            guesses *= shifted_variations\n\n    return guesses"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "BRUTEFORCE_CARDINALITY",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.BRUTEFORCE_CARDINALITY",
+        "start": 20,
+        "end": 20,
+        "code": "BRUTEFORCE_CARDINALITY = 10"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "MIN_GUESSES_BEFORE_GROWING_SEQUENCE",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.MIN_GUESSES_BEFORE_GROWING_SEQUENCE",
+        "start": 21,
+        "end": 21,
+        "code": "MIN_GUESSES_BEFORE_GROWING_SEQUENCE = 10000"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "MIN_SUBMATCH_GUESSES_SINGLE_CHAR",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_SINGLE_CHAR",
+        "start": 22,
+        "end": 22,
+        "code": "MIN_SUBMATCH_GUESSES_SINGLE_CHAR = 10"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "MIN_SUBMATCH_GUESSES_MULTI_CHAR",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_MULTI_CHAR",
+        "start": 23,
+        "end": 23,
+        "code": "MIN_SUBMATCH_GUESSES_MULTI_CHAR = 50"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "MIN_YEAR_SPACE",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.MIN_YEAR_SPACE",
+        "start": 25,
+        "end": 25,
+        "code": "MIN_YEAR_SPACE = 20"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "REFERENCE_YEAR",
+        "kind": "variable",
+        "symbol": "zxcvbn.scoring.REFERENCE_YEAR",
+        "start": 26,
+        "end": 26,
+        "code": "REFERENCE_YEAR = 2017"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_MULTI_CHAR",
+      "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_SINGLE_CHAR",
+      "zxcvbn.scoring.bruteforce_guesses",
+      "zxcvbn.scoring.date_guesses",
+      "zxcvbn.scoring.dictionary_guesses",
+      "zxcvbn.scoring.regex_guesses",
+      "zxcvbn.scoring.repeat_guesses",
+      "zxcvbn.scoring.sequence_guesses",
+      "zxcvbn.scoring.spatial_guesses"
+    ],
+    "exact_hit_dependencies": [
+      "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_MULTI_CHAR",
+      "zxcvbn.scoring.MIN_SUBMATCH_GUESSES_SINGLE_CHAR",
+      "zxcvbn.scoring.bruteforce_guesses",
+      "zxcvbn.scoring.date_guesses",
+      "zxcvbn.scoring.dictionary_guesses",
+      "zxcvbn.scoring.regex_guesses",
+      "zxcvbn.scoring.repeat_guesses",
+      "zxcvbn.scoring.sequence_guesses",
+      "zxcvbn.scoring.spatial_guesses"
+    ],
+    "returned_entities": 13,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3837
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 43517,
+    "completion_tokens": 750,
+    "total_tokens": 44267,
+    "seconds": 101.53178143501282,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 102.4052963256836,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

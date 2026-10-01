@@ -1,0 +1,103 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2148,
+  "namespace": "trailscraper.cloudtrail.parse_records",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5752,
+      "input_estimate_after": 5752,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the reusable dependencies needed to implement the `parse_records` function. The function needs to use `_parse_record` to parse each JSON record and filter out `None` values. Here are the key dependencies:\n\n```\ntrailscraper/cloudtrail.py\nline: 226\nfunction: _parse_record\n\ntrailscraper/cloudtrail.py\nline: 21\nclass: Record\n\ntrailscraper/cloudtrail.py\nline: 211\nfunction: _resource_arns\n\ntrailscraper/cloudtrail.py\nline: 217\nfunction: _assumed_role_arn\n\ntrailscraper/cloudtrail.py\nline: 2\nline: 9\nimport: datetime\nimport: pytz\n```",
+  "final_locations": {
+    "files": [
+      "trailscraper/cloudtrail.py"
+    ],
+    "entities": [
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "_parse_record",
+        "kind": "function",
+        "symbol": "trailscraper.cloudtrail._parse_record",
+        "start": 226,
+        "end": 237,
+        "code": "def _parse_record(json_record):\n    try:\n        return Record(json_record['eventSource'],\n                      json_record['eventName'],\n                      event_time=datetime.datetime.strptime(json_record['eventTime'],\n                                                            \"%Y-%m-%dT%H:%M:%SZ\").replace(tzinfo=pytz.utc),\n                      resource_arns=_resource_arns(json_record),\n                      assumed_role_arn=_assumed_role_arn(json_record),\n                      raw_source=json_record)\n    except KeyError as error:\n        logging.warning(\"Could not parse %s: %s\", json_record, error)\n        return None"
+      },
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "Record",
+        "kind": "class",
+        "symbol": "trailscraper.cloudtrail.Record",
+        "start": 21,
+        "end": 167,
+        "code": "class Record:\n    \"\"\"Represents a CloudTrail record\"\"\"\n\n    # pylint: disable=too-many-arguments\n    def __init__(self, event_source, event_name,\n                 resource_arns=None, assumed_role_arn=None, event_time=None, raw_source=None):\n        self.event_source = event_source\n        self.event_name = event_name\n        self.raw_source = raw_source\n        self.event_time = event_time\n        self.resource_arns = resource_arns or [\"*\"]\n        self.assumed_role_arn = assumed_role_arn\n\n    def __repr__(self):\n        return f\"Record(event_source={self.event_source} event_name={self.event_name} \" \\\n               f\"event_time={self.event_time} resource_arns={self.resource_arns})\"\n\n    def __eq__(self, other):\n        if isinstance(other, self.__class__):\n            return self.event_source == other.event_source and \\\n                   self.event_name == other.event_name and \\\n                   self.event_time == other.event_time and \\\n                   self.resource_arns == other.resource_arns and \\\n                   self.assumed_role_arn == other.assumed_role_arn\n\n        return False\n\n    def __hash__(self):\n        return hash((self.event_source,\n                     self.event_name,\n                     self.event_time,\n                     tuple(self.resource_arns),\n                     self.assumed_role_arn))\n\n    def __ne__(self, other):\n        return not self.__eq__(other)\n\n    def _source_to_iam_prefix(self):\n        special_cases = {\n            'monitoring.amazonaws.com': 'cloudwatch',\n            'appstream2.amazonaws.com': 'appstream',\n            'models.lex.amazonaws.com': 'lex',\n            'runtime.lex.amazonaws.com': 'lex',\n            'mturk-requester.amazonaws.com': 'mechanicalturk',\n            'streams.dynamodb.amazonaws.com': 'dynamodb',\n            'tagging.amazonaws.com': 'tag',\n        }\n\n        default_case = self.event_source.split('.')[0]\n\n        return special_cases.get(self.event_source, default_case)\n\n    def _event_name_to_iam_action(self):\n        special_cases = {\n            's3.amazonaws.com': {\n                'CompleteMultipartUpload': 'PutObject',\n                'CopyObject': 'PutObject',\n                'CreateMultipartUpload': 'PutObject',\n                'DeleteBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'DeleteBucketEncryption': 'PutEncryptionConfiguration',\n                'DeleteBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'DeleteBucketLifecycle': 'PutLifecycleConfiguration',\n                'DeleteBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'DeleteBucketReplication': 'DeleteReplicationConfiguration',\n                'DeleteBucketTagging': 'PutBucketTagging',\n                'DeleteObjects': 'DeleteObject',\n                'GetBucketAccelerateConfiguration': 'GetAccelerateConfiguration',\n                'GetBucketAnalyticsConfiguration': 'GetAnalyticsConfiguration',\n                'GetBucketEncryption': 'GetEncryptionConfiguration',\n                'GetBucketInventoryConfiguration': 'GetInventoryConfiguration',\n                'GetBucketLifecycle': 'GetLifecycleConfiguration',\n                'GetBucketLifecycleConfiguration': 'GetLifecycleConfiguration',\n                'GetBucketMetricsConfiguration': 'GetMetricsConfiguration',\n                'GetBucketNotificationConfiguration': 'GetBucketNotification',\n                'GetBucketReplication': 'GetReplicationConfiguration',\n                'HeadBucket': 'ListBucket',\n                'HeadObject': 'GetObject',\n                'ListBucketAnalyticsConfigurations': 'GetAnalyticsConfiguration',\n                'ListBucketInventoryConfigurations': 'GetInventoryConfiguration',\n                'ListBucketMetricsConfigurations': 'GetMetricsConfiguration',\n                'ListBuckets': 'ListAllMyBuckets',\n                'ListMultipartUploads': 'ListBucketMultipartUploads',\n                'ListObjectVersions': 'ListBucketVersions',\n                'ListObjects': 'ListBucket',\n                'ListObjectsV2': 'ListBucket',\n                'ListParts': 'ListMultipartUploadParts',\n                'PutBucketAccelerateConfiguration': 'PutAccelerateConfiguration',\n                'PutBucketAnalyticsConfiguration': 'PutAnalyticsConfiguration',\n                'PutBucketEncryption': 'PutEncryptionConfiguration',\n                'PutBucketInventoryConfiguration': 'PutInventoryConfiguration',\n                'PutBucketLifecycle': 'PutLifecycleConfiguration',\n                'PutBucketLifecycleConfiguration': 'PutLifecycleConfiguration',\n                'PutBucketMetricsConfiguration': 'PutMetricsConfiguration',\n                'PutBucketNotificationConfiguration': 'PutBucketNotification',\n                'PutBucketReplication': 'DeleteReplicationConfiguration',\n                'UploadPart': 'PutObject',\n                'UploadPartCopy': 'PutObject',\n            },\n            'kms.amazonaws.com': {\n                'ReEncrypt': 'ReEncrypt*'  # not precise. See #27 for more details.\n            }\n        }\n\n        def _regex_sub(expr, subs):\n            regex = re.compile(expr)\n            return lambda s: regex.sub(subs, s)\n\n        def _special_case_mappings(event_name):\n            return special_cases \\\n                .get(self.event_source, {}) \\\n                .get(event_name, event_name)\n\n        return pipe(self.event_name,\n                    _special_case_mappings,\n                    _regex_sub(r\"DeleteBucketCors\", \"PutBucketCORS\"),\n                    _regex_sub(r\"([a-zA-Z]+)[0-9v_]+$\", r\"\\1\", ),\n                    _regex_sub(r\"Cors$\", \"CORS\"))\n\n    def _to_api_gateway_statement(self):\n        op_def = operation_definition(\"apigateway\", self.event_name)\n\n        http_method = op_def['http']['method']\n        request_uri = op_def['http']['requestUri']\n\n        resource_path = re.compile(r\"{[a-zA-Z_]+}\").sub(\"*\", request_uri)\n\n        region = \"*\"  # use proper region from requestParameters\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(\"apigateway\", http_method)],\n            Resource=[f\"arn:aws:apigateway:{region}::{resource_path}\"]\n        )\n\n    def to_statement(self):\n        \"\"\"Converts record into a matching IAM Policy Statement\"\"\"\n        if self.event_source == \"sts.amazonaws.com\" and self.event_name == \"GetCallerIdentity\":\n            return None\n\n        if self.event_source == \"apigateway.amazonaws.com\":\n            return self._to_api_gateway_statement()\n\n        return Statement(\n            Effect=\"Allow\",\n            Action=[Action(self._source_to_iam_prefix(), self._event_name_to_iam_action())],\n            Resource=sorted(self.resource_arns)\n        )"
+      },
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "_resource_arns",
+        "kind": "function",
+        "symbol": "trailscraper.cloudtrail._resource_arns",
+        "start": 211,
+        "end": 214,
+        "code": "def _resource_arns(json_record):\n    resources = json_record.get('resources', [])\n    arns = [resource['ARN'] for resource in resources if 'ARN' in resource]\n    return arns"
+      },
+      {
+        "file": "trailscraper/cloudtrail.py",
+        "name": "_assumed_role_arn",
+        "kind": "function",
+        "symbol": "trailscraper.cloudtrail._assumed_role_arn",
+        "start": 217,
+        "end": 223,
+        "code": "def _assumed_role_arn(json_record):\n    user_identity = json_record['userIdentity']\n    if 'type' in user_identity \\\n            and user_identity['type'] == 'AssumedRole' \\\n            and 'sessionContext' in user_identity:\n        return user_identity['sessionContext']['sessionIssuer']['arn']\n    return None"
+      }
+    ],
+    "unresolved": [
+      "trailscraper/cloudtrail.py:line: 2",
+      "trailscraper/cloudtrail.py:line: 9"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 1,
+    "unresolved_locations": 2,
+    "returned_code_chars": 7842
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 23291,
+    "completion_tokens": 546,
+    "total_tokens": 23837,
+    "seconds": 122.29750990867615,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 122.86401128768921,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

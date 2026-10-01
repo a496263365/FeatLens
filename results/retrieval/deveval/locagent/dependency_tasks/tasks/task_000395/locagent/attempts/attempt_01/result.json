@@ -1,0 +1,115 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 395,
+  "namespace": "boto.utils.get_instance_userdata",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 16548,
+      "input_estimate_after": 16548,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `get_instance_userdata` function in `boto/utils.py`. These are existing functions and patterns that should be reused:\n\n```\nboto/utils.py\nline: 205\nfunction: retry_url\n\nboto/utils.py\nline: 362\nfunction: _build_instance_metadata_url\n\nboto/utils.py\nline: 240\nfunction: _get_instance_metadata\n\nboto/utils.py\nline: 386\nfunction: get_instance_metadata\n\nboto/utils.py\nline: 408\nfunction: get_instance_identity\n```",
+  "final_locations": {
+    "files": [
+      "boto/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/utils.py",
+        "name": "retry_url",
+        "kind": "function",
+        "symbol": "boto.utils.retry_url",
+        "start": 205,
+        "end": 237,
+        "code": "def retry_url(url, retry_on_404=True, num_retries=10, timeout=None):\n    \"\"\"\n    Retry a url.  This is specifically used for accessing the metadata\n    service on an instance.  Since this address should never be proxied\n    (for security reasons), we create a ProxyHandler with a NULL\n    dictionary to override any proxy settings in the environment.\n    \"\"\"\n    for i in range(0, num_retries):\n        try:\n            proxy_handler = urllib.request.ProxyHandler({})\n            opener = urllib.request.build_opener(proxy_handler)\n            req = urllib.request.Request(url)\n            r = opener.open(req, timeout=timeout)\n            result = r.read()\n\n            if(not isinstance(result, six.string_types) and\n                    hasattr(result, 'decode')):\n                result = result.decode('utf-8')\n\n            return result\n        except urllib.error.HTTPError as e:\n            code = e.getcode()\n            if code == 404 and not retry_on_404:\n                return ''\n        except Exception as e:\n            boto.log.exception('Caught exception reading instance data')\n        # If not on the last iteration of the loop then sleep.\n        if i + 1 != num_retries:\n            boto.log.debug('Sleeping before retrying')\n            time.sleep(min(2 ** i,\n                           boto.config.get('Boto', 'max_retry_delay', 60)))\n    boto.log.error('Unable to read instance data, giving up')\n    return ''"
+      },
+      {
+        "file": "boto/utils.py",
+        "name": "_build_instance_metadata_url",
+        "kind": "function",
+        "symbol": "boto.utils._build_instance_metadata_url",
+        "start": 362,
+        "end": 383,
+        "code": "def _build_instance_metadata_url(url, version, path):\n    \"\"\"\n    Builds an EC2 metadata URL for fetching information about an instance.\n\n    Example:\n\n        >>> _build_instance_metadata_url('http://169.254.169.254', 'latest', 'meta-data/')\n        http://169.254.169.254/latest/meta-data/\n\n    :type url: string\n    :param url: URL to metadata service, e.g. 'http://169.254.169.254'\n\n    :type version: string\n    :param version: Version of the metadata to get, e.g. 'latest'\n\n    :type path: string\n    :param path: Path of the metadata to get, e.g. 'meta-data/'. If a trailing\n                 slash is required it must be passed in with the path.\n\n    :return: The full metadata URL\n    \"\"\"\n    return '%s/%s/%s' % (url, version, path)"
+      },
+      {
+        "file": "boto/utils.py",
+        "name": "_get_instance_metadata",
+        "kind": "function",
+        "symbol": "boto.utils._get_instance_metadata",
+        "start": 240,
+        "end": 241,
+        "code": "def _get_instance_metadata(url, num_retries, timeout=None):\n    return LazyLoadMetadata(url, num_retries, timeout)"
+      },
+      {
+        "file": "boto/utils.py",
+        "name": "get_instance_metadata",
+        "kind": "function",
+        "symbol": "boto.utils.get_instance_metadata",
+        "start": 386,
+        "end": 405,
+        "code": "def get_instance_metadata(version='latest', url='http://169.254.169.254',\n                          data='meta-data/', timeout=None, num_retries=5):\n    \"\"\"\n    Returns the instance metadata as a nested Python dictionary.\n    Simple values (e.g. local_hostname, hostname, etc.) will be\n    stored as string values.  Values such as ancestor-ami-ids will\n    be stored in the dict as a list of string values.  More complex\n    fields such as public-keys and will be stored as nested dicts.\n\n    If the timeout is specified, the connection to the specified url\n    will time out after the specified number of seconds.\n\n    \"\"\"\n    try:\n        metadata_url = _build_instance_metadata_url(url, version, data)\n        return _get_instance_metadata(metadata_url, num_retries=num_retries, timeout=timeout)\n    except urllib.error.URLError:\n        boto.log.exception(\"Exception caught when trying to retrieve \"\n                           \"instance metadata for: %s\", data)\n        return None"
+      },
+      {
+        "file": "boto/utils.py",
+        "name": "get_instance_identity",
+        "kind": "function",
+        "symbol": "boto.utils.get_instance_identity",
+        "start": 408,
+        "end": 427,
+        "code": "def get_instance_identity(version='latest', url='http://169.254.169.254',\n                          timeout=None, num_retries=5):\n    \"\"\"\n    Returns the instance identity as a nested Python dictionary.\n    \"\"\"\n    iid = {}\n    base_url = _build_instance_metadata_url(url, version,\n                                            'dynamic/instance-identity/')\n    try:\n        data = retry_url(base_url, num_retries=num_retries, timeout=timeout)\n        fields = data.split('\\n')\n        for field in fields:\n            val = retry_url(base_url + '/' + field + '/', num_retries=num_retries, timeout=timeout)\n            if val[0] == '{':\n                val = json.loads(val)\n            if field:\n                iid[field] = val\n        return iid\n    except urllib.error.URLError:\n        return None"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "boto.utils._build_instance_metadata_url",
+      "boto.utils.retry_url"
+    ],
+    "exact_hit_dependencies": [
+      "boto.utils._build_instance_metadata_url",
+      "boto.utils.retry_url"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4073
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 55622,
+    "completion_tokens": 524,
+    "total_tokens": 56146,
+    "seconds": 117.63843774795532,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 193.69216084480286,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

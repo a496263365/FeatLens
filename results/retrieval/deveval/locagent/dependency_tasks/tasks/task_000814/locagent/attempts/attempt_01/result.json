@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 814,
+  "namespace": "exodus_bundler.input_parsing.extract_open_path",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6199,
+      "input_estimate_after": 6199,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/exodus_bundler/input_parsing.py\nline: 70\nfunction: extract_paths\n\nsrc/exodus_bundler/input_parsing.py\nline: III\nfunction: extract_exec_path\n\nsrc/exodus_bundler/input_parsing.py\nline: 105\nfunction: strip_pid_prefix\n\nsrc/exodus_bundler/bundling.py\nline: 1\nclass: File\n\nsrc/exodus_bundler/input_parsing.py\nline: 6\nvariable: blacklisted_directories\n```",
+  "final_locations": {
+    "files": [
+      "src/exodus_bundler/input_parsing.py",
+      "src/exodus_bundler/bundling.py"
+    ],
+    "entities": [
+      {
+        "file": "src/exodus_bundler/input_parsing.py",
+        "name": "extract_paths",
+        "kind": "function",
+        "symbol": "exodus_bundler.input_parsing.extract_paths",
+        "start": 70,
+        "end": 102,
+        "code": "def extract_paths(content, existing_only=True):\n    \"\"\"Parses paths from a piped input.\n\n    Args:\n        content (str): The raw input, can be either a list of files,\n            or the output of the strace command.\n        existing_only (bool, optional): Requires that files actually exist and aren't directories.\n    Returns:\n        A list of paths.\n    \"\"\"\n    lines = [line.strip() for line in content.splitlines() if len(line.strip())]\n    if not len(lines):\n        return lines\n\n    # The strace output will start with the exec call of its argument.\n    strace_mode = extract_exec_path(lines[0]) is not None\n    if not strace_mode:\n        return lines\n\n    # Extract files from `open()`, `openat()`, and `exec()` calls.\n    paths = set()\n    for line in lines:\n        path = extract_exec_path(line) or extract_open_path(line) or extract_stat_path(line)\n        if path:\n            blacklisted = any(path.startswith(directory) for directory in blacklisted_directories)\n            if not blacklisted:\n                if not existing_only:\n                    paths.add(path)\n                    continue\n                if os.path.exists(path) and os.access(path, os.R_OK) and not os.path.isdir(path):\n                    paths.add(path)\n\n    return list(paths)"
+      },
+      {
+        "file": "src/exodus_bundler/input_parsing.py",
+        "name": "extract_exec_path",
+        "kind": "function",
+        "symbol": "exodus_bundler.input_parsing.extract_exec_path",
+        "start": 28,
+        "end": 38,
+        "code": "def extract_exec_path(line):\n    \"\"\"Parse a line of strace output and returns the file being executed.\"\"\"\n    line = strip_pid_prefix(line)\n    for method in exec_methods:\n        prefix = method + '(\"'\n        if line.startswith(prefix):\n            line = line[len(prefix):]\n            parts = line.split('\", ')\n            if len(parts) > 1:\n                return parts[0]\n    return None"
+      },
+      {
+        "file": "src/exodus_bundler/input_parsing.py",
+        "name": "strip_pid_prefix",
+        "kind": "function",
+        "symbol": "exodus_bundler.input_parsing.strip_pid_prefix",
+        "start": 105,
+        "end": 110,
+        "code": "def strip_pid_prefix(line):\n    \"\"\"Strips out the `[pid XXX] ` prefix if present.\"\"\"\n    match = re.match(r'\\[pid\\s+\\d+\\]\\s*', line)\n    if match:\n        return line[len(match.group()):]\n    return line"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "File",
+        "kind": "class",
+        "symbol": "exodus_bundler.bundling.File",
+        "start": 419,
+        "end": 684,
+        "code": "class File(object):\n    \"\"\"Represents a file on disk and provides access to relevant properties and actions.\n\n    Note:\n        The `File` class is tied to the bundling format. For example, the `destination` property\n        will correspond to a path like 'data/{hash}' which is then used in bundling.\n\n    Attributes:\n        chroot (str): A location to treat as the root during dependency linking (or `None`).\n        elf (Elf): A corresponding `Elf` object, or `None` if it is not an ELF formatted file.\n        entry_point (str): The name of the bundle entry point for an executable binary (or `None`).\n        file_factory (function): A function used to create new `File` instances.\n        library (bool): Specifies that this file is explicitly a shared library.\n        no_symlink (bool): Specifies that a file must not be symlinked to the common data directory.\n        path (str): The absolute normalized path to the file on disk.\n    \"\"\"\n\n    def __init__(self, path, entry_point=None, chroot=None, library=False, file_factory=None):\n        \"\"\"Constructor for the `File` class.\n\n        Note:\n            A `MissingFileError` will be thrown if a matching file cannot be found.\n\n        Args:\n            path (str): Can be either an absolute path, relative path, or a binary name in `PATH`.\n            entry_point (string, optional): The name of the bundle entry point for an executable.\n                If `True`, the executable's basename will be used.\n            chroot (str, optional): If specified, all dependency and linker paths will be considered\n                relative to this directory (mainly useful for testing).\n            file_factory (function, optional): A function to use when creating new `File` instances.\n        \"\"\"\n        # Find the full path to the file.\n        self.path = resolve_file_path(path, search_environment_path=(entry_point is not None))\n\n        # Set the entry point for the file.\n        if entry_point is True:\n            self.entry_point = os.path.basename(self.path).replace(os.sep, '')\n        else:\n            self.entry_point = entry_point or None\n\n        # Parse an `Elf` object from the file.\n        try:\n            self.elf = Elf(path, chroot=chroot, file_factory=file_factory)\n        except InvalidElfBinaryError:\n            self.elf = None\n\n        self.chroot = chroot\n        self.file_factory = file_factory or File\n        self.library = library\n        self.no_symlink = self.entry_point and not self.requires_launcher\n\n    def __eq__(self, other):\n        return isinstance(other, File) and self.path == self.path and \\\n            self.entry_point == self.entry_point\n\n    def __hash__(self):\n        \"\"\"Computes a hash for the instance unique up to the file path and entry point.\"\"\"\n        return hash((self.path, self.entry_point))\n\n    def __repr__(self):\n        return '<File(path=\"%s\")>' % self.path\n\n    def copy(self, working_directory):\n        \"\"\"Copies the file to a location based on its `destination` property.\n\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n        Returns:\n            str: The normalized and absolute destination path.\n        \"\"\"\n        full_destination = os.path.join(working_directory, self.destination)\n        full_destination = os.path.normpath(os.path.abspath(full_destination))\n\n        # The filenames are based on content hashes, so there's no need to copy it twice.\n        if os.path.exists(full_destination):\n            return full_destination\n\n        parent_directory = os.path.dirname(full_destination)\n        if not os.path.exists(parent_directory):\n            os.makedirs(parent_directory)\n\n        shutil.copy(self.path, full_destination)\n\n        return full_destination\n\n    def create_entry_point(self, working_directory, bundle_root):\n        \"\"\"Creates a symlink in `bin/` to the executable or its launcher.\n\n        Note:\n            The destination must already exist.\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n        \"\"\"\n        source_path = os.path.join(bundle_root, self.source)\n        bin_directory = os.path.join(working_directory, 'bin')\n        if not os.path.exists(bin_directory):\n            os.makedirs(bin_directory)\n        entry_point_path = os.path.join(bin_directory, self.entry_point)\n        relative_destination_path = os.path.relpath(source_path, bin_directory)\n        os.symlink(relative_destination_path, entry_point_path)\n\n    def create_launcher(self, working_directory, bundle_root, linker_basename, symlink_basename,\n                        shell_launcher=False):\n        \"\"\"Creates a launcher at `source` for `destination`.\n\n        Note:\n            If an `entry_point` has been specified, it will also be created.\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n            linker_basename (str): The basename of the linker to place in the same directory.\n            symlink_basename (str): The basename of the symlink to the actual executable.\n            shell_launcher (bool, optional): Forces the use of shell script launcher instead of\n                attempting to compile first using musl or diet c.\n        Returns:\n            str: The normalized and absolute path to the launcher.\n        \"\"\"\n        destination_path = os.path.join(working_directory, self.destination)\n        source_path = os.path.join(bundle_root, self.source)\n\n        # Create the symlink.\n        source_parent = os.path.dirname(source_path)\n        if not os.path.exists(source_parent):\n            os.makedirs(source_parent)\n        relative_destination_path = os.path.relpath(destination_path, source_parent)\n        symlink_path = os.path.join(source_parent, symlink_basename)\n        os.symlink(relative_destination_path, symlink_path)\n        executable = os.path.join('.', symlink_basename)\n\n        # Copy over the linker.\n        linker_path = os.path.join(source_parent, linker_basename)\n        if not os.path.exists(linker_path):\n            shutil.copy(self.elf.linker_file.path, linker_path)\n        else:\n            assert filecmp.cmp(self.elf.linker_file.path, linker_path), \\\n                'The \"%s\" linker file already exists and has differing contents.' % linker_path\n        linker = os.path.join('.', linker_basename)\n\n        # Construct the library path\n        original_file_parent = os.path.dirname(self.path)\n        library_paths = os.environ.get('LD_LIBRARY_PATH', '').split(':')\n        library_paths += ['/lib64', '/usr/lib64', '/lib', '/usr/lib', '/lib32', '/usr/lib32']\n        for dependency in self.elf.dependencies:\n            library_paths.append(os.path.dirname(dependency.path))\n        relative_library_paths = []\n        for directory in library_paths:\n            if not len(directory):\n                continue\n\n            # Get the actual absolute path for the library directory.\n            directory = os.path.normpath(os.path.abspath(directory))\n            if self.chroot:\n                directory = os.path.join(self.chroot, os.path.relpath(directory, '/'))\n\n            # Convert it into a path relative to the launcher/source.\n            relative_library_path = os.path.relpath(directory, original_file_parent)\n            if relative_library_path not in relative_library_paths:\n                relative_library_paths.append(relative_library_path)\n        library_path = ':'.join(relative_library_paths)\n\n        # Determine whether this is a \"full\" linker (*e.g.* GNU linker).\n        with open(self.elf.linker_file.path, 'rb') as f:\n            linker_content = f.read()\n            full_linker = (linker_content.find(b'inhibit-rpath') > -1)\n\n        # Try a c launcher first and fallback.\n        try:\n            if shell_launcher:\n                raise CompilerNotFoundError()\n\n            launcher_content = construct_binary_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'wb') as f:\n                f.write(launcher_content)\n        except CompilerNotFoundError:\n            if not shell_launcher:\n                logger.warning((\n                    'Installing either the musl or diet C libraries will result in more efficient '\n                    'launchers (currently using bash fallbacks instead).'\n                ))\n            launcher_content = construct_bash_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'w') as f:\n                f.write(launcher_content)\n        shutil.copymode(self.path, source_path)\n\n        return os.path.normpath(os.path.abspath(source_path))\n\n    def symlink(self, working_directory, bundle_root):\n        \"\"\"Creates a relative symlink from the `source` to the `destination`.\n\n        Args:\n            working_directory (str): The root that `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n        Returns:\n            str: The normalized and absolute path to the symlink.\n        \"\"\"\n        destination_path = os.path.join(working_directory, self.destination)\n        source_path = os.path.join(bundle_root, self.source)\n\n        source_parent = os.path.dirname(source_path)\n        if not os.path.exists(source_parent):\n            os.makedirs(source_parent)\n        relative_destination_path = os.path.relpath(destination_path, source_parent)\n        if os.path.exists(source_path):\n            assert os.path.islink(source_path)\n            assert os.path.realpath(source_path) == relative_destination_path\n        else:\n            os.symlink(relative_destination_path, source_path)\n\n        return os.path.normpath(os.path.abspath(source_path))\n\n    @stored_property\n    def destination(self):\n        \"\"\"str: The relative path for the destination of the actual file contents.\"\"\"\n        return os.path.join('.', 'data', self.hash)\n\n    @stored_property\n    def executable(self):\n        return os.access(self.path, os.X_OK)\n\n    @stored_property\n    def elf(self):\n        \"\"\"bool: Determines whether a file is a file is an ELF binary.\"\"\"\n        return detect_elf_binary(self.path)\n\n    @stored_property\n    def hash(self):\n        \"\"\"str: Computes a hash based on the file content, useful for file deduplication.\"\"\"\n        with open(self.path, 'rb') as f:\n            return hashlib.sha256(f.read()).hexdigest()\n\n    @stored_property\n    def requires_launcher(self):\n        \"\"\"bool: Whether a launcher is necessary for this file.\"\"\"\n        # This is unfortunately a heuristic approach because many executables are compiled\n        # as shared libraries, and many mostly-libraries are executable (*e.g.* glibc).\n\n        # The easy ones.\n        if self.library or not self.elf or not self.elf.linker_file or not self.executable:\n            return False\n        if self.elf.type == 'executable':\n            return True\n        if self.entry_point:\n            return True\n\n        # These will hopefully do more good than harm.\n        bin_directories = ['/bin/', '/bin32/', '/bin64/']\n        lib_directories = ['/lib/', '/lib32/', '/lib64/']\n        in_bin_directory = any(directory in self.path for directory in bin_directories)\n        in_lib_directory = any(directory in self.path for directory in lib_directories)\n        if in_bin_directory and not in_lib_directory:\n            return True\n        if in_lib_directory and not in_bin_directory:\n            return False\n\n        # Most libraries will include `.so` in the filename.\n        return re.search(r'\\.so(?:\\.|$)', self.path)\n\n    @stored_property\n    def source(self):\n        \"\"\"str: The relative path for the source of the actual file contents.\"\"\"\n        return os.path.relpath(self.path, '/')"
+      },
+      {
+        "file": "src/exodus_bundler/input_parsing.py",
+        "name": "blacklisted_directories",
+        "kind": "variable",
+        "symbol": "exodus_bundler.input_parsing.blacklisted_directories",
+        "start": 7,
+        "end": 14,
+        "code": "blacklisted_directories = [\n    '/dev/',\n    '/proc/',\n    '/run/',\n    '/sys/',\n    # This isn't a directory exactly, but it will filter out active bundling.\n    '/tmp/exodus-bundle-',\n]"
+      }
+    ],
+    "unresolved": [
+      "src/exodus_bundler/bundling.py:line: 1",
+      "src/exodus_bundler/input_parsing.py:line: 6"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "exodus_bundler.input_parsing.strip_pid_prefix"
+    ],
+    "exact_hit_dependencies": [
+      "exodus_bundler.input_parsing.strip_pid_prefix"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 14123
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 25585,
+    "completion_tokens": 3712,
+    "total_tokens": 29297,
+    "seconds": 120.88880324363708,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 122.88515949249268,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

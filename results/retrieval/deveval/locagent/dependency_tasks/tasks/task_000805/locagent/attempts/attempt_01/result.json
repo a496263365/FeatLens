@@ -1,0 +1,114 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 805,
+  "namespace": "exodus_bundler.bundling.Bundle.bundle_root",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 15032,
+      "input_estimate_after": 15032,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/exodus_bundler/bundling.py\nline: 876\nfunction: Bundle.hash\n\nsrc/exodus_bundler/bundling.py\nline: 765\nfunction: Bundle.create_bundle\n\nsrc/exodus_bundler/bundling.py\nline: 200\nfunction: resolve_file_path\n\nsrc/exodus_bundler/bundling.py\nline: 521\nfunction: File.create_launcher\n\nsrc/exodus_bundler/bundling.py\nline: 649\nfunction: File.hash\n```",
+  "final_locations": {
+    "files": [
+      "src/exodus_bundler/bundling.py"
+    ],
+    "entities": [
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "Bundle.hash",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.Bundle.hash",
+        "start": 876,
+        "end": 880,
+        "code": "    def hash(self):\n        \"\"\"str: Computes a hash based on the current contents of the bundle.\"\"\"\n        file_hashes = sorted(file.hash for file in self.files)\n        combined_hashes = '\\n'.join(file_hashes).encode('utf-8')\n        return hashlib.sha256(combined_hashes).hexdigest()"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "Bundle.create_bundle",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.Bundle.create_bundle",
+        "start": 765,
+        "end": 834,
+        "code": "    def create_bundle(self, shell_launchers=False):\n        \"\"\"Creates the unpackaged bundle in `working_directory`.\n\n        Args:\n            shell_launchers (bool, optional): Forces the use of shell script launchers instead of\n                attempting to compile first using musl or diet c.\n        \"\"\"\n        file_paths = set()\n        files_needing_launchers = defaultdict(set)\n        for file in self.files:\n            # Store the file path to avoid collisions later.\n            file_path = os.path.join(self.bundle_root, file.source)\n            file_paths.add(file_path)\n\n            # Create a symlink in `./bin/` if an entry point is specified.\n            if file.entry_point:\n                file.create_entry_point(self.working_directory, self.bundle_root)\n\n            if file.no_symlink:\n                # We'll need to copy the actual file into the bundle subdirectory in this\n                # case so that it can locate resources using paths relative to the executable.\n                parent_directory = os.path.dirname(file_path)\n                if not os.path.exists(parent_directory):\n                    os.makedirs(parent_directory)\n                shutil.copy(file.path, file_path)\n                continue\n\n            # Copy over the actual file.\n            file.copy(self.working_directory)\n\n            if file.requires_launcher:\n                # These are kind of complicated, we'll just store the requirements for now.\n                directory_and_linker = (os.path.dirname(file_path), file.elf.linker_file)\n                files_needing_launchers[directory_and_linker].add(file)\n            else:\n                file.symlink(working_directory=self.working_directory, bundle_root=self.bundle_root)\n\n        # Now we need to write out one unique copy of each linker in each directory where it's\n        # required. This is necessary so that `readlink(\"/proc/self/exe\")` will return the correct\n        # directory when programs use that to construct relative paths to resources.\n        for ((directory, linker), executable_files) in files_needing_launchers.items():\n            # First, we'll find a unique name for the linker in this directory and write it out.\n            desired_linker_path = os.path.join(directory, 'linker-%s' % linker.hash)\n            linker_path = desired_linker_path\n            iteration = 2\n            while linker_path in file_paths:\n                linker_path = '%s-%d' % (desired_linker_path, iteration)\n                iteration += 1\n            file_paths.add(linker_path)\n            linker_dirname, linker_basename = os.path.split(linker_path)\n            if not os.path.exists(linker_dirname):\n                os.makedirs(linker_dirname)\n            shutil.copy(linker.path, linker_path)\n\n            # Now we need to construct a launcher for each executable that depends on this linker.\n            for file in executable_files:\n                # We'll again attempt to find a unique available name, this time for the symlink\n                # to the executable.\n                file_basename = file.entry_point or os.path.basename(file.path)\n                desired_symlink_path = os.path.join(directory, '%s-x' % file_basename)\n                symlink_path = desired_symlink_path\n                iteration = 2\n                while symlink_path in file_paths:\n                    symlink_path = '%s-%d' % (desired_symlink_path, iteration)\n                    iteration += 1\n                file_paths.add(symlink_path)\n                symlink_basename = os.path.basename(symlink_path)\n                file.create_launcher(self.working_directory, self.bundle_root,\n                                     linker_basename, symlink_basename,\n                                     shell_launcher=shell_launchers)"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "resolve_file_path",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.resolve_file_path",
+        "start": 200,
+        "end": 216,
+        "code": "def resolve_file_path(path, search_environment_path=False):\n    \"\"\"Attempts to find a normalized path to a file.\n\n    If the file is not found, or if it is a directory, appropriate exceptions will be thrown.\n\n    Args:\n        path (str): Either a relative or absolute path to a file, or the name of an\n            executable if `search_environment_path` is `True`.\n        search_environment_path (bool): Whether PATH should be used to resolve the file.\n    \"\"\"\n    if search_environment_path:\n        path = resolve_binary(path)\n    if not os.path.exists(path):\n        raise MissingFileError('The \"%s\" file was not found.' % path)\n    if os.path.isdir(path):\n        raise UnexpectedDirectoryError('\"%s\" is a directory, not a file.' % path)\n    return os.path.normpath(os.path.abspath(path))"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "File.create_launcher",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.File.create_launcher",
+        "start": 521,
+        "end": 608,
+        "code": "    def create_launcher(self, working_directory, bundle_root, linker_basename, symlink_basename,\n                        shell_launcher=False):\n        \"\"\"Creates a launcher at `source` for `destination`.\n\n        Note:\n            If an `entry_point` has been specified, it will also be created.\n        Args:\n            working_directory (str): The root that the `destination` will be joined with.\n            bundle_root (str): The root that `source` will be joined with.\n            linker_basename (str): The basename of the linker to place in the same directory.\n            symlink_basename (str): The basename of the symlink to the actual executable.\n            shell_launcher (bool, optional): Forces the use of shell script launcher instead of\n                attempting to compile first using musl or diet c.\n        Returns:\n            str: The normalized and absolute path to the launcher.\n        \"\"\"\n        destination_path = os.path.join(working_directory, self.destination)\n        source_path = os.path.join(bundle_root, self.source)\n\n        # Create the symlink.\n        source_parent = os.path.dirname(source_path)\n        if not os.path.exists(source_parent):\n            os.makedirs(source_parent)\n        relative_destination_path = os.path.relpath(destination_path, source_parent)\n        symlink_path = os.path.join(source_parent, symlink_basename)\n        os.symlink(relative_destination_path, symlink_path)\n        executable = os.path.join('.', symlink_basename)\n\n        # Copy over the linker.\n        linker_path = os.path.join(source_parent, linker_basename)\n        if not os.path.exists(linker_path):\n            shutil.copy(self.elf.linker_file.path, linker_path)\n        else:\n            assert filecmp.cmp(self.elf.linker_file.path, linker_path), \\\n                'The \"%s\" linker file already exists and has differing contents.' % linker_path\n        linker = os.path.join('.', linker_basename)\n\n        # Construct the library path\n        original_file_parent = os.path.dirname(self.path)\n        library_paths = os.environ.get('LD_LIBRARY_PATH', '').split(':')\n        library_paths += ['/lib64', '/usr/lib64', '/lib', '/usr/lib', '/lib32', '/usr/lib32']\n        for dependency in self.elf.dependencies:\n            library_paths.append(os.path.dirname(dependency.path))\n        relative_library_paths = []\n        for directory in library_paths:\n            if not len(directory):\n                continue\n\n            # Get the actual absolute path for the library directory.\n            directory = os.path.normpath(os.path.abspath(directory))\n            if self.chroot:\n                directory = os.path.join(self.chroot, os.path.relpath(directory, '/'))\n\n            # Convert it into a path relative to the launcher/source.\n            relative_library_path = os.path.relpath(directory, original_file_parent)\n            if relative_library_path not in relative_library_paths:\n                relative_library_paths.append(relative_library_path)\n        library_path = ':'.join(relative_library_paths)\n\n        # Determine whether this is a \"full\" linker (*e.g.* GNU linker).\n        with open(self.elf.linker_file.path, 'rb') as f:\n            linker_content = f.read()\n            full_linker = (linker_content.find(b'inhibit-rpath') > -1)\n\n        # Try a c launcher first and fallback.\n        try:\n            if shell_launcher:\n                raise CompilerNotFoundError()\n\n            launcher_content = construct_binary_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'wb') as f:\n                f.write(launcher_content)\n        except CompilerNotFoundError:\n            if not shell_launcher:\n                logger.warning((\n                    'Installing either the musl or diet C libraries will result in more efficient '\n                    'launchers (currently using bash fallbacks instead).'\n                ))\n            launcher_content = construct_bash_launcher(\n                linker=linker, library_path=library_path, executable=executable,\n                full_linker=full_linker)\n            with open(source_path, 'w') as f:\n                f.write(launcher_content)\n        shutil.copymode(self.path, source_path)\n\n        return os.path.normpath(os.path.abspath(source_path))"
+      },
+      {
+        "file": "src/exodus_bundler/bundling.py",
+        "name": "File.hash",
+        "kind": "function",
+        "symbol": "exodus_bundler.bundling.File.hash",
+        "start": 649,
+        "end": 652,
+        "code": "    def hash(self):\n        \"\"\"str: Computes a hash based on the file content, useful for file deduplication.\"\"\"\n        with open(self.path, 'rb') as f:\n            return hashlib.sha256(f.read()).hexdigest()"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "exodus_bundler.bundling.Bundle.hash",
+      "exodus_bundler.bundling.Bundle.working_directory"
+    ],
+    "exact_hit_dependencies": [
+      "exodus_bundler.bundling.Bundle.hash"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 9458
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 51963,
+    "completion_tokens": 915,
+    "total_tokens": 52878,
+    "seconds": 62.91213059425354,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 65.33770871162415,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

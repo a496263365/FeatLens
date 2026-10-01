@@ -1,0 +1,156 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 71,
+  "namespace": "easyvolcap.utils.viewer_utils.Camera.to_batch",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 16258,
+      "input_estimate_after": 16258,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `Camera.to_batch()` method:\n\n```\neasyvolcap/utils/viewer_utils.py\nline: 736\nclass: Camera\nfunction: from_batch\n\neasyvolcap/utils/viewer_utils.py\nline: 374\nclass: Camera\nline: 376-407\nfunction: __init__\n\neasyvolcap/utils/base_utils.py\nline: 28\nclass: dotdict\nline: 121-130\nproperty: meta\n\neasyvolcap/utils/viewer_utils.py\nline: 718\nclass: Camera\nfunction: to_easymocap\n\neasyvolcap/utils/viewer_utils.py\nline: 726\nclass: Camera\nfunction: from_string\n```",
+  "final_locations": {
+    "files": [
+      "easyvolcap/utils/viewer_utils.py",
+      "easyvolcap/utils/base_utils.py"
+    ],
+    "entities": [
+      {
+        "file": "easyvolcap/utils/viewer_utils.py",
+        "name": "Camera.from_batch",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.viewer_utils.Camera.from_batch",
+        "start": 736,
+        "end": 758,
+        "code": "    def from_batch(self, batch: dotdict):\n        H, W, K, R, T, n, f, t, v, bounds = batch.H, batch.W, batch.K, batch.R, batch.T, batch.n, batch.f, batch.t, batch.v, batch.bounds\n\n        # Batch (network input parameters)\n        self.H = int(H)\n        self.W = int(W)\n        self.K = mat3(*K.mT.ravel())\n        self.R = mat3(*R.mT.ravel())\n        self.T = vec3(*T.ravel())  # 3,\n        self.n = float(n)\n        self.f = float(f)\n        self.t = float(t)\n        self.v = float(v)\n        self.bounds = mat2x3(*bounds.ravel())  # 2, 3\n\n        if 'mass' in batch: self.mass = float(batch.mass)\n        if 'moment_of_inertia' in batch: self.moment_of_inertia = float(batch.moment_of_inertia)\n        if 'movement_force' in batch: self.movement_force = float(batch.movement_force)\n        if 'movement_torque' in batch: self.movement_torque = float(batch.movement_torque)\n        if 'movement_speed' in batch: self.movement_speed = float(batch.movement_speed)\n        if 'origin' in batch: self.origin = vec3(*batch.origin.ravel())  # 3,\n        if 'world_up' in batch: self.world_up = vec3(*batch.world_up.ravel())  # 3,\n        return self"
+      },
+      {
+        "file": "easyvolcap/utils/viewer_utils.py",
+        "name": "Camera",
+        "kind": "class",
+        "symbol": "easyvolcap.utils.viewer_utils.Camera",
+        "start": 374,
+        "end": 763,
+        "code": "class Camera:\n    # Helper class to manage camera parameters\n    def __init__(self,\n                 H: int = 512,\n                 W: int = 512,\n                 K: torch.Tensor = torch.tensor([[512.0, 0.0, 256], [0.0, 512.0, 256.0], [0.0, 0.0, 1.0]]),  # intrinsics\n                 R: torch.Tensor = torch.tensor([[-0.9977766275405884, 0.06664637476205826, 0.0], [0.004728599451482296, 0.07079283893108368, -0.9974799156188965], [-0.0664784237742424, -0.9952622056007385, -0.07095059007406235]]),  # extrinsics\n                 T: torch.Tensor = torch.tensor([[-2.059340476989746e-5], [2.5779008865356445e-6], [-3.000047445297241]]),  # extrinsics\n                 n: float = 0.002,  # bounds limit\n                 f: float = 100,  # bounds limit\n                 t: float = 0.0,  # temporal dimension (implemented as a float instead of int)\n                 v: float = 0.0,  # view dimension (implemented as a float instead of int)\n                 bounds: torch.Tensor = torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]]),  # bounding box\n\n                 # camera update hyperparameters\n                 origin: torch.Tensor = torch.tensor([0.0, 0.0, 0.0]),\n                 world_up: torch.Tensor = torch.tensor([0.0, 0.0, 1.0]),\n                 movement_speed: float = 1.0,  # gui movement speed\n                 movement_force: float = 1.0,  # include some physiscs\n                 drag_coeff_mult: float = 1.0,  # include some physiscs\n                 constant_drag: float = 1.0,\n                 mass: float = 0.1,\n                 moment_of_inertia: float = 0.1,\n                 movement_torque: float = 1.0,\n                 angular_friction: float = 2.0,\n                 constant_torque: float = 1.0,\n\n                 min_interval: float = 0.0334,  # simulate at at least 30 fps\n                 pause_physics: bool = False,\n\n                 batch: dotdict = None,  # will ignore all other inputs\n                 string: str = None,  # will ignore all other inputs\n                 **kwargs,\n                 ) -> None:\n\n        # Batch (network input parameters)\n        if string is None:\n            if batch is None:\n                batch = dotdict()\n                batch.H, batch.W, batch.K, batch.R, batch.T, batch.n, batch.f, batch.t, batch.v, batch.bounds = H, W, K, R, T, n, f, t, v, bounds\n            self.from_batch(batch)\n\n            # Other configurables\n            self.origin = vec3(*origin)\n            # self.origin = self.center  # rotate about center\n            self.world_up = vec3(*world_up)\n            self.movement_speed = movement_speed\n            # self.front = self.front  # will trigger an update\n        else:\n            self.from_string(string)\n\n        # Internal states to facilitate camera position change\n        self.is_dragging = False  # rotation\n        self.about_origin = False  # about origin rotation\n        self.is_panning = False  # translation\n        self.lock_fx_fy = True\n        self.drag_start = vec2(0.0)\n\n        # Internal states to facilitate moving with mass\n        self.mass = mass\n        self.force = vec3(0.0)\n        self.speed = vec3(0.0)  # no movement\n        self.acc = vec3(0.0)\n        self.drag_coeff_mult = drag_coeff_mult\n        self.movement_force = movement_force\n        self.constant_drag = constant_drag\n        self.pause_physics = pause_physics\n        self.min_interval = min_interval\n\n        self.torque = vec3(0.0)\n        self.moment_of_inertia = moment_of_inertia\n        self.angular_speed = vec3(0.0)  # relative angular speed on three euler angles\n        self.angular_acc = vec3(0.0)\n        self.angular_friction = angular_friction\n        self.constant_torque = constant_torque\n        self.movement_torque = movement_torque\n\n    def step(self, interval: float):\n        if self.pause_physics: return\n\n        # Limit interval to make the simulation more stable\n        interval = min(interval, self.min_interval)\n\n        # Compute the drag force\n        speed2 = glm.dot(self.speed, self.speed)\n        if speed2 > 1.0:\n            # Drag at opposite direction of movement\n            drag = -speed2 * (self.speed / speed2) * self.drag_coeff_mult\n        elif speed2 > 0:\n            # Constant drag if speed is blow a threshold to make it stop faster\n            drag = -self.constant_drag * self.speed\n        else:\n            drag = vec3(0.0)\n\n        # Compute acceleration and final speed\n        self.acc = (self.force + drag) / self.mass\n        self.speed += self.acc * interval\n\n        # Compute displacement in this interval\n        speed2 = glm.dot(self.speed, self.speed)\n        if speed2 > 0:\n            direction = mat3(self.right, -glm.normalize(glm.cross(self.right, self.world_up)), self.world_up)\n            movement = direction @ (self.speed - self.acc * interval / 2) * interval\n            self.center += movement\n\n        # Compute rotation change\n\n        # Compute the drag torque\n        speed2 = glm.dot(self.angular_speed, self.angular_speed)\n        if speed2 > 0.1:\n            # Drag at opposite direction of movement\n            drag = -speed2 * (self.angular_speed / speed2) * self.angular_friction\n        elif speed2 > 0.0:\n            # Constant drag if speed is blow a threshold to make it stop faster\n            drag = -self.constant_torque * self.angular_speed\n        else:\n            drag = vec3(0.0)\n\n        # Compute angular acceleration and final angular speed\n        self.angular_acc = (self.torque + drag) / self.moment_of_inertia\n        self.angular_speed += self.angular_acc * interval\n\n        # Angular movement direction\n        delta = self.angular_speed * interval  # about x, y and z axis (euler angle)\n\n        # Limit look up\n        dot = glm.dot(self.world_up, self.front)\n        self.drag_ymin = -np.arccos(-dot) + 0.01  # drag up, look down\n        self.drag_ymax = np.pi + self.drag_ymin - 0.02  # remove the 0.01 of drag_ymin\n\n        # Rotate about euler angle\n        EPS = 1e-7\n        if abs(delta.x) > EPS or abs(delta.y) > EPS or abs(delta.z) > EPS:\n            m = mat4(1.0)\n            m = glm.rotate(m, np.clip(delta.x, self.drag_ymin, self.drag_ymax), self.right)\n            m = glm.rotate(m, delta.y, -self.world_up)\n            m = glm.rotate(m, delta.z, self.front)\n            center = self.center\n            self.front = m @ self.front  # might overshoot and will update center\n            self.center = center\n\n    @property\n    def w2p(self):\n        ixt = mat4(self.ixt)\n        ixt[3, 3] = 0\n        ixt[2, 3] = 1\n        return ixt @ self.ext  # w2c -> c2p = w2p\n\n    @property\n    def V(self): return self.c2w\n\n    @property\n    def ixt(self): return self.K\n\n    @property\n    def gl_ext(self):\n        gl_c2w = self.c2w\n        gl_c2w[0] *= 1  # do notflip x\n        gl_c2w[1] *= -1  # flip y\n        gl_c2w[2] *= -1  # flip z\n        gl_ext = glm.affineInverse(gl_c2w)\n        return gl_ext  # use original opencv ext since we've taken care of the intrinsics in gl_ixt\n\n    @property\n    def gl_ixt(self):\n        # Construct opengl camera matrix with projection & clipping\n        # https://fruty.io/2019/08/29/augmented-reality-with-opencv-and-opengl-the-tricky-projection-matrix/\n        # https://gist.github.com/davegreenwood/3a32d779f81f08dce32f3bb423672191\n        # fmt: off\n        gl_ixt = mat4(\n                      2 * self.fx / self.W,                          0,                                       0,  0,\n                       2 * self.s / self.W,       2 * self.fy / self.H,                                       0,  0,\n                1 - 2 * (self.cx / self.W), 2 * (self.cy / self.H) - 1,   (self.f + self.n) / (self.n - self.f), -1,\n                                         0,                          0, 2 * self.f * self.n / (self.n - self.f),  0,\n        )\n        # fmt: on\n\n        return gl_ixt\n\n    @property\n    def ext(self): return self.w2c\n\n    @property\n    def w2c(self):\n        w2c = mat4(self.R)\n        w2c[3] = vec4(*self.T, 1.0)\n        return w2c\n\n    @property\n    def c2w(self):\n        return glm.affineInverse(self.w2c)\n\n    @property\n    def right(self) -> vec3: return vec3(self.R[0, 0], self.R[1, 0], self.R[2, 0])  # c2w R, 0 -> 3,\n\n    @property\n    def down(self) -> vec3: return vec3(self.R[0, 1], self.R[1, 1], self.R[2, 1])  # c2w R, 1 -> 3,\n\n    @property\n    def front(self) -> vec3: return vec3(self.R[0, 2], self.R[1, 2], self.R[2, 2])  # c2w R, 2 -> 3,\n\n    @front.setter\n    def front(self, v: vec3):\n        front = v  # the last row of R\n        self.R[0, 2], self.R[1, 2], self.R[2, 2] = front.x, front.y, front.z\n        right = glm.normalize(glm.cross(self.front, self.world_up))  # right\n        self.R[0, 0], self.R[1, 0], self.R[2, 0] = right.x, right.y, right.z\n        down = glm.cross(self.front, self.right)  # down\n        self.R[0, 1], self.R[1, 1], self.R[2, 1] = down.x, down.y, down.z\n\n    @property\n    def center(self):\n        return -glm.transpose(self.R) @ self.T  # 3,\n\n    @center.setter\n    def center(self, v: vec3):\n        self.T = -self.R @ v  # 3, 1\n\n    @property\n    def s(self): return self.K[1, 0]\n\n    @s.setter\n    def s(self, s): self.K[1, 0] = s\n\n    @property\n    def fx(self): return self.K[0, 0]\n\n    @fx.setter\n    def fx(self, v: float):\n        v = min(v, 1e5)\n        v = max(v, 1e-3)\n        if self.lock_fx_fy:\n            self.K[1, 1] = v / self.K[0, 0] * self.K[1, 1]\n        self.K[0, 0] = v\n\n    @property\n    def fy(self): return self.K[1, 1]\n\n    @fy.setter\n    def fy(self, v: float):\n        if self.lock_fx_fy:\n            self.K[0, 0] = v / self.K[1, 1] * self.K[0, 0]\n        self.K[1, 1] = v\n\n    @property\n    def cx(self): return self.K[2, 0]\n\n    @cx.setter\n    def cx(self, v: float):\n        self.K[2, 0] = v\n\n    @property\n    def cy(self): return self.K[2, 1]\n\n    @cy.setter\n    def cy(self, v: float):\n        self.K[2, 1] = v\n\n    def begin_dragging(self,\n                       x: float, y: float,\n                       is_panning: bool,\n                       about_origin: bool,\n                       ):\n        self.is_dragging = True\n        self.is_panning = is_panning\n        self.about_origin = about_origin\n        self.drag_start = vec2([x, y])\n\n    def end_dragging(self):\n        self.is_dragging = False\n\n    def update_dragging(self, x: float, y: float):\n        if not self.is_dragging:\n            return\n\n        current = vec2(x, y)\n        delta = current - self.drag_start\n        delta /= max(self.H, self.W)\n        delta *= -1\n\n        self.drag_start = vec2([x, y])\n        self.drag_start_front = self.front  # a recording\n        self.drag_start_down = self.down\n        self.drag_start_right = self.right\n        self.drag_start_center = self.center\n        self.drag_start_origin = self.origin\n        self.drag_start_world_up = self.world_up\n\n        # Need to find the max or min delta y to align with world_up\n        dot = glm.dot(self.world_up, self.front)\n        self.drag_ymin = -np.arccos(-dot) + 0.01  # drag up, look down\n        self.drag_ymax = np.pi + self.drag_ymin - 0.02  # remove the 0.01 of drag_ymin\n\n        if self.is_panning:\n            delta *= self.movement_speed\n            center_delta = delta[0] * self.drag_start_right + delta[1] * self.drag_start_down\n            self.center = self.drag_start_center + center_delta\n            if self.about_origin:\n                self.origin = self.drag_start_origin + center_delta\n        else:\n            m = mat4(1.0)\n            m = glm.rotate(m, delta.x % 2 * np.pi, self.world_up)\n            m = glm.rotate(m, np.clip(delta.y, self.drag_ymin, self.drag_ymax), self.drag_start_right)\n            self.front = m @ self.drag_start_front  # might overshoot\n\n            if self.about_origin:\n                self.center = -m @ (self.origin - self.drag_start_center) + self.origin\n\n    def move(self, x_offset: float, y_offset: float):\n        speed_factor = 1e-1\n        movement = y_offset * speed_factor\n        movement = movement * self.front * self.movement_speed\n        self.center += movement\n\n        if self.is_dragging:\n            self.drag_start_center += movement\n\n    def to_batch(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def to_easymocap(self):\n        batch = self.to_batch()\n        camera = to_numpy(batch)\n        return camera\n\n    def from_easymocap(self, camera: dict):\n        batch = to_tensor(camera)\n        self.from_batch(batch)\n        return self\n\n    def to_string(self) -> str:\n        batch = to_list(self.to_batch().meta)\n        return json.dumps(batch)\n\n    def from_string(self, string: str):\n        batch = to_tensor(dotdict(json.loads(string)), ignore_list=True)\n        self.from_batch(batch)\n\n    def from_batch(self, batch: dotdict):\n        H, W, K, R, T, n, f, t, v, bounds = batch.H, batch.W, batch.K, batch.R, batch.T, batch.n, batch.f, batch.t, batch.v, batch.bounds\n\n        # Batch (network input parameters)\n        self.H = int(H)\n        self.W = int(W)\n        self.K = mat3(*K.mT.ravel())\n        self.R = mat3(*R.mT.ravel())\n        self.T = vec3(*T.ravel())  # 3,\n        self.n = float(n)\n        self.f = float(f)\n        self.t = float(t)\n        self.v = float(v)\n        self.bounds = mat2x3(*bounds.ravel())  # 2, 3\n\n        if 'mass' in batch: self.mass = float(batch.mass)\n        if 'moment_of_inertia' in batch: self.moment_of_inertia = float(batch.moment_of_inertia)\n        if 'movement_force' in batch: self.movement_force = float(batch.movement_force)\n        if 'movement_torque' in batch: self.movement_torque = float(batch.movement_torque)\n        if 'movement_speed' in batch: self.movement_speed = float(batch.movement_speed)\n        if 'origin' in batch: self.origin = vec3(*batch.origin.ravel())  # 3,\n        if 'world_up' in batch: self.world_up = vec3(*batch.world_up.ravel())  # 3,\n        return self\n\n    def custom_pose(self, R: torch.Tensor, T: torch.Tensor, K: torch.Tensor):\n        # self.K = mat3(*K.mT.ravel())\n        self.R = mat3(*R.mT.ravel())\n        self.T = vec3(*T.ravel())"
+      },
+      {
+        "file": "easyvolcap/utils/viewer_utils.py",
+        "name": "Camera.__init__",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.viewer_utils.Camera.__init__",
+        "start": 376,
+        "end": 449,
+        "code": "    def __init__(self,\n                 H: int = 512,\n                 W: int = 512,\n                 K: torch.Tensor = torch.tensor([[512.0, 0.0, 256], [0.0, 512.0, 256.0], [0.0, 0.0, 1.0]]),  # intrinsics\n                 R: torch.Tensor = torch.tensor([[-0.9977766275405884, 0.06664637476205826, 0.0], [0.004728599451482296, 0.07079283893108368, -0.9974799156188965], [-0.0664784237742424, -0.9952622056007385, -0.07095059007406235]]),  # extrinsics\n                 T: torch.Tensor = torch.tensor([[-2.059340476989746e-5], [2.5779008865356445e-6], [-3.000047445297241]]),  # extrinsics\n                 n: float = 0.002,  # bounds limit\n                 f: float = 100,  # bounds limit\n                 t: float = 0.0,  # temporal dimension (implemented as a float instead of int)\n                 v: float = 0.0,  # view dimension (implemented as a float instead of int)\n                 bounds: torch.Tensor = torch.tensor([[-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]]),  # bounding box\n\n                 # camera update hyperparameters\n                 origin: torch.Tensor = torch.tensor([0.0, 0.0, 0.0]),\n                 world_up: torch.Tensor = torch.tensor([0.0, 0.0, 1.0]),\n                 movement_speed: float = 1.0,  # gui movement speed\n                 movement_force: float = 1.0,  # include some physiscs\n                 drag_coeff_mult: float = 1.0,  # include some physiscs\n                 constant_drag: float = 1.0,\n                 mass: float = 0.1,\n                 moment_of_inertia: float = 0.1,\n                 movement_torque: float = 1.0,\n                 angular_friction: float = 2.0,\n                 constant_torque: float = 1.0,\n\n                 min_interval: float = 0.0334,  # simulate at at least 30 fps\n                 pause_physics: bool = False,\n\n                 batch: dotdict = None,  # will ignore all other inputs\n                 string: str = None,  # will ignore all other inputs\n                 **kwargs,\n                 ) -> None:\n\n        # Batch (network input parameters)\n        if string is None:\n            if batch is None:\n                batch = dotdict()\n                batch.H, batch.W, batch.K, batch.R, batch.T, batch.n, batch.f, batch.t, batch.v, batch.bounds = H, W, K, R, T, n, f, t, v, bounds\n            self.from_batch(batch)\n\n            # Other configurables\n            self.origin = vec3(*origin)\n            # self.origin = self.center  # rotate about center\n            self.world_up = vec3(*world_up)\n            self.movement_speed = movement_speed\n            # self.front = self.front  # will trigger an update\n        else:\n            self.from_string(string)\n\n        # Internal states to facilitate camera position change\n        self.is_dragging = False  # rotation\n        self.about_origin = False  # about origin rotation\n        self.is_panning = False  # translation\n        self.lock_fx_fy = True\n        self.drag_start = vec2(0.0)\n\n        # Internal states to facilitate moving with mass\n        self.mass = mass\n        self.force = vec3(0.0)\n        self.speed = vec3(0.0)  # no movement\n        self.acc = vec3(0.0)\n        self.drag_coeff_mult = drag_coeff_mult\n        self.movement_force = movement_force\n        self.constant_drag = constant_drag\n        self.pause_physics = pause_physics\n        self.min_interval = min_interval\n\n        self.torque = vec3(0.0)\n        self.moment_of_inertia = moment_of_inertia\n        self.angular_speed = vec3(0.0)  # relative angular speed on three euler angles\n        self.angular_acc = vec3(0.0)\n        self.angular_friction = angular_friction\n        self.constant_torque = constant_torque\n        self.movement_torque = movement_torque"
+      },
+      {
+        "file": "easyvolcap/utils/base_utils.py",
+        "name": "dotdict",
+        "kind": "class",
+        "symbol": "easyvolcap.utils.base_utils.dotdict",
+        "start": 28,
+        "end": 169,
+        "code": "class dotdict(dict, Dict[KT, VT]):\n    \"\"\"\n    This is the default data passing object used throughout the codebase\n    Main function: dot access for dict values & dict like merging and updates\n\n    a dictionary that supports dot notation \n    as well as dictionary access notation \n    usage: d = make_dotdict() or d = make_dotdict{'val1':'first'})\n    set attributes: d.val2 = 'second' or d['val2'] = 'second'\n    get attributes: d.val2 or d['val2']\n    \"\"\"\n\n    def update(self, dct: Dict = None, **kwargs):\n        dct = copy(dct)  # avoid modifying the original dict, use super's copy to avoid recursion\n\n        # Handle different arguments\n        if dct is None:\n            dct = kwargs\n        elif isinstance(dct, Mapping):\n            dct.update(kwargs)\n        else:\n            super().update(dct, **kwargs)\n            return\n\n        # Recursive updates\n        for k, v in dct.items():\n            if k in self:\n\n                # Handle type conversions\n                target_type = type(self[k])\n                if not isinstance(v, target_type):\n                    # NOTE: bool('False') will be True\n                    if target_type == bool and isinstance(v, str):\n                        dct[k] = v == 'True'\n                    else:\n                        dct[k] = target_type(v)\n\n                if isinstance(v, dict):\n                    self[k].update(v)  # recursion from here\n                else:\n                    self[k] = v\n            else:\n                if isinstance(v, dict):\n                    self[k] = dotdict(v)  # recursion?\n                elif isinstance(v, list):\n                    self[k] = [dotdict(x) if isinstance(x, dict) else x for x in v]\n                else:\n                    self[k] = v\n        return self\n\n    def __init__(self, *args, **kwargs):\n        self.update(*args, **kwargs)\n\n    copy = return_dotdict(dict.copy)\n    fromkeys = return_dotdict(dict.fromkeys)\n\n    # def __hash__(self):\n    #     # return hash(''.join([str(self.values().__hash__())]))\n    #     return super(dotdict, self).__hash__()\n\n    # def __init__(self, *args, **kwargs):\n    #     super(dotdict, self).__init__(*args, **kwargs)\n\n    \"\"\"\n    Uncomment following lines and \n    comment out __getattr__ = dict.__getitem__ to get feature:\n    \n    returns empty numpy array for undefined keys, so that you can easily copy things around\n    TODO: potential caveat, harder to trace where this is set to np.array([], dtype=np.float32)\n    \"\"\"\n\n    def __getitem__(self, key):\n        try:\n            return dict.__getitem__(self, key)\n        except KeyError as e:\n            raise AttributeError(e)\n    # MARK: Might encounter exception in newer version of pytorch\n    # Traceback (most recent call last):\n    #   File \"/home/xuzhen/miniconda3/envs/torch/lib/python3.9/multiprocessing/queues.py\", line 245, in _feed\n    #     obj = _ForkingPickler.dumps(obj)\n    #   File \"/home/xuzhen/miniconda3/envs/torch/lib/python3.9/multiprocessing/reduction.py\", line 51, in dumps\n    #     cls(buf, protocol).dump(obj)\n    # KeyError: '__getstate__'\n    # MARK: Because you allow your __getattr__() implementation to raise the wrong kind of exception.\n    # FIXME: not working typing hinting code\n    __getattr__: Callable[..., 'torch.Tensor'] = __getitem__  # type: ignore # overidden dict.__getitem__\n    __getattribute__: Callable[..., 'torch.Tensor']  # type: ignore\n    # __getattr__ = dict.__getitem__\n    __setattr__ = dict.__setitem__\n    __delattr__ = dict.__delitem__\n\n    # TODO: better ways to programmically define these special variables?\n\n    @property\n    def meta(self) -> dotdict:\n        # Special variable used for storing cpu tensor in batch\n        if 'meta' not in self:\n            self.meta = dotdict()\n        return self.__getitem__('meta')\n\n    @meta.setter\n    def meta(self, meta):\n        self.__setitem__('meta', meta)\n\n    @property\n    def output(self) -> dotdict:  # late annotation needed for this\n        # Special entry for storing output tensor in batch\n        if 'output' not in self:\n            self.output = dotdict()\n        return self.__getitem__('output')\n\n    @output.setter\n    def output(self, output):\n        self.__setitem__('output', output)\n\n    @property\n    def persistent(self) -> dotdict:  # late annotation needed for this\n        # Special entry for storing persistent tensor in batch\n        if 'persistent' not in self:\n            self.persistent = dotdict()\n        return self.__getitem__('persistent')\n\n    @persistent.setter\n    def persistent(self, persistent):\n        self.__setitem__('persistent', persistent)\n\n    @property\n    def type(self) -> str:  # late annotation needed for this\n        # Special entry for type based construction system\n        return self.__getitem__('type')\n\n    @type.setter\n    def type(self, type):\n        self.__setitem__('type', type)\n\n    def to_dict(self):\n        out = dict()\n        for k, v in self.items():\n            if isinstance(v, dotdict):\n                v = v.to_dict()  # recursion point\n            out[k] = v\n        return out"
+      },
+      {
+        "file": "easyvolcap/utils/base_utils.py",
+        "name": "dotdict.meta",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.base_utils.dotdict.meta",
+        "start": 129,
+        "end": 130,
+        "code": "    def meta(self, meta):\n        self.__setitem__('meta', meta)"
+      },
+      {
+        "file": "easyvolcap/utils/viewer_utils.py",
+        "name": "Camera.to_easymocap",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.viewer_utils.Camera.to_easymocap",
+        "start": 718,
+        "end": 721,
+        "code": "    def to_easymocap(self):\n        batch = self.to_batch()\n        camera = to_numpy(batch)\n        return camera"
+      },
+      {
+        "file": "easyvolcap/utils/viewer_utils.py",
+        "name": "Camera.from_easymocap",
+        "kind": "function",
+        "symbol": "easyvolcap.utils.viewer_utils.Camera.from_easymocap",
+        "start": 723,
+        "end": 726,
+        "code": "    def from_easymocap(self, camera: dict):\n        batch = to_tensor(camera)\n        self.from_batch(batch)\n        return self"
+      }
+    ],
+    "unresolved": [
+      "easyvolcap/utils/viewer_utils.py:function: from_batch",
+      "easyvolcap/utils/viewer_utils.py:function: __init__",
+      "easyvolcap/utils/viewer_utils.py:function: to_easymocap",
+      "easyvolcap/utils/viewer_utils.py:function: from_string"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5135135135135135,
+    "exact_entity_dr": 0.05405405405405406,
+    "dependency_count": 37,
+    "hit_dependencies": [
+      "easyvolcap.utils.base_utils.dotdict",
+      "easyvolcap.utils.base_utils.dotdict.meta",
+      "easyvolcap.utils.viewer_utils.Camera.H",
+      "easyvolcap.utils.viewer_utils.Camera.K",
+      "easyvolcap.utils.viewer_utils.Camera.R",
+      "easyvolcap.utils.viewer_utils.Camera.T",
+      "easyvolcap.utils.viewer_utils.Camera.W",
+      "easyvolcap.utils.viewer_utils.Camera.bounds",
+      "easyvolcap.utils.viewer_utils.Camera.f",
+      "easyvolcap.utils.viewer_utils.Camera.mass",
+      "easyvolcap.utils.viewer_utils.Camera.moment_of_inertia",
+      "easyvolcap.utils.viewer_utils.Camera.movement_force",
+      "easyvolcap.utils.viewer_utils.Camera.movement_speed",
+      "easyvolcap.utils.viewer_utils.Camera.movement_torque",
+      "easyvolcap.utils.viewer_utils.Camera.n",
+      "easyvolcap.utils.viewer_utils.Camera.origin",
+      "easyvolcap.utils.viewer_utils.Camera.t",
+      "easyvolcap.utils.viewer_utils.Camera.v",
+      "easyvolcap.utils.viewer_utils.Camera.world_up"
+    ],
+    "exact_hit_dependencies": [
+      "easyvolcap.utils.base_utils.dotdict",
+      "easyvolcap.utils.base_utils.dotdict.meta"
+    ],
+    "returned_entities": 7,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 24271
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 52126,
+    "completion_tokens": 512,
+    "total_tokens": 52638,
+    "seconds": 88.66254496574402,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 407.377249956131,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

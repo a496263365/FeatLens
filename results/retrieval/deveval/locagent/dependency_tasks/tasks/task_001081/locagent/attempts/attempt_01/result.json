@@ -1,0 +1,136 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1081,
+  "namespace": "gunicorn.http.body.LengthReader.read",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5308,
+      "input_estimate_after": 5308,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ngunicorn/http/body.py\nline: 19\nclass: ChunkedReader\nfunction: read\n\ngunicorn/http/body.py\nline: 145\nclass: EOFReader\nfunction: read\n\ngunicorn/http/body.py\nline: 202\nclass: Body\nfunction: read\n\ngunicorn/http/unreader.py\nfunction: Unreader.read\n```",
+  "final_locations": {
+    "files": [
+      "gunicorn/http/body.py",
+      "gunicorn/http/unreader.py"
+    ],
+    "entities": [
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "ChunkedReader.read",
+        "kind": "function",
+        "symbol": "gunicorn.http.body.ChunkedReader.read",
+        "start": 19,
+        "end": 39,
+        "code": "    def read(self, size):\n        if not isinstance(size, int):\n            raise TypeError(\"size must be an integer type\")\n        if size < 0:\n            raise ValueError(\"Size must be positive.\")\n        if size == 0:\n            return b\"\"\n\n        if self.parser:\n            while self.buf.tell() < size:\n                try:\n                    self.buf.write(next(self.parser))\n                except StopIteration:\n                    self.parser = None\n                    break\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "ChunkedReader",
+        "kind": "class",
+        "symbol": "gunicorn.http.body.ChunkedReader",
+        "start": 13,
+        "end": 106,
+        "code": "class ChunkedReader(object):\n    def __init__(self, req, unreader):\n        self.req = req\n        self.parser = self.parse_chunked(unreader)\n        self.buf = io.BytesIO()\n\n    def read(self, size):\n        if not isinstance(size, int):\n            raise TypeError(\"size must be an integer type\")\n        if size < 0:\n            raise ValueError(\"Size must be positive.\")\n        if size == 0:\n            return b\"\"\n\n        if self.parser:\n            while self.buf.tell() < size:\n                try:\n                    self.buf.write(next(self.parser))\n                except StopIteration:\n                    self.parser = None\n                    break\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret\n\n    def parse_trailers(self, unreader, data):\n        buf = io.BytesIO()\n        buf.write(data)\n\n        idx = buf.getvalue().find(b\"\\r\\n\\r\\n\")\n        done = buf.getvalue()[:2] == b\"\\r\\n\"\n        while idx < 0 and not done:\n            self.get_data(unreader, buf)\n            idx = buf.getvalue().find(b\"\\r\\n\\r\\n\")\n            done = buf.getvalue()[:2] == b\"\\r\\n\"\n        if done:\n            unreader.unread(buf.getvalue()[2:])\n            return b\"\"\n        self.req.trailers = self.req.parse_headers(buf.getvalue()[:idx])\n        unreader.unread(buf.getvalue()[idx + 4:])\n\n    def parse_chunked(self, unreader):\n        (size, rest) = self.parse_chunk_size(unreader)\n        while size > 0:\n            while size > len(rest):\n                size -= len(rest)\n                yield rest\n                rest = unreader.read()\n                if not rest:\n                    raise NoMoreData()\n            yield rest[:size]\n            # Remove \\r\\n after chunk\n            rest = rest[size:]\n            while len(rest) < 2:\n                rest += unreader.read()\n            if rest[:2] != b'\\r\\n':\n                raise ChunkMissingTerminator(rest[:2])\n            (size, rest) = self.parse_chunk_size(unreader, data=rest[2:])\n\n    def parse_chunk_size(self, unreader, data=None):\n        buf = io.BytesIO()\n        if data is not None:\n            buf.write(data)\n\n        idx = buf.getvalue().find(b\"\\r\\n\")\n        while idx < 0:\n            self.get_data(unreader, buf)\n            idx = buf.getvalue().find(b\"\\r\\n\")\n\n        data = buf.getvalue()\n        line, rest_chunk = data[:idx], data[idx + 2:]\n\n        chunk_size = line.split(b\";\", 1)[0].strip()\n        try:\n            chunk_size = int(chunk_size, 16)\n        except ValueError:\n            raise InvalidChunkSize(chunk_size)\n\n        if chunk_size == 0:\n            try:\n                self.parse_trailers(unreader, rest_chunk)\n            except NoMoreData:\n                pass\n            return (0, None)\n        return (chunk_size, rest_chunk)\n\n    def get_data(self, unreader, buf):\n        data = unreader.read()\n        if not data:\n            raise NoMoreData()\n        buf.write(data)"
+      },
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "EOFReader.read",
+        "kind": "function",
+        "symbol": "gunicorn.http.body.EOFReader.read",
+        "start": 145,
+        "end": 174,
+        "code": "    def read(self, size):\n        if not isinstance(size, int):\n            raise TypeError(\"size must be an integral type\")\n        if size < 0:\n            raise ValueError(\"Size must be positive.\")\n        if size == 0:\n            return b\"\"\n\n        if self.finished:\n            data = self.buf.getvalue()\n            ret, rest = data[:size], data[size:]\n            self.buf = io.BytesIO()\n            self.buf.write(rest)\n            return ret\n\n        data = self.unreader.read()\n        while data:\n            self.buf.write(data)\n            if self.buf.tell() > size:\n                break\n            data = self.unreader.read()\n\n        if not data:\n            self.finished = True\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "EOFReader",
+        "kind": "class",
+        "symbol": "gunicorn.http.body.EOFReader",
+        "start": 139,
+        "end": 174,
+        "code": "class EOFReader(object):\n    def __init__(self, unreader):\n        self.unreader = unreader\n        self.buf = io.BytesIO()\n        self.finished = False\n\n    def read(self, size):\n        if not isinstance(size, int):\n            raise TypeError(\"size must be an integral type\")\n        if size < 0:\n            raise ValueError(\"Size must be positive.\")\n        if size == 0:\n            return b\"\"\n\n        if self.finished:\n            data = self.buf.getvalue()\n            ret, rest = data[:size], data[size:]\n            self.buf = io.BytesIO()\n            self.buf.write(rest)\n            return ret\n\n        data = self.unreader.read()\n        while data:\n            self.buf.write(data)\n            if self.buf.tell() > size:\n                break\n            data = self.unreader.read()\n\n        if not data:\n            self.finished = True\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "Body.read",
+        "kind": "function",
+        "symbol": "gunicorn.http.body.Body.read",
+        "start": 202,
+        "end": 224,
+        "code": "    def read(self, size=None):\n        size = self.getsize(size)\n        if size == 0:\n            return b\"\"\n\n        if size < self.buf.tell():\n            data = self.buf.getvalue()\n            ret, rest = data[:size], data[size:]\n            self.buf = io.BytesIO()\n            self.buf.write(rest)\n            return ret\n\n        while size > self.buf.tell():\n            data = self.reader.read(1024)\n            if not data:\n                break\n            self.buf.write(data)\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/body.py",
+        "name": "Body",
+        "kind": "class",
+        "symbol": "gunicorn.http.body.Body",
+        "start": 177,
+        "end": 262,
+        "code": "class Body(object):\n    def __init__(self, reader):\n        self.reader = reader\n        self.buf = io.BytesIO()\n\n    def __iter__(self):\n        return self\n\n    def __next__(self):\n        ret = self.readline()\n        if not ret:\n            raise StopIteration()\n        return ret\n\n    next = __next__\n\n    def getsize(self, size):\n        if size is None:\n            return sys.maxsize\n        elif not isinstance(size, int):\n            raise TypeError(\"size must be an integral type\")\n        elif size < 0:\n            return sys.maxsize\n        return size\n\n    def read(self, size=None):\n        size = self.getsize(size)\n        if size == 0:\n            return b\"\"\n\n        if size < self.buf.tell():\n            data = self.buf.getvalue()\n            ret, rest = data[:size], data[size:]\n            self.buf = io.BytesIO()\n            self.buf.write(rest)\n            return ret\n\n        while size > self.buf.tell():\n            data = self.reader.read(1024)\n            if not data:\n                break\n            self.buf.write(data)\n\n        data = self.buf.getvalue()\n        ret, rest = data[:size], data[size:]\n        self.buf = io.BytesIO()\n        self.buf.write(rest)\n        return ret\n\n    def readline(self, size=None):\n        size = self.getsize(size)\n        if size == 0:\n            return b\"\"\n\n        data = self.buf.getvalue()\n        self.buf = io.BytesIO()\n\n        ret = []\n        while 1:\n            idx = data.find(b\"\\n\", 0, size)\n            idx = idx + 1 if idx >= 0 else size if len(data) >= size else 0\n            if idx:\n                ret.append(data[:idx])\n                self.buf.write(data[idx:])\n                break\n\n            ret.append(data)\n            size -= len(data)\n            data = self.reader.read(min(1024, size))\n            if not data:\n                break\n\n        return b\"\".join(ret)\n\n    def readlines(self, size=None):\n        ret = []\n        data = self.read()\n        while data:\n            pos = data.find(b\"\\n\")\n            if pos < 0:\n                ret.append(data)\n                data = b\"\"\n            else:\n                line, data = data[:pos + 1], data[pos + 1:]\n                ret.append(line)\n        return ret"
+      },
+      {
+        "file": "gunicorn/http/unreader.py",
+        "name": "Unreader.read",
+        "kind": "function",
+        "symbol": "gunicorn.http.unreader.Unreader.read",
+        "start": 20,
+        "end": 50,
+        "code": "    def read(self, size=None):\n        if size is not None and not isinstance(size, int):\n            raise TypeError(\"size parameter must be an int or long.\")\n\n        if size is not None:\n            if size == 0:\n                return b\"\"\n            if size < 0:\n                size = None\n\n        self.buf.seek(0, os.SEEK_END)\n\n        if size is None and self.buf.tell():\n            ret = self.buf.getvalue()\n            self.buf = io.BytesIO()\n            return ret\n        if size is None:\n            d = self.chunk()\n            return d\n\n        while self.buf.tell() < size:\n            chunk = self.chunk()\n            if not chunk:\n                ret = self.buf.getvalue()\n                self.buf = io.BytesIO()\n                return ret\n            self.buf.write(chunk)\n        data = self.buf.getvalue()\n        self.buf = io.BytesIO()\n        self.buf.write(data[size:])\n        return data[:size]"
+      }
+    ],
+    "unresolved": [
+      "gunicorn/http/body.py:function: read",
+      "gunicorn/http/body.py:function: read",
+      "gunicorn/http/body.py:function: read"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.25,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "gunicorn.http.unreader.Unreader.read"
+    ],
+    "exact_hit_dependencies": [
+      "gunicorn.http.unreader.Unreader.read"
+    ],
+    "returned_entities": 7,
+    "returned_files": 2,
+    "unresolved_locations": 3,
+    "returned_code_chars": 9310
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 24941,
+    "completion_tokens": 329,
+    "total_tokens": 25270,
+    "seconds": 24.367821216583252,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 28.577895641326904,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

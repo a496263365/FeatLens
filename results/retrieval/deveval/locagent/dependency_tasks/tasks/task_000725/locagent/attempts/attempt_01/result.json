@@ -1,0 +1,106 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 725,
+  "namespace": "pyt.core.project_handler.get_directory_modules",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3192,
+      "input_estimate_after": 3192,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\npyt/core/project_handler.py\nfunction: _is_python_file\nfunction: get_modules\n\npyt/core/module_definitions.py\nclass: LocalModuleDefinition\nclass: ModuleDefinitions\n\npyt/core/__init__.py\n```",
+  "final_locations": {
+    "files": [
+      "pyt/core/project_handler.py",
+      "pyt/core/module_definitions.py",
+      "pyt/core/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "pyt/core/project_handler.py",
+        "name": "_is_python_file",
+        "kind": "function",
+        "symbol": "pyt.core.project_handler._is_python_file",
+        "start": 73,
+        "end": 76,
+        "code": "def _is_python_file(path):\n    if os.path.splitext(path)[1] == '.py':\n        return True\n    return False"
+      },
+      {
+        "file": "pyt/core/project_handler.py",
+        "name": "get_modules",
+        "kind": "function",
+        "symbol": "pyt.core.project_handler.get_modules",
+        "start": 34,
+        "end": 70,
+        "code": "def get_modules(path, prepend_module_root=True):\n    \"\"\"Return a list containing tuples of\n    e.g. ('test_project.utils', 'example/test_project/utils.py')\n    \"\"\"\n    module_root = os.path.split(path)[1]\n    modules = list()\n    for root, directories, filenames in os.walk(path):\n        for filename in filenames:\n            if _is_python_file(filename):\n                directory = os.path.dirname(\n                    os.path.realpath(\n                        os.path.join(\n                            root,\n                            filename\n                        )\n                    )\n                ).split(module_root)[-1].replace(\n                    os.sep,  # e.g. '/'\n                    '.'\n                )\n                directory = directory.replace('.', '', 1)\n\n                module_name_parts = []\n                if prepend_module_root:\n                    module_name_parts.append(module_root)\n                if directory:\n                    module_name_parts.append(directory)\n\n                if filename == '__init__.py':\n                    path = root\n                else:\n                    module_name_parts.append(os.path.splitext(filename)[0])\n                    path = os.path.join(root, filename)\n\n                modules.append(('.'.join(module_name_parts), path))\n\n    return modules"
+      },
+      {
+        "file": "pyt/core/module_definitions.py",
+        "name": "LocalModuleDefinition",
+        "kind": "class",
+        "symbol": "pyt.core.module_definitions.LocalModuleDefinition",
+        "start": 48,
+        "end": 50,
+        "code": "class LocalModuleDefinition(ModuleDefinition):\n    \"\"\"A local definition.\"\"\"\n    pass"
+      },
+      {
+        "file": "pyt/core/module_definitions.py",
+        "name": "ModuleDefinitions",
+        "kind": "class",
+        "symbol": "pyt.core.module_definitions.ModuleDefinitions",
+        "start": 53,
+        "end": 142,
+        "code": "class ModuleDefinitions():\n    \"\"\"A collection of module definition.\n\n    Adds to the project definitions list.\n    \"\"\"\n\n    def __init__(\n        self,\n        import_names=None,\n        module_name=None,\n        is_init=False,\n        filename=None\n    ):\n        \"\"\"Optionally set import names and module name.\n\n        Module name should only be set when it is a normal import statement.\n        \"\"\"\n        self.import_names = import_names\n        # module_name is sometimes ast.alias or a string\n        self.module_name = module_name\n        self.is_init = is_init\n        self.filename = filename\n        self.definitions = list()\n        self.classes = list()\n        self.import_alias_mapping = dict()\n\n    def append_if_local_or_in_imports(self, definition):\n        \"\"\"Add definition to list.\n\n        Handles local definitions and adds to project_definitions.\n        \"\"\"\n        if isinstance(definition, LocalModuleDefinition):\n            self.definitions.append(definition)\n        elif self.import_names == [\"*\"]:\n            self.definitions.append(definition)\n        elif self.import_names and definition.name in self.import_names:\n            self.definitions.append(definition)\n        elif (self.import_alias_mapping and definition.name in\n              self.import_alias_mapping.values()):\n            self.definitions.append(definition)\n\n        if definition.parent_module_name:\n            self.definitions.append(definition)\n\n        if definition.node not in project_definitions:\n            project_definitions[definition.node] = definition\n\n    def get_definition(self, name):\n        \"\"\"Get definitions by name.\"\"\"\n        for definition in self.definitions:\n            if definition.name == name:\n                return definition\n\n    def set_definition_node(self, node, name):\n        \"\"\"Set definition by name.\"\"\"\n        definition = self.get_definition(name)\n        if definition:\n            definition.node = node\n\n    def __str__(self):\n        module = 'NoModuleName'\n        if self.module_name:\n            module = self.module_name\n\n        if self.definitions:\n            if isinstance(module, ast.alias):\n                return (\n                    'Definitions: \"' + '\", \"'\n                    .join([str(definition) for definition in self.definitions]) +\n                    '\" and module_name: ' + module.name +\n                    ' and filename: ' + str(self.filename) +\n                    ' and is_init: ' + str(self.is_init) + '\\n')\n            return (\n                'Definitions: \"' + '\", \"'\n                .join([str(definition) for definition in self.definitions]) +\n                '\" and module_name: ' + module +\n                ' and filename: ' + str(self.filename) +\n                ' and is_init: ' + str(self.is_init) + '\\n')\n        else:\n            if isinstance(module, ast.alias):\n                return (\n                    'import_names is ' + str(self.import_names) +\n                    ' No Definitions, module_name: ' + str(module.name) +\n                    ' and filename: ' + str(self.filename) +\n                    ' and is_init: ' + str(self.is_init) + '\\n')\n            return (\n                'import_names is ' + str(self.import_names) +\n                ' No Definitions, module_name: ' + str(module) +\n                ' and filename: ' + str(self.filename) +\n                ' and is_init: ' + str(self.is_init) + '\\n')"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "pyt.core.project_handler._is_python_file"
+    ],
+    "exact_hit_dependencies": [
+      "pyt.core.project_handler._is_python_file"
+    ],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4941
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 16157,
+    "completion_tokens": 1266,
+    "total_tokens": 17423,
+    "seconds": 83.48326563835144,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 87.09824347496033,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

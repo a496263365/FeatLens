@@ -1,0 +1,104 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 977,
+  "namespace": "pymorphy2.opencorpora_dict.compile._to_paradigm",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\npymorphy2/opencorpora_dict/compile.py\nline: 241\nfunction: _to_paradigm\n\npymorphy2/opencorpora_dict/wrapper.py\nline: 25\nclass: Dictionary\nvariable: paradigm_prefixes\n\npymorphy2/opencorpora_dict/compile.py\nline: 68\nfunction: compile_parsed_dict\nvariable: paradigm_prefixes\n\npymorphy2/opencorpora_dict/storage.py\nline: 62\nfunction: load_dict\nvariable: paradigm_prefixes\n\npymorphy2/opencorpora_dict/compile.py\nline: 275\nfunction: _suffixes_prediction_data\nvariable: paradigm_prefixes\n```",
+  "final_locations": {
+    "files": [
+      "pymorphy2/opencorpora_dict/compile.py",
+      "pymorphy2/opencorpora_dict/wrapper.py",
+      "pymorphy2/opencorpora_dict/storage.py"
+    ],
+    "entities": [
+      {
+        "file": "pymorphy2/opencorpora_dict/wrapper.py",
+        "name": "Dictionary.__init__",
+        "kind": "function",
+        "symbol": "pymorphy2.opencorpora_dict.wrapper.Dictionary.__init__",
+        "start": 14,
+        "end": 34,
+        "code": "    def __init__(self, path):\n\n        logger.info(\"Loading dictionaries from %s\", path)\n\n        self._data = load_dict(path)\n\n        logger.info(\"format: %(format_version)s, revision: %(source_revision)s, updated: %(compiled_at)s\", self._data.meta)\n\n        # attributes from opencorpora_dict.storage.LoadedDictionary\n        self.paradigms = self._data.paradigms\n        self.gramtab = self._data.gramtab\n        self.paradigm_prefixes = self._data.paradigm_prefixes\n        self.suffixes = self._data.suffixes\n        self.words = self._data.words\n        self.prediction_suffixes_dawgs = self._data.prediction_suffixes_dawgs\n        self.meta = self._data.meta\n        self.Tag = self._data.Tag\n        self.lang = self.meta.get('language_code')\n\n        # extra attributes\n        self.path = path"
+      },
+      {
+        "file": "pymorphy2/opencorpora_dict/wrapper.py",
+        "name": "Dictionary",
+        "kind": "class",
+        "symbol": "pymorphy2.opencorpora_dict.wrapper.Dictionary",
+        "start": 9,
+        "end": 141,
+        "code": "class Dictionary(object):\n    \"\"\"\n    OpenCorpora dictionary wrapper class.\n    \"\"\"\n\n    def __init__(self, path):\n\n        logger.info(\"Loading dictionaries from %s\", path)\n\n        self._data = load_dict(path)\n\n        logger.info(\"format: %(format_version)s, revision: %(source_revision)s, updated: %(compiled_at)s\", self._data.meta)\n\n        # attributes from opencorpora_dict.storage.LoadedDictionary\n        self.paradigms = self._data.paradigms\n        self.gramtab = self._data.gramtab\n        self.paradigm_prefixes = self._data.paradigm_prefixes\n        self.suffixes = self._data.suffixes\n        self.words = self._data.words\n        self.prediction_suffixes_dawgs = self._data.prediction_suffixes_dawgs\n        self.meta = self._data.meta\n        self.Tag = self._data.Tag\n        self.lang = self.meta.get('language_code')\n\n        # extra attributes\n        self.path = path\n\n    def build_tag_info(self, para_id, idx):\n        \"\"\"\n        Return tag as a string.\n        \"\"\"\n        paradigm = self.paradigms[para_id]\n        tag_info_offset = len(paradigm) // 3\n        tag_id = paradigm[tag_info_offset + idx]\n        return self.gramtab[tag_id]\n\n    def build_paradigm_info(self, para_id):\n        \"\"\"\n        Return a list of\n\n            (prefix, tag, suffix)\n\n        tuples representing the paradigm.\n        \"\"\"\n        paradigm = self.paradigms[para_id]\n        paradigm_len = len(paradigm) // 3\n        res = []\n        for idx in range(paradigm_len):\n            prefix_id = paradigm[paradigm_len*2 + idx]\n            prefix = self.paradigm_prefixes[prefix_id]\n\n            suffix_id = paradigm[idx]\n            suffix = self.suffixes[suffix_id]\n\n            res.append(\n                (prefix, self.build_tag_info(para_id, idx), suffix)\n            )\n        return res\n\n    def build_normal_form(self, para_id, idx, fixed_word):\n        \"\"\"\n        Build a normal form.\n        \"\"\"\n\n        if idx == 0:  # a shortcut: normal form is a word itself\n            return fixed_word\n\n        paradigm = self.paradigms[para_id]\n        paradigm_len = len(paradigm) // 3\n\n        stem = self.build_stem(paradigm, idx, fixed_word)\n\n        normal_prefix_id = paradigm[paradigm_len*2 + 0]\n        normal_suffix_id = paradigm[0]\n\n        normal_prefix = self.paradigm_prefixes[normal_prefix_id]\n        normal_suffix = self.suffixes[normal_suffix_id]\n\n        return normal_prefix + stem + normal_suffix\n\n    def build_stem(self, paradigm, idx, fixed_word):\n        \"\"\"\n        Return word stem (given a word, paradigm and the word index).\n        \"\"\"\n        paradigm_len = len(paradigm) // 3\n\n        prefix_id = paradigm[paradigm_len*2 + idx]\n        prefix = self.paradigm_prefixes[prefix_id]\n\n        suffix_id = paradigm[idx]\n        suffix = self.suffixes[suffix_id]\n\n        if suffix:\n            return fixed_word[len(prefix):-len(suffix)]\n        else:\n            return fixed_word[len(prefix):]\n\n    def word_is_known(self, word, substitutes_compiled=None):\n        \"\"\"\n        Check if a ``word`` is in the dictionary.\n\n        To allow some fuzzyness pass ``substitutes_compiled`` argument;\n        it should be a result of :meth:`DAWG.compile_replaces()`.\n        This way you can e.g. handle ё letters replaced with е in the\n        input words.\n\n        .. note::\n\n            Dictionary words are not always correct words;\n            the dictionary also contains incorrect forms which\n            are commonly used. So for spellchecking tasks this\n            method should be used with extra care.\n\n        \"\"\"\n        if substitutes_compiled:\n            return bool(self.words.similar_keys(word, substitutes_compiled))\n        else:\n            return word in self.words\n\n    def iter_known_words(self, prefix=\"\"):\n        \"\"\"\n        Return an iterator over ``(word, tag, normal_form, para_id, idx)``\n        tuples with dictionary words that starts with a given prefix\n        (default empty prefix means \"all words\").\n        \"\"\"\n\n        for word, (para_id, idx) in self.words.iteritems(prefix):\n            tag = self.build_tag_info(para_id, idx)\n            normal_form = self.build_normal_form(para_id, idx, word)\n            yield word, tag, normal_form, para_id, idx\n\n    def __repr__(self):\n        return str(\"<%s>\") % self.__class__.__name__"
+      },
+      {
+        "file": "pymorphy2/opencorpora_dict/compile.py",
+        "name": "compile_parsed_dict",
+        "kind": "function",
+        "symbol": "pymorphy2.opencorpora_dict.compile.compile_parsed_dict",
+        "start": 58,
+        "end": 175,
+        "code": "def compile_parsed_dict(parsed_dict, compile_options=None):\n    \"\"\"\n    Return compacted dictionary data.\n    \"\"\"\n    options = dict(\n        min_ending_freq=2,\n        min_paradigm_popularity=3,\n        max_suffix_length=5,\n    )\n    options.update(compile_options or {})\n    paradigm_prefixes = options[\"paradigm_prefixes\"]\n\n    gramtab = []\n    paradigms = []\n    words = []\n\n    tag_ids = dict()\n    paradigm_ids = dict()\n\n    logger.info(\"inlining lexeme derivational rules\")\n    lexemes = _join_lexemes(parsed_dict.lexemes, parsed_dict.links)\n    logger.info(\"lexemes after link inlining: %s\", len(lexemes))\n\n    logger.info('building paradigms')\n    logger.debug(\"%20s %15s %15s %15s\", \"word\", \"len(gramtab)\", \"len(words)\", \"len(paradigms)\")\n\n    paradigm_popularity = collections.defaultdict(int)\n\n    for index, lexeme in enumerate(lexemes):\n        stem, paradigm = _to_paradigm(lexeme, paradigm_prefixes)\n\n        # build gramtab\n        for suff, tag, pref in paradigm:\n            if tag not in tag_ids:\n                tag_ids[tag] = len(gramtab)\n                gramtab.append(tag)\n\n        # build paradigm index\n        if paradigm not in paradigm_ids:\n            paradigm_ids[paradigm] = len(paradigms)\n            paradigms.append(\n                tuple([(suff, tag_ids[tag], pref) for suff, tag, pref in paradigm])\n            )\n\n        para_id = paradigm_ids[paradigm]\n        paradigm_popularity[para_id] += 1\n\n        for idx, (suff, tag, pref) in enumerate(paradigm):\n            form = pref+stem+suff\n            words.append(\n                (form, (para_id, idx))\n            )\n\n        if not (index % 10000):\n            word = paradigm[0][2] + stem + paradigm[0][0]\n            logger.debug(\"%20s %15s %15s %15s\", word, len(gramtab), len(words), len(paradigms))\n\n\n    logger.debug(\"%20s %15s %15s %15s\", \"total:\", len(gramtab), len(words), len(paradigms))\n    logger.debug(\"linearizing paradigms\")\n\n    def get_form(para):\n        return list(next(izip(*para)))\n\n    forms = [get_form(para) for para in paradigms]\n    suffixes = sorted(set(list(itertools.chain(*forms))))\n    suffix_ids = dict(\n        (suff, index)\n        for index, suff in enumerate(suffixes)\n    )\n\n    paradigm_prefix_ids = dict(\n        (pref, idx) for idx, pref in enumerate(paradigm_prefixes)\n    )\n    def fix_strings(paradigm):\n        \"\"\" Replace suffix and prefix with the respective id numbers. \"\"\"\n        para = []\n        for suff, tag, pref in paradigm:\n            para.append(\n                (suffix_ids[suff], tag, paradigm_prefix_ids[pref])\n            )\n        return para\n\n    paradigms = (fix_strings(para) for para in paradigms)\n    paradigms = [_linearized_paradigm(paradigm) for paradigm in paradigms]\n\n    logger.debug('calculating prediction data..')\n    suffixes_dawgs_data = _suffixes_prediction_data(\n        words=words,\n        paradigm_popularity=paradigm_popularity,\n        gramtab=gramtab,\n        paradigms=paradigms,\n        suffixes=suffixes,\n        min_ending_freq=options[\"min_ending_freq\"],\n        min_paradigm_popularity=options[\"min_paradigm_popularity\"],\n        max_suffix_length=options[\"max_suffix_length\"],\n        paradigm_prefixes=paradigm_prefixes,\n    )\n\n    logger.debug('building word DAFSA')\n    words_dawg = dawg.WordsDawg(words)\n\n    del words\n\n    prediction_suffixes_dawgs = []\n    for prefix_id, dawg_data in enumerate(suffixes_dawgs_data):\n        logger.debug('building prediction_suffixes DAFSA #%d' % prefix_id)\n        prediction_suffixes_dawgs.append(dawg.PredictionSuffixesDAWG(dawg_data))\n\n    return CompiledDictionary(\n        gramtab=tuple(gramtab),\n        suffixes=suffixes,\n        paradigms=paradigms,\n        words_dawg=words_dawg,\n        prediction_suffixes_dawgs=prediction_suffixes_dawgs,\n        parsed_dict=parsed_dict,\n        compile_options=options,\n    )"
+      },
+      {
+        "file": "pymorphy2/opencorpora_dict/storage.py",
+        "name": "load_dict",
+        "kind": "function",
+        "symbol": "pymorphy2.opencorpora_dict.storage.load_dict",
+        "start": 41,
+        "end": 82,
+        "code": "def load_dict(path, gramtab_format='opencorpora-int'):\n    \"\"\"\n    Load pymorphy2 dictionary.\n    ``path`` is a folder name with dictionary data.\n    \"\"\"\n\n    _f = lambda p: os.path.join(path, p)\n\n    meta = load_meta(_f('meta.json'))\n    _assert_format_is_compatible(meta, path)\n\n    Tag = _load_tag_class(gramtab_format, _f('grammemes.json'))\n\n    str_gramtab = _load_gramtab(meta, gramtab_format, path)\n    gramtab = [Tag(tag_str) for tag_str in str_gramtab]\n\n    suffixes = json_read(_f('suffixes.json'))\n    paradigms = _load_paradigms(_f('paradigms.array'))\n    words = dawg.WordsDawg().load(_f('words.dawg'))\n\n    try:\n        paradigm_prefixes = meta[\"compile_options\"][\"paradigm_prefixes\"]\n    except KeyError:\n        # support dicts v2.4\n        paradigm_prefixes = json_read(_f('paradigm-prefixes.json'))\n\n    prediction_suffixes_dawgs = []\n    for prefix_id in range(len(paradigm_prefixes)):\n        fn = _f('prediction-suffixes-%s.dawg' % prefix_id)\n        assert os.path.exists(fn)\n        prediction_suffixes_dawgs.append(dawg.PredictionSuffixesDAWG().load(fn))\n\n    return LoadedDictionary(\n        meta=meta,\n        gramtab=gramtab,\n        suffixes=suffixes,\n        paradigms=paradigms,\n        words=words,\n        prediction_suffixes_dawgs=prediction_suffixes_dawgs,\n        Tag=Tag,\n        paradigm_prefixes=paradigm_prefixes,\n    )"
+      },
+      {
+        "file": "pymorphy2/opencorpora_dict/compile.py",
+        "name": "_suffixes_prediction_data",
+        "kind": "function",
+        "symbol": "pymorphy2.opencorpora_dict.compile._suffixes_prediction_data",
+        "start": 273,
+        "end": 331,
+        "code": "def _suffixes_prediction_data(words, paradigm_popularity, gramtab, paradigms, suffixes,\n                              min_ending_freq, min_paradigm_popularity, max_suffix_length,\n                              paradigm_prefixes):\n\n    logger.debug('calculating prediction data: removing non-productive paradigms..')\n    productive_paradigms = _popular_keys(paradigm_popularity, min_paradigm_popularity)\n\n    # [\"suffix\"] => number of occurrences\n    # this is for removing non-productive suffixes\n    ending_counts = collections.defaultdict(int)\n\n    # [form_prefix_id][\"suffix\"][\"POS\"][(para_id, idx)] => number or occurrences\n    # this is for selecting most popular parses\n    prefix_endings = {}\n    for form_prefix_id in range(len(paradigm_prefixes)):\n        prefix_endings[form_prefix_id] = collections.defaultdict(\n                                    lambda: collections.defaultdict(\n                                        lambda: collections.defaultdict(int)))\n\n    logger.debug('calculating prediction data: checking word endings..')\n    for word, (para_id, idx) in with_progress(words, \"Checking word endings\"):\n\n        if para_id not in productive_paradigms:\n            continue\n\n        paradigm = paradigms[para_id]\n\n        form_count = len(paradigm) // 3\n\n        tag = gramtab[paradigm[form_count + idx]]\n        form_prefix_id = paradigm[2*form_count + idx]\n        form_prefix = paradigm_prefixes[form_prefix_id]\n        form_suffix = suffixes[paradigm[idx]]\n\n        assert len(word) >= len(form_prefix+form_suffix), word\n        assert word.startswith(form_prefix), word\n        assert word.endswith(form_suffix), word\n\n        if len(word) == len(form_prefix) + len(form_suffix):\n            # pseudo-paradigms are useless for prediction\n            continue\n\n        POS = tuple(tag.replace(' ', ',', 1).split(','))[0]\n\n        for i in range(max(len(form_suffix), 1), max_suffix_length+1): #was: 1,2,3,4,5\n            word_end = word[-i:]\n            ending_counts[word_end] += 1\n            prefix_endings[form_prefix_id][word_end][POS][(para_id, idx)] += 1\n\n    dawgs_data = []\n\n    for form_prefix_id in sorted(prefix_endings.keys()):\n        logger.debug('calculating prediction data: preparing DAFSA #%d..' % form_prefix_id)\n        endings = prefix_endings[form_prefix_id]\n        dawgs_data.append(\n            _get_suffixes_dawg_data(endings, ending_counts, min_ending_freq)\n        )\n\n    return dawgs_data"
+      }
+    ],
+    "unresolved": [
+      "pymorphy2/opencorpora_dict/wrapper.py:variable: paradigm_prefixes",
+      "pymorphy2/opencorpora_dict/compile.py:variable: paradigm_prefixes",
+      "pymorphy2/opencorpora_dict/storage.py:variable: paradigm_prefixes",
+      "pymorphy2/opencorpora_dict/compile.py:variable: paradigm_prefixes"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 4,
+    "returned_code_chars": 12746
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 23312,
+    "completion_tokens": 440,
+    "total_tokens": 23752,
+    "seconds": 24.600085973739624,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 28.96245265007019,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

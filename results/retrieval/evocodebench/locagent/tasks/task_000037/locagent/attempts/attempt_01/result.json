@@ -1,0 +1,144 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 37,
+  "namespace": "litdata.utilities.broadcast.broadcast_object",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6882,
+      "input_estimate_after": 6882,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `broadcast_object` function in `litdata/utilities/broadcast.py`. These locations contain existing code that should be inspected or reused:\n\n```\nlitdata/utilities/broadcast.py\nline: 103\nclass: _ImmutableDistributedMap\nfunction: _ImmutableDistributedMap.set_and_get\n\nlitdata/utilities/broadcast.py\nline: 110\nline: 113\nline: 119\nfunction: _ImmutableDistributedMap.__init__\n\nlitdata/utilities/broadcast.py\nline: 147\nfunction: _get_token\n\nlitdata/utilities/broadcast.py\nline: 49\nclass: _HTTPClient\nfunction: _HTTPClient.__init__\n\nlitdata/utilities/broadcast.py\nline: 88\nline: 92\nfunction: _HTTPClient.get\nfunction: _HTTPClient.post\n```",
+  "final_locations": {
+    "files": [
+      "litdata/utilities/broadcast.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_ImmutableDistributedMap",
+        "kind": "class",
+        "symbol": "litdata.utilities.broadcast._ImmutableDistributedMap",
+        "start": 103,
+        "end": 137,
+        "code": "class _ImmutableDistributedMap:\n    \"\"\"The _ImmutableDistributedMap enables to create a distributed key value pair in the cloud.\n\n    The first process to perform the set operation defines its value.\n\n    \"\"\"\n\n    def __init__(self) -> None:\n        token = _get_token()\n\n        lightning_app_external_url = os.getenv(\"LIGHTNING_APP_EXTERNAL_URL\")\n        if lightning_app_external_url is None:\n            raise RuntimeError(\"The `LIGHTNING_APP_EXTERNAL_URL` should be set.\")\n\n        self.public_client: _HTTPClient = _HTTPClient(lightning_app_external_url, auth_token=token, use_retry=False)\n\n        lightning_app_state_url = os.getenv(\"LIGHTNING_APP_STATE_URL\")\n        if lightning_app_state_url is None:\n            raise RuntimeError(\"The `LIGHTNING_APP_STATE_URL` should be set.\")\n\n        self.private_client: _HTTPClient = _HTTPClient(lightning_app_state_url, auth_token=token, use_retry=False)\n\n    def set_and_get(self, key: str, value: Any) -> Any:\n        payload = {\"key\": key, \"value\": pickle.dumps(value, 0).decode()}\n\n        # Try the public address first\n        try:\n            resp = self.public_client.post(\"/broadcast\", json=payload)\n        except (requests.exceptions.ConnectionError, urllib3.exceptions.MaxRetryError):\n            # fallback to the private one\n            resp = self.private_client.post(\"/broadcast\", json=payload)\n\n        if resp.status_code != 200:\n            raise RuntimeError(f\"Failed to broadcast the following {key=} {value=}.\")\n        return pickle.loads(bytes(resp.json()[\"value\"], \"utf-8\"))"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_ImmutableDistributedMap.set_and_get",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._ImmutableDistributedMap.set_and_get",
+        "start": 125,
+        "end": 137,
+        "code": "    def set_and_get(self, key: str, value: Any) -> Any:\n        payload = {\"key\": key, \"value\": pickle.dumps(value, 0).decode()}\n\n        # Try the public address first\n        try:\n            resp = self.public_client.post(\"/broadcast\", json=payload)\n        except (requests.exceptions.ConnectionError, urllib3.exceptions.MaxRetryError):\n            # fallback to the private one\n            resp = self.private_client.post(\"/broadcast\", json=payload)\n\n        if resp.status_code != 200:\n            raise RuntimeError(f\"Failed to broadcast the following {key=} {value=}.\")\n        return pickle.loads(bytes(resp.json()[\"value\"], \"utf-8\"))"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_ImmutableDistributedMap.__init__",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._ImmutableDistributedMap.__init__",
+        "start": 110,
+        "end": 123,
+        "code": "    def __init__(self) -> None:\n        token = _get_token()\n\n        lightning_app_external_url = os.getenv(\"LIGHTNING_APP_EXTERNAL_URL\")\n        if lightning_app_external_url is None:\n            raise RuntimeError(\"The `LIGHTNING_APP_EXTERNAL_URL` should be set.\")\n\n        self.public_client: _HTTPClient = _HTTPClient(lightning_app_external_url, auth_token=token, use_retry=False)\n\n        lightning_app_state_url = os.getenv(\"LIGHTNING_APP_STATE_URL\")\n        if lightning_app_state_url is None:\n            raise RuntimeError(\"The `LIGHTNING_APP_STATE_URL` should be set.\")\n\n        self.private_client: _HTTPClient = _HTTPClient(lightning_app_state_url, auth_token=token, use_retry=False)"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_get_token",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._get_token",
+        "start": 147,
+        "end": 159,
+        "code": "def _get_token() -> Optional[str]:\n    \"\"\"This function tries to retrieve a temporary token.\"\"\"\n    if os.getenv(\"LIGHTNING_CLOUD_URL\") is None:\n        return None\n\n    payload = {\"apiKey\": os.getenv(\"LIGHTNING_API_KEY\"), \"username\": os.getenv(\"LIGHTNING_USERNAME\")}\n    url_login = os.getenv(\"LIGHTNING_CLOUD_URL\", \"\") + \"/v1/auth/login\"\n    res = requests.post(url_login, data=json.dumps(payload))\n    if \"token\" not in res.json():\n        raise RuntimeError(\n            f\"You haven't properly setup your environment variables with {url_login} and data: \\n{payload}\"\n        )\n    return res.json()[\"token\"]"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_HTTPClient",
+        "kind": "class",
+        "symbol": "litdata.utilities.broadcast._HTTPClient",
+        "start": 49,
+        "end": 100,
+        "code": "class _HTTPClient:\n    \"\"\"A wrapper class around the requests library which handles chores like logging, retries, and timeouts\n    automatically.\"\"\"\n\n    def __init__(\n        self,\n        base_url: str,\n        auth_token: Optional[str] = None,\n        log_callback: Optional[Callable] = None,\n        use_retry: bool = True,\n    ) -> None:\n        self.base_url = base_url\n        retry_strategy = Retry(\n            # wait time between retries increases exponentially according to: backoff_factor * (2 ** (retry - 1))\n            # but the the maximum wait time is 120 secs. By setting a large value (2880), we'll make sure clients\n            # are going to be alive for a very long time (~ 4 days) but retries every 120 seconds\n            total=_CONNECTION_RETRY_TOTAL,\n            backoff_factor=_CONNECTION_RETRY_BACKOFF_FACTOR,\n            status_forcelist=[\n                408,  # Request Timeout\n                429,  # Too Many Requests\n                500,  # Internal Server Error\n                502,  # Bad Gateway\n                503,  # Service Unavailable\n                504,  # Gateway Timeout\n            ],\n        )\n        adapter = _CustomRetryAdapter(max_retries=retry_strategy, timeout=_DEFAULT_REQUEST_TIMEOUT)\n        self.session = requests.Session()\n\n        self.session.hooks = {\"response\": _response}\n\n        if use_retry:\n            self.session.mount(\"http://\", adapter)\n            self.session.mount(\"https://\", adapter)\n\n        if auth_token:\n            self.session.headers.update({\"Authorization\": f\"Bearer {auth_token}\"})\n\n    def get(self, path: str) -> Any:\n        url = urljoin(self.base_url, path)\n        return self.session.get(url)\n\n    def post(\n        self, path: str, *, query_params: Optional[Dict] = None, data: Optional[bytes] = None, json: Any = None\n    ) -> Any:\n        url = urljoin(self.base_url, path)\n        return self.session.post(url, data=data, params=query_params, json=json)\n\n    def delete(self, path: str) -> Any:\n        url = urljoin(self.base_url, path)\n        return self.session.delete(url)"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_HTTPClient.__init__",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._HTTPClient.__init__",
+        "start": 53,
+        "end": 86,
+        "code": "    def __init__(\n        self,\n        base_url: str,\n        auth_token: Optional[str] = None,\n        log_callback: Optional[Callable] = None,\n        use_retry: bool = True,\n    ) -> None:\n        self.base_url = base_url\n        retry_strategy = Retry(\n            # wait time between retries increases exponentially according to: backoff_factor * (2 ** (retry - 1))\n            # but the the maximum wait time is 120 secs. By setting a large value (2880), we'll make sure clients\n            # are going to be alive for a very long time (~ 4 days) but retries every 120 seconds\n            total=_CONNECTION_RETRY_TOTAL,\n            backoff_factor=_CONNECTION_RETRY_BACKOFF_FACTOR,\n            status_forcelist=[\n                408,  # Request Timeout\n                429,  # Too Many Requests\n                500,  # Internal Server Error\n                502,  # Bad Gateway\n                503,  # Service Unavailable\n                504,  # Gateway Timeout\n            ],\n        )\n        adapter = _CustomRetryAdapter(max_retries=retry_strategy, timeout=_DEFAULT_REQUEST_TIMEOUT)\n        self.session = requests.Session()\n\n        self.session.hooks = {\"response\": _response}\n\n        if use_retry:\n            self.session.mount(\"http://\", adapter)\n            self.session.mount(\"https://\", adapter)\n\n        if auth_token:\n            self.session.headers.update({\"Authorization\": f\"Bearer {auth_token}\"})"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_HTTPClient.get",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._HTTPClient.get",
+        "start": 88,
+        "end": 90,
+        "code": "    def get(self, path: str) -> Any:\n        url = urljoin(self.base_url, path)\n        return self.session.get(url)"
+      },
+      {
+        "file": "litdata/utilities/broadcast.py",
+        "name": "_HTTPClient.post",
+        "kind": "function",
+        "symbol": "litdata.utilities.broadcast._HTTPClient.post",
+        "start": 92,
+        "end": 96,
+        "code": "    def post(\n        self, path: str, *, query_params: Optional[Dict] = None, data: Optional[bytes] = None, json: Any = None\n    ) -> Any:\n        url = urljoin(self.base_url, path)\n        return self.session.post(url, data=data, params=query_params, json=json)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "litdata.utilities.broadcast._ImmutableDistributedMap",
+      "litdata.utilities.broadcast._ImmutableDistributedMap.__init__",
+      "litdata.utilities.broadcast._ImmutableDistributedMap.set_and_get"
+    ],
+    "exact_hit_dependencies": [
+      "litdata.utilities.broadcast._ImmutableDistributedMap",
+      "litdata.utilities.broadcast._ImmutableDistributedMap.__init__",
+      "litdata.utilities.broadcast._ImmutableDistributedMap.set_and_get"
+    ],
+    "returned_entities": 8,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 7377
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21319,
+    "completion_tokens": 601,
+    "total_tokens": 21920,
+    "seconds": 66.01282668113708,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 161.09615874290466,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

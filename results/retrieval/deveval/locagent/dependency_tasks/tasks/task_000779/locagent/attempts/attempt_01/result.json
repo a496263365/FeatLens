@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 779,
+  "namespace": "discord.utils.resolve_annotation",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 26271,
+      "input_estimate_after": 26271,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the key reusable dependencies for implementing the `resolve_annotation` function in `discord/utils.py`. The function needs to handle annotation resolution with ForwardRef support, caching, and namespace evaluation. Here are the relevant locations:\n\n```\ndiscord/utils.py\nline: 1101\nfunction: evaluate_annotation\n\ndiscord/utils.py\nline: 38\nimport: ForwardRef\n\ndiscord/utils.py\nline: 1085\nfunction: flatten_literal_params\n\ndiscord/utils.py\nline: 1096\nfunction: normalise_optional_params\n\ndiscord/ext/commands/core.py\nline: 127\nline: 162\nfunction: get_signature_parameters\nreference: discord.utils.evaluate_annotation\n\ndiscord/ext/commands/flags.py\nline: 186\nfunction: get_flags\nreference: resolve_annotation\n```",
+  "final_locations": {
+    "files": [
+      "discord/utils.py",
+      "discord/ext/commands/core.py",
+      "discord/ext/commands/flags.py"
+    ],
+    "entities": [
+      {
+        "file": "discord/utils.py",
+        "name": "evaluate_annotation",
+        "kind": "function",
+        "symbol": "discord.utils.evaluate_annotation",
+        "start": 1101,
+        "end": 1158,
+        "code": "def evaluate_annotation(\n    tp: Any,\n    globals: Dict[str, Any],\n    locals: Dict[str, Any],\n    cache: Dict[str, Any],\n    *,\n    implicit_str: bool = True,\n) -> Any:\n    if isinstance(tp, ForwardRef):\n        tp = tp.__forward_arg__\n        # ForwardRefs always evaluate their internals\n        implicit_str = True\n\n    if implicit_str and isinstance(tp, str):\n        if tp in cache:\n            return cache[tp]\n        evaluated = evaluate_annotation(eval(tp, globals, locals), globals, locals, cache)\n        cache[tp] = evaluated\n        return evaluated\n\n    if hasattr(tp, '__metadata__'):\n        # Annotated[X, Y] can access Y via __metadata__\n        metadata = tp.__metadata__[0]\n        return evaluate_annotation(metadata, globals, locals, cache)\n\n    if hasattr(tp, '__args__'):\n        implicit_str = True\n        is_literal = False\n        args = tp.__args__\n        if not hasattr(tp, '__origin__'):\n            if PY_310 and tp.__class__ is types.UnionType:  # type: ignore\n                converted = Union[args]  # type: ignore\n                return evaluate_annotation(converted, globals, locals, cache)\n\n            return tp\n        if tp.__origin__ is Union:\n            try:\n                if args.index(type(None)) != len(args) - 1:\n                    args = normalise_optional_params(tp.__args__)\n            except ValueError:\n                pass\n        if tp.__origin__ is Literal:\n            if not PY_310:\n                args = flatten_literal_params(tp.__args__)\n            implicit_str = False\n            is_literal = True\n\n        evaluated_args = tuple(evaluate_annotation(arg, globals, locals, cache, implicit_str=implicit_str) for arg in args)\n\n        if is_literal and not all(isinstance(x, (str, int, bool, type(None))) for x in evaluated_args):\n            raise TypeError('Literal arguments must be of type str, int, bool, or NoneType.')\n\n        try:\n            return tp.copy_with(evaluated_args)\n        except AttributeError:\n            return tp.__origin__[evaluated_args]\n\n    return tp"
+      },
+      {
+        "file": "discord/utils.py",
+        "name": "flatten_literal_params",
+        "kind": "function",
+        "symbol": "discord.utils.flatten_literal_params",
+        "start": 1085,
+        "end": 1093,
+        "code": "def flatten_literal_params(parameters: Iterable[Any]) -> Tuple[Any, ...]:\n    params = []\n    literal_cls = type(Literal[0])\n    for p in parameters:\n        if isinstance(p, literal_cls):\n            params.extend(p.__args__)\n        else:\n            params.append(p)\n    return tuple(params)"
+      },
+      {
+        "file": "discord/utils.py",
+        "name": "normalise_optional_params",
+        "kind": "function",
+        "symbol": "discord.utils.normalise_optional_params",
+        "start": 1096,
+        "end": 1098,
+        "code": "def normalise_optional_params(parameters: Iterable[Any]) -> Tuple[Any, ...]:\n    none_cls = type(None)\n    return tuple(p for p in parameters if p is not none_cls) + (none_cls,)"
+      },
+      {
+        "file": "discord/ext/commands/core.py",
+        "name": "get_signature_parameters",
+        "kind": "function",
+        "symbol": "discord.ext.commands.core.get_signature_parameters",
+        "start": 117,
+        "end": 168,
+        "code": "def get_signature_parameters(\n    function: Callable[..., Any],\n    globalns: Dict[str, Any],\n    /,\n    *,\n    skip_parameters: Optional[int] = None,\n) -> Dict[str, Parameter]:\n    signature = Signature.from_callable(function)\n    params: Dict[str, Parameter] = {}\n    cache: Dict[str, Any] = {}\n    eval_annotation = discord.utils.evaluate_annotation\n    required_params = discord.utils.is_inside_class(function) + 1 if skip_parameters is None else skip_parameters\n    if len(signature.parameters) < required_params:\n        raise TypeError(f'Command signature requires at least {required_params - 1} parameter(s)')\n\n    iterator = iter(signature.parameters.items())\n    for _ in range(0, required_params):\n        next(iterator)\n\n    for name, parameter in iterator:\n        default = parameter.default\n        if isinstance(default, Parameter):  # update from the default\n            if default.annotation is not Parameter.empty:\n                # There are a few cases to care about here.\n                # x: TextChannel = commands.CurrentChannel\n                # x = commands.CurrentChannel\n                # In both of these cases, the default parameter has an explicit annotation\n                # but in the second case it's only used as the fallback.\n                if default._fallback:\n                    if parameter.annotation is Parameter.empty:\n                        parameter._annotation = default.annotation\n                else:\n                    parameter._annotation = default.annotation\n\n            parameter._default = default.default\n            parameter._description = default._description\n            parameter._displayed_default = default._displayed_default\n            parameter._displayed_name = default._displayed_name\n\n        annotation = parameter.annotation\n\n        if annotation is None:\n            params[name] = parameter.replace(annotation=type(None))\n            continue\n\n        annotation = eval_annotation(annotation, globalns, globalns, cache)\n        if annotation is Greedy:\n            raise TypeError('Unparameterized Greedy[...] is disallowed in signature.')\n\n        params[name] = parameter.replace(annotation=annotation)\n\n    return params"
+      },
+      {
+        "file": "discord/ext/commands/flags.py",
+        "name": "get_flags",
+        "kind": "function",
+        "symbol": "discord.ext.commands.flags.get_flags",
+        "start": 168,
+        "end": 261,
+        "code": "def get_flags(namespace: Dict[str, Any], globals: Dict[str, Any], locals: Dict[str, Any]) -> Dict[str, Flag]:\n    annotations = namespace.get('__annotations__', {})\n    case_insensitive = namespace['__commands_flag_case_insensitive__']\n    flags: Dict[str, Flag] = {}\n    cache: Dict[str, Any] = {}\n    names: Set[str] = set()\n    for name, annotation in annotations.items():\n        flag = namespace.pop(name, MISSING)\n        if isinstance(flag, Flag):\n            if flag.annotation is MISSING:\n                flag.annotation = annotation\n        else:\n            flag = Flag(name=name, annotation=annotation, default=flag)\n\n        flag.attribute = name\n        if flag.name is MISSING:\n            flag.name = name\n\n        annotation = flag.annotation = resolve_annotation(flag.annotation, globals, locals, cache)\n\n        if flag.default is MISSING and hasattr(annotation, '__commands_is_flag__') and annotation._can_be_constructible():\n            flag.default = annotation._construct_default\n\n        if flag.aliases is MISSING:\n            flag.aliases = []\n\n        # Add sensible defaults based off of the type annotation\n        # <type> -> (max_args=1)\n        # List[str] -> (max_args=-1)\n        # Tuple[int, ...] -> (max_args=1)\n        # Dict[K, V] -> (max_args=-1, override=True)\n        # Union[str, int] -> (max_args=1)\n        # Optional[str] -> (default=None, max_args=1)\n\n        try:\n            origin = annotation.__origin__\n        except AttributeError:\n            # A regular type hint\n            if flag.max_args is MISSING:\n                flag.max_args = 1\n        else:\n            if origin is Union:\n                # typing.Union\n                if flag.max_args is MISSING:\n                    flag.max_args = 1\n                if annotation.__args__[-1] is type(None) and flag.default is MISSING:\n                    # typing.Optional\n                    flag.default = None\n            elif origin is tuple:\n                # typing.Tuple\n                # tuple parsing is e.g. `flag: peter 20`\n                # for Tuple[str, int] would give you flag: ('peter', 20)\n                if flag.max_args is MISSING:\n                    flag.max_args = 1\n            elif origin is list:\n                # typing.List\n                if flag.max_args is MISSING:\n                    flag.max_args = -1\n            elif origin is dict:\n                # typing.Dict[K, V]\n                # Equivalent to:\n                # typing.List[typing.Tuple[K, V]]\n                flag.cast_to_dict = True\n                if flag.max_args is MISSING:\n                    flag.max_args = -1\n                if flag.override is MISSING:\n                    flag.override = True\n            elif origin is Literal:\n                if flag.max_args is MISSING:\n                    flag.max_args = 1\n            else:\n                raise TypeError(f'Unsupported typing annotation {annotation!r} for {flag.name!r} flag')\n\n        if flag.override is MISSING:\n            flag.override = False\n\n        # Validate flag names are unique\n        name = flag.name.casefold() if case_insensitive else flag.name\n        if name in names:\n            raise TypeError(f'{flag.name!r} flag conflicts with previous flag or alias.')\n        else:\n            names.add(name)\n\n        for alias in flag.aliases:\n            # Validate alias is unique\n            alias = alias.casefold() if case_insensitive else alias\n            if alias in names:\n                raise TypeError(f'{flag.name!r} flag alias {alias!r} conflicts with previous flag or alias.')\n            else:\n                names.add(alias)\n\n        flags[flag.name] = flag\n\n    return flags"
+      }
+    ],
+    "unresolved": [
+      "discord/utils.py:line: 38"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "discord.utils.evaluate_annotation"
+    ],
+    "exact_hit_dependencies": [
+      "discord.utils.evaluate_annotation"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 8398
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 50965,
+    "completion_tokens": 499,
+    "total_tokens": 51464,
+    "seconds": 54.61737871170044,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 156.25029253959656,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

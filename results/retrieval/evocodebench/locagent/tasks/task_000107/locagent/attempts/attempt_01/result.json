@@ -1,0 +1,134 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 107,
+  "namespace": "tanuki.models.function_config.FunctionConfig.load_from_dict",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 14014,
+      "input_estimate_after": 14014,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I'll identify reusable dependencies for implementing the `load_from_dict` method in `FunctionConfig`. The method needs to load configuration from a dictionary, updating attributes like `distilled_model`, `current_model_stats`, `last_training_run`, `current_training_run`, `nr_of_training_runs`, and `teacher_models`.\n\nKey reusable dependencies to examine:\n\n1. **ModelConfigFactory** - For creating model config instances from dictionary data\n2. **BaseModelConfig** - To understand the structure of model configuration objects\n3. **Pydantic BaseModel methods** - For loading/parsing dictionary data into Pydantic models\n4. **Existing serialization patterns** - From `to_dict()` method\n5. **Default model configurations** - For fallback/default values\n\nHere are the verified locations containing reusable dependencies:\n\n```\nsrc/tanuki/language_models/llm_configs/model_config_factory.py:ModelConfigFactory\nline: 8\nclass: ModelConfigFactory\nfunction: __init__\n\nsrc/tanuki/language_models/llm_configs/abc_base_config.py:BaseModelConfig\nline: 3\nclass: BaseModelConfig\nfunction: __init__\n\nsrc/tanuki/models/function_config.py:FunctionConfig\nline: 57\nline: 60\nfunction: to_dict\nline: 25\nline: 31\nattribute: distilled_model, teacher_models\n\nsrc/tanuki/language_models/llm_configs/__init__.py\nline: 4\nvariable: DEFAULT_TEACHER_MODELS, DEFAULT_STUDENT_MODELS\n\nsrc/tanuki/constants.py\nline: 32\nline: 33\nvariable: DEFAULT_TEACHER_MODEL_NAMES, DEFAULT_DISTILLED_MODEL_NAME\n```",
+  "final_locations": {
+    "files": [
+      "src/tanuki/language_models/llm_configs/model_config_factory.py",
+      "src/tanuki/language_models/llm_configs/abc_base_config.py",
+      "src/tanuki/models/function_config.py",
+      "src/tanuki/language_models/llm_configs/__init__.py",
+      "src/tanuki/constants.py"
+    ],
+    "entities": [
+      {
+        "file": "src/tanuki/language_models/llm_configs/model_config_factory.py",
+        "name": "ModelConfigFactory",
+        "kind": "class",
+        "symbol": "tanuki.language_models.llm_configs.model_config_factory.ModelConfigFactory",
+        "start": 10,
+        "end": 45,
+        "code": "class ModelConfigFactory:\n    @staticmethod\n    def create_config(input_config: Union[str, dict, BaseModelConfig], type: str) -> BaseModelConfig:\n        \"\"\"\n        Creates a model config from a string, dict or BaseModelConfig\n        Args:\n            input_config: The config to create the model from\n            type: The type of the input model\n        Returns:\n            A model config\n        \"\"\"\n        if isinstance(input_config, BaseModelConfig):\n            return input_config\n        if isinstance(input_config, str):\n            # This is purely for backwards compatibility as we used to save the model as a string\n            if type == DISTILLED_MODEL:\n                config = DEFAULT_STUDENT_MODELS[DEFAULT_DISTILLED_MODEL_NAME]\n                config.model_name = input_config\n                return config\n            elif type == TEACHER_MODEL:\n                if input_config not in DEFAULT_TEACHER_MODELS:\n                    raise Exception(\"Error loading the teacher model, saved config model was saved a string but is not a default model\")\n                model = DEFAULT_TEACHER_MODELS[input_config]\n                return model\n        else:\n            if input_config[\"provider\"] == OPENAI_PROVIDER:\n                return OpenAIConfig(**input_config)\n            elif input_config[\"provider\"] == LLAMA_BEDROCK_PROVIDER:\n                return LlamaBedrockConfig(**input_config)\n            elif input_config[\"provider\"] == TITAN_BEDROCK_PROVIDER:\n                return TitanBedrockConfig(**input_config)\n            else:\n                try:\n                    return BaseModelConfig(**input_config)\n                except:\n                    raise Exception(\"Error loading the model config, saved config model was saved a dict but is not a valid model config\")"
+      },
+      {
+        "file": "src/tanuki/language_models/llm_configs/abc_base_config.py",
+        "name": "BaseModelConfig",
+        "kind": "class",
+        "symbol": "tanuki.language_models.llm_configs.abc_base_config.BaseModelConfig",
+        "start": 5,
+        "end": 32,
+        "code": "class BaseModelConfig(abc.ABC, BaseModel):\n    \"\"\"\n    The abstract Basemodel class for all model configs.\n\n    Parameters\n    ----------\n    model_name : str -- the name of the model\n    provider : str -- the name of the provider (api provider)\n    context_length : int -- the context length of the model\n    chat_template : Optional[str] -- the chat template for the model\n    system_message : Optional[str] -- the system message for the model\n    instructions : Optional[str] -- the instructions for the model\n    parsing_helper_tokens : Optional[dict] -- the parsing helper tokens for the model\n    \"\"\"\n    #model_config = ConfigDict(\n    #        protected_namespaces=()\n    #    )\n    model_name: str\n    provider: str\n    context_length: int\n    chat_template : Optional[str] = None\n    system_message : str = f\"You are a skillful and accurate language model, who applies a described function on input data. Make sure the function is applied accurately and correctly and the outputs follow the output type hints and are valid outputs given the output types.\"\n    instructions : str = \"You are given below a function description and input data. The function description of what the function must carry out can be found in the Function section, with input and output type hints. The input data can be found in Input section. Using the function description, apply the function to the Input and return a valid output type, that is acceptable by the output_class_definition and output_class_hint. Return None if you can't apply the function to the input or if the output is optional and the correct output is None.\\nINCREDIBLY IMPORTANT: Only output a JSON-compatible string in the correct response format.\"\n    repair_instruction: str = \"Below are an outputs of a function applied to inputs, which failed type validation. The input to the function is brought out in the INPUT section and function description is brought out in the FUNCTION DESCRIPTION section. Your task is to apply the function to the input and return a correct output in the right type. The FAILED EXAMPLES section will show previous outputs of this function applied to the data, which failed type validation and hence are wrong outputs. Using the input and function description output the accurate output following the output_class_definition and output_type_hint attributes of the function description, which define the output type. Make sure the output is an accurate function output and in the correct type. Return None if you can't apply the function to the input or if the output is optional and the correct output is None.\"\n    system_message_token_count: int = -1\n    instruction_token_count: int = -1\n    parsing_helper_tokens: Optional[dict] = {\"start_token\": \"\", \"end_token\": \"\"}\n    base_model_for_sft: str = \"\""
+      },
+      {
+        "file": "src/tanuki/models/function_config.py",
+        "name": "FunctionConfig.to_dict",
+        "kind": "function",
+        "symbol": "tanuki.models.function_config.FunctionConfig.to_dict",
+        "start": 51,
+        "end": 62,
+        "code": "    def to_dict(self):\n        \"\"\"\n        Convert the function config to a dict\n        Returns:\n            The dict\n        \"\"\"\n        try:\n            config_dictionary = self.model_dump()\n        except AttributeError as e:\n            config_dictionary = self.dict()\n\n        return config_dictionary"
+      },
+      {
+        "file": "src/tanuki/models/function_config.py",
+        "name": "FunctionConfig",
+        "kind": "class",
+        "symbol": "tanuki.models.function_config.FunctionConfig",
+        "start": 11,
+        "end": 79,
+        "code": "class FunctionConfig(BaseModel):\n    \"\"\"\n    The function config to execute the inference for the function and distillation.\n\n    Parameters\n    ----------\n    distilled_model : BaseModelConfig -- the distilled model config\n    current_model_stats : Dict -- the current model stats\n    last_training_run : Dict -- the last training run\n    current_training_run : Dict -- the current training run\n    teacher_models : List[BaseModelConfig] -- the teacher models\n    nr_of_training_runs : int -- the number of training runs\n    \n    \"\"\"\n    distilled_model: BaseModelConfig = DEFAULT_STUDENT_MODELS[DEFAULT_DISTILLED_MODEL_NAME]\n    current_model_stats : Dict = {\n        \"trained_on_datapoints\": 0,\n        \"running_faults\": []}\n    last_training_run : Dict =  {\"trained_on_datapoints\": 0}\n    current_training_run : Dict =  {}\n    teacher_models : List[BaseModelConfig] =  [DEFAULT_TEACHER_MODELS[teacher_model_name] for teacher_model_name in DEFAULT_TEACHER_MODEL_NAMES]\n    nr_of_training_runs : int = 0\n\n    def load_from_dict(self, json_dict):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    \n    def to_dict(self):\n        \"\"\"\n        Convert the function config to a dict\n        Returns:\n            The dict\n        \"\"\"\n        try:\n            config_dictionary = self.model_dump()\n        except AttributeError as e:\n            config_dictionary = self.dict()\n\n        return config_dictionary\n    def update_with_finetuned_response(self, response):\n        \"\"\"\n        Update the function config with the finetuned response\n        Args:\n            response: The finetuned response\n        \"\"\"\n        if response.status == \"failed\":\n            self.current_training_run = {}\n        else:\n            self.distilled_model = response.fine_tuned_model\n            self.last_training_run = self.current_training_run\n            self.current_model_stats = {\n                \"trained_on_datapoints\": self.current_training_run[\n                    \"trained_on_datapoints\"],\n                \"running_faults\": []}\n            self.nr_of_training_runs += 1\n            self.current_training_run = {}"
+      },
+      {
+        "file": "src/tanuki/constants.py",
+        "name": "DEFAULT_TEACHER_MODEL_NAMES",
+        "kind": "variable",
+        "symbol": "tanuki.constants.DEFAULT_TEACHER_MODEL_NAMES",
+        "start": 32,
+        "end": 32,
+        "code": "DEFAULT_TEACHER_MODEL_NAMES = [\"gpt-4\", \"gpt-4-32k\", ]"
+      },
+      {
+        "file": "src/tanuki/constants.py",
+        "name": "DEFAULT_DISTILLED_MODEL_NAME",
+        "kind": "variable",
+        "symbol": "tanuki.constants.DEFAULT_DISTILLED_MODEL_NAME",
+        "start": 33,
+        "end": 33,
+        "code": "DEFAULT_DISTILLED_MODEL_NAME = \"gpt-3.5-turbo-1106\""
+      }
+    ],
+    "unresolved": [
+      "src/tanuki/language_models/llm_configs/model_config_factory.py:function: ModelConfigFactory",
+      "src/tanuki/language_models/llm_configs/model_config_factory.py:line: 8",
+      "src/tanuki/language_models/llm_configs/model_config_factory.py:function: __init__",
+      "src/tanuki/language_models/llm_configs/abc_base_config.py:function: BaseModelConfig",
+      "src/tanuki/language_models/llm_configs/abc_base_config.py:line: 3",
+      "src/tanuki/language_models/llm_configs/abc_base_config.py:function: __init__",
+      "src/tanuki/models/function_config.py:function: FunctionConfig",
+      "src/tanuki/models/function_config.py:function: to_dict",
+      "src/tanuki/language_models/llm_configs/__init__.py:line: 4",
+      "src/tanuki/language_models/llm_configs/__init__.py:variable: DEFAULT_TEACHER_MODELS, DEFAULT_STUDENT_MODELS",
+      "src/tanuki/constants.py:variable: DEFAULT_TEACHER_MODEL_NAMES, DEFAULT_DISTILLED_MODEL_NAME"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 10,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 5,
+    "unresolved_locations": 11,
+    "returned_code_chars": 7094
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 38317,
+    "completion_tokens": 842,
+    "total_tokens": 39159,
+    "seconds": 130.0219864845276,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 142.4945423603058,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

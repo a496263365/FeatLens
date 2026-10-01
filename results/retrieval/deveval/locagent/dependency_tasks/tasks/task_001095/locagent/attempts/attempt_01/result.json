@@ -1,0 +1,115 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1095,
+  "namespace": "mackup.utils.copy",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2544,
+      "input_estimate_after": 2544,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmackup/utils.py\nline: 30\nfunction: delete\n\nmackup/utils.py\nline: 50\nfunction: chmod\n\nmackup/utils.py\nline: 80\nfunction: can_file_be_synced_on_current_platform\n\nmackup/utils.py\nline: 40\nfunction: link\n\nmackup/utils.py\nline: 71\nfunction: copy\n```",
+  "final_locations": {
+    "files": [
+      "mackup/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "mackup/utils.py",
+        "name": "confirm",
+        "kind": "function",
+        "symbol": "mackup.utils.confirm",
+        "start": 23,
+        "end": 46,
+        "code": "def confirm(question):\n    \"\"\"\n    Ask the user if he really wants something to happen.\n\n    Args:\n        question(str): What can happen\n\n    Returns:\n        (boolean): Confirmed or not\n    \"\"\"\n    if FORCE_YES:\n        return True\n\n    while True:\n        answer = input(question + \" <Yes|No> \").lower()\n\n        if answer == \"yes\" or answer == \"y\":\n            confirmed = True\n            break\n        if answer == \"no\" or answer == \"n\":\n            confirmed = False\n            break\n\n    return confirmed"
+      },
+      {
+        "file": "mackup/utils.py",
+        "name": "delete",
+        "kind": "function",
+        "symbol": "mackup.utils.delete",
+        "start": 49,
+        "end": 68,
+        "code": "def delete(filepath):\n    \"\"\"\n    Delete the given file, directory or link.\n\n    It Should support undelete later on.\n\n    Args:\n        filepath (str): Absolute full path to a file. e.g. /path/to/file\n    \"\"\"\n    # Some files have ACLs, let's remove them recursively\n    remove_acl(filepath)\n\n    # Some files have immutable attributes, let's remove them recursively\n    remove_immutable_attribute(filepath)\n\n    # Finally remove the files and folders\n    if os.path.isfile(filepath) or os.path.islink(filepath):\n        os.remove(filepath)\n    elif os.path.isdir(filepath):\n        shutil.rmtree(filepath)"
+      },
+      {
+        "file": "mackup/utils.py",
+        "name": "chmod",
+        "kind": "function",
+        "symbol": "mackup.utils.chmod",
+        "start": 148,
+        "end": 181,
+        "code": "def chmod(target):\n    \"\"\"\n    Recursively set the chmod for files to 0600 and 0700 for folders.\n\n    It's ok unless we need something more specific.\n\n    Args:\n        target (str): Root file or folder\n    \"\"\"\n    assert isinstance(target, str)\n    assert os.path.exists(target)\n\n    file_mode = stat.S_IRUSR | stat.S_IWUSR\n    folder_mode = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR\n\n    # Remove the immutable attribute recursively if there is one\n    remove_immutable_attribute(target)\n\n    if os.path.isfile(target):\n        os.chmod(target, file_mode)\n\n    elif os.path.isdir(target):\n        # chmod the root item\n        os.chmod(target, folder_mode)\n\n        # chmod recursively in the folder it it's one\n        for root, dirs, files in os.walk(target):\n            for cur_dir in dirs:\n                os.chmod(os.path.join(root, cur_dir), folder_mode)\n            for cur_file in files:\n                os.chmod(os.path.join(root, cur_file), file_mode)\n\n    else:\n        raise ValueError(\"Unsupported file type: {}\".format(target))"
+      },
+      {
+        "file": "mackup/utils.py",
+        "name": "can_file_be_synced_on_current_platform",
+        "kind": "function",
+        "symbol": "mackup.utils.can_file_be_synced_on_current_platform",
+        "start": 365,
+        "end": 397,
+        "code": "def can_file_be_synced_on_current_platform(path):\n    \"\"\"\n    Check if the given path can be synced locally.\n\n    Check if it makes sense to sync the file at the given path on the current\n    platform.\n    For now we don't sync any file in the ~/Library folder on GNU/Linux.\n    There might be other exceptions in the future.\n\n    Args:\n        (str): Path to the file or folder to check. If relative, prepend it\n               with the home folder.\n               'abc' becomes '~/abc'\n               '/def' stays '/def'\n\n    Returns:\n        (bool): True if given file can be synced\n    \"\"\"\n    can_be_synced = True\n\n    # If the given path is relative, prepend home\n    fullpath = os.path.join(os.environ[\"HOME\"], path)\n\n    # Compute the ~/Library path on macOS\n    # End it with a slash because we are looking for this specific folder and\n    # not any file/folder named LibrarySomething\n    library_path = os.path.join(os.environ[\"HOME\"], \"Library/\")\n\n    if platform.system() == constants.PLATFORM_LINUX:\n        if fullpath.startswith(library_path):\n            can_be_synced = False\n\n    return can_be_synced"
+      },
+      {
+        "file": "mackup/utils.py",
+        "name": "link",
+        "kind": "function",
+        "symbol": "mackup.utils.link",
+        "start": 115,
+        "end": 145,
+        "code": "def link(target, link_to):\n    \"\"\"\n    Create a link to a target file or a folder.\n\n    For the sake of simplicity, both target and link_to must be absolute path and must\n    include the filename of the file or folder.\n    Also do not include any trailing slash.\n\n    e.g. link('/path/to/file', '/path/to/link')\n\n    But not: link('/path/to/file', 'path/to/')\n    or link('/path/to/folder/', '/path/to/link')\n\n    Args:\n        target (str): file or folder the link will point to\n        link_to (str): Link to create\n    \"\"\"\n    assert isinstance(target, str)\n    assert os.path.exists(target)\n    assert isinstance(link_to, str)\n\n    # Create the path to the link if it does not exist\n    abs_path = os.path.dirname(os.path.abspath(link_to))\n    if not os.path.isdir(abs_path):\n        os.makedirs(abs_path)\n\n    # Make sure the file or folder recursively has the good mode\n    chmod(target)\n\n    # Create the link to target\n    os.symlink(target, link_to)"
+      }
+    ],
+    "unresolved": [
+      "mackup/utils.py:line: 80"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "mackup.utils.chmod"
+    ],
+    "exact_hit_dependencies": [
+      "mackup.utils.chmod"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4240
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 13471,
+    "completion_tokens": 1713,
+    "total_tokens": 15184,
+    "seconds": 57.91286563873291,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 58.41193342208862,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

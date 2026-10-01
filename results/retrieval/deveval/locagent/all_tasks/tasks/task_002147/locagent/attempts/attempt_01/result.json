@@ -1,0 +1,120 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2147,
+  "namespace": "pyt.core.project_handler._is_python_file",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 8470,
+      "input_estimate_after": 8470,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify reusable dependencies and patterns for implementing the `_is_python_file` function. The key locations to examine for file extension checking patterns are:\n\n```\npyt/__main__.py\nline: -1\nfunction: discover_files\nline: 40\npattern: file.endswith('.py')\n\npyt/cfg/stmt_visitor.py\nline: -1\nfunction: StmtVisitor.handle_relative_import\nline: 985\npattern: name_with_dir.endswith('.py')\n\npyt/cfg/stmt_visitor.py\nline: -1\nfunction: StmtVisitor.from_directory_import\nline: 925\npattern: full_name + '.py'\n\npyt/core/project_handler.py\nline: -1\nfunction: get_directory_modules\nline: -1\npattern: os.path.splitext usage context\n\npyt/core/project_handler.py\nline: -1\nfunction: get_modules\nline: -1\npattern: os.path.splitext usage context\n```",
+  "final_locations": {
+    "files": [
+      "pyt/__main__.py",
+      "pyt/cfg/stmt_visitor.py",
+      "pyt/core/project_handler.py"
+    ],
+    "entities": [
+      {
+        "file": "pyt/__main__.py",
+        "name": "discover_files",
+        "kind": "function",
+        "symbol": "pyt.__main__.discover_files",
+        "start": 33,
+        "end": 50,
+        "code": "def discover_files(targets, excluded_files, recursive=False):\n    included_files = list()\n    excluded_list = excluded_files.split(\",\")\n    for target in targets:\n        if os.path.isdir(target):\n            for root, _, files in os.walk(target):\n                for file in files:\n                    if file.endswith('.py') and file not in excluded_list:\n                        fullpath = os.path.join(root, file)\n                        included_files.append(fullpath)\n                        log.debug('Discovered file: %s', fullpath)\n                if not recursive:\n                    break\n        else:\n            if target not in excluded_list:\n                included_files.append(target)\n                log.debug('Discovered file: %s', target)\n    return included_files"
+      },
+      {
+        "file": "pyt/cfg/stmt_visitor.py",
+        "name": "StmtVisitor.handle_relative_import",
+        "kind": "function",
+        "symbol": "pyt.cfg.stmt_visitor.StmtVisitor.handle_relative_import",
+        "start": 950,
+        "end": 999,
+        "code": "    def handle_relative_import(self, node):\n        \"\"\"\n            from A means node.level == 0\n            from . import B means node.level == 1\n            from .A means node.level == 1\n        \"\"\"\n        no_file = os.path.abspath(os.path.join(self.filenames[-1], os.pardir))\n        skip_init = False\n\n        if node.level == 1:\n            # Same directory as current file\n            if node.module:\n                name_with_dir = os.path.join(no_file, node.module.replace('.', '/'))\n                if not os.path.isdir(name_with_dir):\n                    name_with_dir = name_with_dir + '.py'\n            # e.g. from . import X\n            else:\n                name_with_dir = no_file\n                # We do not want to analyse the init file of the current directory\n                skip_init = True\n        else:\n            parent = os.path.abspath(os.path.join(no_file, os.pardir))\n            if node.level > 2:\n                # Perform extra `cd ..` however many times\n                for _ in range(0, node.level - 2):\n                    parent = os.path.abspath(os.path.join(parent, os.pardir))\n            if node.module:\n                name_with_dir = os.path.join(parent, node.module.replace('.', '/'))\n                if not os.path.isdir(name_with_dir):\n                    name_with_dir = name_with_dir + '.py'\n            # e.g. from .. import X\n            else:\n                name_with_dir = parent\n\n        # Is it a file?\n        if name_with_dir.endswith('.py'):\n            return self.add_module(\n                (node.module, name_with_dir),\n                None,\n                as_alias_handler(node.names),\n                retrieve_import_alias_mapping(node.names),\n                from_from=True\n            )\n        return self.from_directory_import(\n            (node.module, name_with_dir),\n            not_as_alias_handler(node.names),\n            as_alias_handler(node.names),\n            retrieve_import_alias_mapping(node.names),\n            skip_init=skip_init\n        )"
+      },
+      {
+        "file": "pyt/cfg/stmt_visitor.py",
+        "name": "StmtVisitor.from_directory_import",
+        "kind": "function",
+        "symbol": "pyt.cfg.stmt_visitor.StmtVisitor.from_directory_import",
+        "start": 882,
+        "end": 933,
+        "code": "    def from_directory_import(\n        self,\n        module,\n        real_names,\n        local_names,\n        import_alias_mapping,\n        skip_init=False\n    ):\n        \"\"\"\n            Directories don't need to be packages.\n        \"\"\"\n        module_path = module[1]\n\n        init_file_location = os.path.join(module_path, '__init__.py')\n        init_exists = os.path.isfile(init_file_location)\n\n        if init_exists and not skip_init:\n            package_name = os.path.split(module_path)[1]\n            return self.add_module(\n                (module[0], init_file_location),\n                package_name,\n                local_names,\n                import_alias_mapping,\n                is_init=True,\n                from_from=True\n            )\n        for real_name in real_names:\n            full_name = os.path.join(module_path, real_name)\n            if os.path.isdir(full_name):\n                new_init_file_location = os.path.join(full_name, '__init__.py')\n                if os.path.isfile(new_init_file_location):\n                    self.add_module(\n                        (real_name, new_init_file_location),\n                        real_name,\n                        local_names,\n                        import_alias_mapping,\n                        is_init=True,\n                        from_from=True,\n                        from_fdid=True\n                    )\n                else:\n                    raise Exception('from anything import directory needs an __init__.py file in directory')\n            else:\n                file_module = (real_name, full_name + '.py')\n                self.add_module(\n                    file_module,\n                    real_name,\n                    local_names,\n                    import_alias_mapping,\n                    from_from=True\n                )\n        return IgnoredNode()"
+      },
+      {
+        "file": "pyt/core/project_handler.py",
+        "name": "get_directory_modules",
+        "kind": "function",
+        "symbol": "pyt.core.project_handler.get_directory_modules",
+        "start": 11,
+        "end": 31,
+        "code": "def get_directory_modules(directory):\n    \"\"\"Return a list containing tuples of\n    e.g. ('__init__', 'example/import_test_project/__init__.py')\n    \"\"\"\n    if _local_modules and os.path.dirname(_local_modules[0][1]) == directory:\n        return _local_modules\n\n    if not os.path.isdir(directory):\n        # example/import_test_project/A.py -> example/import_test_project\n        directory = os.path.dirname(directory)\n\n    if directory == '':\n        return _local_modules\n\n    for path in os.listdir(directory):\n        if _is_python_file(path):\n            # A.py -> A\n            module_name = os.path.splitext(path)[0]\n            _local_modules.append((module_name, os.path.join(directory, path)))\n\n    return _local_modules"
+      },
+      {
+        "file": "pyt/core/project_handler.py",
+        "name": "get_modules",
+        "kind": "function",
+        "symbol": "pyt.core.project_handler.get_modules",
+        "start": 34,
+        "end": 70,
+        "code": "def get_modules(path, prepend_module_root=True):\n    \"\"\"Return a list containing tuples of\n    e.g. ('test_project.utils', 'example/test_project/utils.py')\n    \"\"\"\n    module_root = os.path.split(path)[1]\n    modules = list()\n    for root, directories, filenames in os.walk(path):\n        for filename in filenames:\n            if _is_python_file(filename):\n                directory = os.path.dirname(\n                    os.path.realpath(\n                        os.path.join(\n                            root,\n                            filename\n                        )\n                    )\n                ).split(module_root)[-1].replace(\n                    os.sep,  # e.g. '/'\n                    '.'\n                )\n                directory = directory.replace('.', '', 1)\n\n                module_name_parts = []\n                if prepend_module_root:\n                    module_name_parts.append(module_root)\n                if directory:\n                    module_name_parts.append(directory)\n\n                if filename == '__init__.py':\n                    path = root\n                else:\n                    module_name_parts.append(os.path.splitext(filename)[0])\n                    path = os.path.join(root, filename)\n\n                modules.append(('.'.join(module_name_parts), path))\n\n    return modules"
+      }
+    ],
+    "unresolved": [
+      "pyt/__main__.py:line: -1",
+      "pyt/cfg/stmt_visitor.py:line: -1",
+      "pyt/cfg/stmt_visitor.py:line: -1",
+      "pattern: full_name + '.py",
+      "pyt/core/project_handler.py:line: -1",
+      "pyt/core/project_handler.py:line: -1",
+      "pyt/core/project_handler.py:line: -1",
+      "pyt/core/project_handler.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 8,
+    "returned_code_chars": 6725
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21890,
+    "completion_tokens": 679,
+    "total_tokens": 22569,
+    "seconds": 53.16137981414795,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 81.13078117370605,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

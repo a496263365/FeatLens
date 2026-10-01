@@ -1,0 +1,123 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 664,
+  "namespace": "diffprivlib.tools.quantiles.percentile",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7189,
+      "input_estimate_after": 7189,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndiffprivlib/tools/quantiles.py\nline: 32\nfunction: quantile\n\ndiffprivlib/validation.py\nline: 1\nfunction: check_bounds\n\ndiffprivlib/utils.py\nline: 1\nfunction: check_random_state\n\ndiffprivlib/tools/utils.py\nline: 1\nfunction: _wrap_axis\n\ndiffprivlib/utils.py\nline: 1\nfunction: warn_unused_args\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/tools/quantiles.py",
+      "diffprivlib/validation.py",
+      "diffprivlib/utils.py",
+      "diffprivlib/tools/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/tools/quantiles.py",
+        "name": "quantile",
+        "kind": "function",
+        "symbol": "diffprivlib.tools.quantiles.quantile",
+        "start": 32,
+        "end": 151,
+        "code": "def quantile(array, quant, epsilon=1.0, bounds=None, axis=None, keepdims=False, random_state=None, accountant=None,\n             **unused_args):\n    r\"\"\"\n    Compute the differentially private quantile of the array.\n\n    Returns the specified quantile with differential privacy.  The quantile is calculated over the flattened array.\n    Differential privacy is achieved with the :class:`.Exponential` mechanism, using the method first proposed by\n    Smith, 2011.\n\n    Paper link: https://dl.acm.org/doi/pdf/10.1145/1993636.1993743\n\n    Parameters\n    ----------\n    array : array_like\n        Array containing numbers whose quantile is sought.  If `array` is not an array, a conversion is attempted.\n\n    quant : float or array-like\n        Quantile or array of quantiles.  Each quantile must be in the unit interval [0, 1].  If quant is array-like,\n        quantiles are returned over the flattened array.\n\n    epsilon : float, default: 1.0\n        Privacy parameter :math:`\\epsilon`.  Differential privacy is achieved over the entire output, with epsilon split\n        evenly between each output value.\n\n    bounds : tuple, optional\n        Bounds of the values of the array, of the form (min, max).\n\n    axis : None or int or tuple of ints, optional\n        Axis or axes along which a sum is performed.  The default, axis=None, will sum all of the elements of the input\n        array.  If axis is negative it counts from the last to the first axis.\n\n        If axis is a tuple of ints, a sum is performed on all of the axes specified in the tuple instead of a single\n        axis or all the axes as before.\n\n    keepdims : bool, default: False\n        If this is set to True, the axes which are reduced are left in the result as dimensions with size one.  With\n        this option, the result will broadcast correctly against the input array.\n\n        If the default value is passed, then `keepdims` will not be passed through to the `mean` method of sub-classes\n        of `ndarray`, however any non-default value will be.  If the sub-class' method does not implement `keepdims` any\n        exceptions will be raised.\n\n    random_state : int or RandomState, optional\n        Controls the randomness of the algorithm.  To obtain a deterministic behaviour during randomisation,\n        ``random_state`` has to be fixed to an integer.\n\n    accountant : BudgetAccountant, optional\n        Accountant to keep track of privacy budget.\n\n    Returns\n    -------\n    m : ndarray\n        Returns a new array containing the quantile values.\n\n    See Also\n    --------\n    numpy.quantile : Equivalent non-private method.\n\n    percentile, median\n\n    \"\"\"\n    from diffprivlib.utils import check_random_state\n    from diffprivlib.utils import PrivacyLeakWarning\n    from diffprivlib.accountant import BudgetAccountant\n    from diffprivlib.validation import clip_to_bounds\n    from diffprivlib.tools.utils import _wrap_axis\n    from diffprivlib.validation import check_bounds\n    warn_unused_args(unused_args)\n\n    random_state = check_random_state(random_state)\n\n    if bounds is None:\n        warnings.warn(\"Bounds have not been specified and will be calculated on the data provided. This will \"\n                      \"result in additional privacy leakage. To ensure differential privacy and no additional \"\n                      \"privacy leakage, specify bounds for each dimension.\", PrivacyLeakWarning)\n        bounds = (np.min(array), np.max(array))\n\n    quant = np.ravel(quant)\n\n    if np.any(quant < 0) or np.any(quant > 1):\n        raise ValueError(\"Quantiles must be in the unit interval [0, 1].\")\n\n    if len(quant) > 1:\n        return np.array([quantile(array, q_i, epsilon=epsilon / len(quant), bounds=bounds, axis=axis, keepdims=keepdims,\n                                  accountant=accountant, random_state=random_state) for q_i in quant])\n\n    # Dealing with a single quant from now on\n    quant = quant.item()\n\n    if axis is not None or keepdims:\n        return _wrap_axis(quantile, array, quant=quant, epsilon=epsilon, bounds=bounds, axis=axis, keepdims=keepdims,\n                          random_state=random_state, accountant=accountant)\n\n    # Dealing with a scalar output from now on\n    bounds = check_bounds(bounds, shape=0, min_separation=1e-5)\n\n    accountant = BudgetAccountant.load_default(accountant)\n    accountant.check(epsilon, 0)\n\n    # Let's ravel array to be single-dimensional\n    array = clip_to_bounds(np.ravel(array), bounds)\n\n    k = array.size\n    array = np.append(array, list(bounds))\n    array.sort()\n\n    interval_sizes = np.diff(array)\n\n    # Todo: Need to find a way to do this in a differentially private way, see GH 80\n    if np.isnan(interval_sizes).any():\n        return np.nan\n\n    mech = Exponential(epsilon=epsilon, sensitivity=1, utility=list(-np.abs(np.arange(0, k + 1) - quant * k)),\n                       measure=list(interval_sizes), random_state=random_state)\n    idx = mech.randomise()\n    output = random_state.random() * (array[idx+1] - array[idx]) + array[idx]\n\n    accountant.spend(epsilon, 0)\n\n    return output"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "check_bounds",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.check_bounds",
+        "start": 60,
+        "end": 132,
+        "code": "def check_bounds(bounds, shape=0, min_separation=0.0, dtype=float):\n    \"\"\"Input validation for the ``bounds`` parameter.\n\n    Checks that ``bounds`` is composed of a list of tuples of the form (lower, upper), where lower <= upper and both\n    are numeric.  Also checks that ``bounds`` contains the appropriate number of dimensions, and that there is a\n    ``min_separation`` between the bounds.\n\n    Parameters\n    ----------\n    bounds : tuple\n        Tuple of bounds of the form (min, max). `min` and `max` can either be scalars or 1-dimensional arrays.\n\n    shape : int, default: 0\n        Number of dimensions to be expected in ``bounds``.\n\n    min_separation : float, default: 0.0\n        The minimum separation between `lower` and `upper` of each dimension.  This separation is enforced if not\n        already satisfied.\n\n    dtype : data-type, default: float\n        Data type of the returned bounds.\n\n    Returns\n    -------\n    bounds : tuple\n\n    \"\"\"\n    if not isinstance(bounds, tuple):\n        raise TypeError(f\"Bounds must be specified as a tuple of (min, max), got {type(bounds)}.\")\n    if not isinstance(shape, Integral):\n        raise TypeError(f\"shape parameter must be integer-valued, got {type(shape)}.\")\n\n    lower, upper = bounds\n\n    if np.asarray(lower).size == 1 or np.asarray(upper).size == 1:\n        lower = np.ravel(lower).astype(dtype)\n        upper = np.ravel(upper).astype(dtype)\n    else:\n        lower = np.asarray(lower, dtype=dtype)\n        upper = np.asarray(upper, dtype=dtype)\n\n    if lower.shape != upper.shape:\n        raise ValueError(\"lower and upper bounds must be the same shape array\")\n    if lower.ndim > 1:\n        raise ValueError(\"lower and upper bounds must be scalar or a 1-dimensional array\")\n    if lower.size not in (1, shape):\n        raise ValueError(f\"lower and upper bounds must have {shape or 1} element(s), got {lower.size}.\")\n\n    n_bounds = lower.shape[0]\n\n    for i in range(n_bounds):\n        _lower = lower[i]\n        _upper = upper[i]\n\n        if not isinstance(_lower, Real) or not isinstance(_upper, Real):\n            raise TypeError(f\"Each bound must be numeric, got {_lower} ({type(_lower)}) and {_upper} ({type(_upper)}).\")\n\n        if _lower > _upper:\n            raise ValueError(f\"For each bound, lower bound must be smaller than upper bound, got {lower}, {upper})\")\n\n        if _upper - _lower < min_separation:\n            mid = (_upper + _lower) / 2\n            lower[i] = mid - min_separation / 2\n            upper[i] = mid + min_separation / 2\n\n    if shape == 0:\n        return lower.item(), upper.item()\n\n    if n_bounds == 1:\n        lower = np.ones(shape, dtype=dtype) * lower.item()\n        upper = np.ones(shape, dtype=dtype) * upper.item()\n\n    return lower, upper"
+      },
+      {
+        "file": "diffprivlib/utils.py",
+        "name": "check_random_state",
+        "kind": "function",
+        "symbol": "diffprivlib.utils.check_random_state",
+        "start": 75,
+        "end": 102,
+        "code": "def check_random_state(seed, secure=False):\n    \"\"\"Turn seed into a np.random.RandomState or secrets.SystemRandom instance.\n\n    If secure=True, and seed is None (or was generated from a previous None seed), then secrets is used.  Otherwise a\n    np.random.RandomState is used.\n\n    Parameters\n    ----------\n    seed : None, int or instance of RandomState\n        If seed is None and secure is False, return the RandomState singleton used by np.random.\n        If seed is None and secure is True, return a SystemRandom instance from secrets.\n        If seed is an int, return a new RandomState instance seeded with seed.\n        If seed is already a RandomState or SystemRandom instance, return it.\n        Otherwise raise ValueError.\n\n    secure : bool, default: False\n        Specifies if a secure random number generator from secrets can be used.\n    \"\"\"\n    if secure:\n        if isinstance(seed, secrets.SystemRandom):\n            return seed\n\n        if seed is None or seed is np.random.mtrand._rand:  # pylint: disable=protected-access\n            return secrets.SystemRandom()\n    elif isinstance(seed, secrets.SystemRandom):\n        raise ValueError(\"secrets.SystemRandom instance cannot be passed when secure is False.\")\n\n    return skl_check_random_state(seed)"
+      },
+      {
+        "file": "diffprivlib/tools/utils.py",
+        "name": "_wrap_axis",
+        "kind": "function",
+        "symbol": "diffprivlib.tools.utils._wrap_axis",
+        "start": 59,
+        "end": 97,
+        "code": "def _wrap_axis(func, array, *, axis, keepdims, epsilon, bounds, **kwargs):\n    \"\"\"Wrapper for functions with axis and keepdims parameters to ensure the function only needs to be evaluated on\n    scalar outputs.\n\n    \"\"\"\n    dummy = np.zeros_like(array).sum(axis=axis, keepdims=keepdims)\n    array = np.asarray(array)\n    ndim = array.ndim\n    bounds = check_bounds(bounds, np.size(dummy) if np.ndim(dummy) == 1 else 0)\n\n    if isinstance(axis, int):\n        axis = (axis,)\n    elif axis is None:\n        axis = tuple(range(ndim))\n\n    # Ensure all axes are non-negative\n    axis = tuple(ndim + ax if ax < 0 else ax for ax in axis)\n\n    if isinstance(dummy, np.ndarray):\n        iterator = np.nditer(dummy, flags=['multi_index'])\n\n        while not iterator.finished:\n            idx = list(iterator.multi_index)  # Multi index on 'dummy'\n            _bounds = (bounds[0][idx], bounds[1][idx]) if np.ndim(dummy) == 1 else bounds\n\n            # Construct slicing tuple on 'array'\n            if len(idx) + len(axis) > ndim:\n                full_slice = tuple(slice(None) if ax in axis else idx[ax] for ax in range(ndim))\n            else:\n                idx.reverse()\n                full_slice = tuple(slice(None) if ax in axis else idx.pop() for ax in range(ndim))\n\n            dummy[iterator.multi_index] = func(array[full_slice], epsilon=epsilon / dummy.size, bounds=_bounds,\n                                               **kwargs)\n            iterator.iternext()\n\n        return dummy\n\n    return func(array, bounds=bounds, epsilon=epsilon, **kwargs)"
+      },
+      {
+        "file": "diffprivlib/utils.py",
+        "name": "warn_unused_args",
+        "kind": "function",
+        "symbol": "diffprivlib.utils.warn_unused_args",
+        "start": 52,
+        "end": 72,
+        "code": "def warn_unused_args(args):\n    \"\"\"Warn the user about supplying unused `args` to a diffprivlib model.\n\n    Arguments can be supplied as a string, a list of strings, or a dictionary as supplied to kwargs.\n\n    Parameters\n    ----------\n    args : str or list or dict\n        Arguments for which warnings should be thrown.\n\n    Returns\n    -------\n    None\n\n    \"\"\"\n    if isinstance(args, str):\n        args = [args]\n\n    for arg in args:\n        warnings.warn(f\"Parameter '{arg}' is not functional in diffprivlib.  Remove this parameter to suppress this \"\n                      \"warning.\", DiffprivlibCompatibilityWarning)"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/validation.py:line: 1",
+      "diffprivlib/utils.py:line: 1",
+      "diffprivlib/tools/utils.py:line: 1",
+      "diffprivlib/utils.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "diffprivlib.tools.quantiles.quantile",
+      "diffprivlib.utils.warn_unused_args"
+    ],
+    "exact_hit_dependencies": [
+      "diffprivlib.tools.quantiles.quantile",
+      "diffprivlib.utils.warn_unused_args"
+    ],
+    "returned_entities": 5,
+    "returned_files": 4,
+    "unresolved_locations": 4,
+    "returned_code_chars": 11273
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26896,
+    "completion_tokens": 1784,
+    "total_tokens": 28680,
+    "seconds": 121.02047634124756,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 124.68650579452515,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

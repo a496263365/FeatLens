@@ -1,0 +1,112 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 400,
+  "namespace": "databases.importer.import_from_string",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\ndatabases/importer.py\nline: 9\nfunction: import_from_string\n\ndatabases/importer.py\nline: 1\nmodule: importlib.import_module\n\ntests/test_importer.py\nline: 15\nfunction: test_import_from_string\n\ndatabases/utils.py\nline: 45\nfunction: resolve_attribute\n\ndatabases/models.py\nline: 22\nclass: DatabaseConfig\n\ndatabases/core.py\nline: 10\nclass: Database\n\ndatabases/backends/sqlite.py\nline: 5\nclass: SQLiteBackend\n\ndatabases/backends/postgres.py\nline: 5\nclass: PostgresBackend\n\ndatabases/backends/mysql.py\nline: 5\nclass: MySQLBackend\n\ndatabases/backends/asyncmy.py\nline: 5\nclass: AsyncMyBackend\n```",
+  "final_locations": {
+    "files": [
+      "databases/importer.py",
+      "databases/core.py",
+      "databases/backends/sqlite.py",
+      "databases/backends/postgres.py",
+      "databases/backends/mysql.py",
+      "databases/backends/asyncmy.py"
+    ],
+    "entities": [
+      {
+        "file": "databases/core.py",
+        "name": "Database",
+        "kind": "class",
+        "symbol": "databases.core.Database",
+        "start": 44,
+        "end": 242,
+        "code": "class Database:\n    SUPPORTED_BACKENDS = {\n        \"postgresql\": \"databases.backends.postgres:PostgresBackend\",\n        \"postgresql+aiopg\": \"databases.backends.aiopg:AiopgBackend\",\n        \"postgres\": \"databases.backends.postgres:PostgresBackend\",\n        \"mysql\": \"databases.backends.mysql:MySQLBackend\",\n        \"mysql+asyncmy\": \"databases.backends.asyncmy:AsyncMyBackend\",\n        \"sqlite\": \"databases.backends.sqlite:SQLiteBackend\",\n    }\n\n    _connection_map: \"weakref.WeakKeyDictionary[asyncio.Task, 'Connection']\"\n\n    def __init__(\n        self,\n        url: typing.Union[str, \"DatabaseURL\"],\n        *,\n        force_rollback: bool = False,\n        **options: typing.Any,\n    ):\n        self.url = DatabaseURL(url)\n        self.options = options\n        self.is_connected = False\n        self._connection_map = weakref.WeakKeyDictionary()\n\n        self._force_rollback = force_rollback\n\n        backend_str = self._get_backend()\n        backend_cls = import_from_string(backend_str)\n        assert issubclass(backend_cls, DatabaseBackend)\n        self._backend = backend_cls(self.url, **self.options)\n\n        # When `force_rollback=True` is used, we use a single global\n        # connection, within a transaction that always rolls back.\n        self._global_connection: typing.Optional[Connection] = None\n        self._global_transaction: typing.Optional[Transaction] = None\n\n    @property\n    def _current_task(self) -> asyncio.Task:\n        task = asyncio.current_task()\n        if not task:\n            raise RuntimeError(\"No currently active asyncio.Task found\")\n        return task\n\n    @property\n    def _connection(self) -> typing.Optional[\"Connection\"]:\n        return self._connection_map.get(self._current_task)\n\n    @_connection.setter\n    def _connection(\n        self, connection: typing.Optional[\"Connection\"]\n    ) -> typing.Optional[\"Connection\"]:\n        task = self._current_task\n\n        if connection is None:\n            self._connection_map.pop(task, None)\n        else:\n            self._connection_map[task] = connection\n\n        return self._connection\n\n    async def connect(self) -> None:\n        \"\"\"\n        Establish the connection pool.\n        \"\"\"\n        if self.is_connected:\n            logger.debug(\"Already connected, skipping connection\")\n            return None\n\n        await self._backend.connect()\n        logger.info(\n            \"Connected to database %s\", self.url.obscure_password, extra=CONNECT_EXTRA\n        )\n        self.is_connected = True\n\n        if self._force_rollback:\n            assert self._global_connection is None\n            assert self._global_transaction is None\n\n            self._global_connection = Connection(self, self._backend)\n            self._global_transaction = self._global_connection.transaction(\n                force_rollback=True\n            )\n\n            await self._global_transaction.__aenter__()\n\n    async def disconnect(self) -> None:\n        \"\"\"\n        Close all connections in the connection pool.\n        \"\"\"\n        if not self.is_connected:\n            logger.debug(\"Already disconnected, skipping disconnection\")\n            return None\n\n        if self._force_rollback:\n            assert self._global_connection is not None\n            assert self._global_transaction is not None\n\n            await self._global_transaction.__aexit__()\n\n            self._global_transaction = None\n            self._global_connection = None\n        else:\n            self._connection = None\n\n        await self._backend.disconnect()\n        logger.info(\n            \"Disconnected from database %s\",\n            self.url.obscure_password,\n            extra=DISCONNECT_EXTRA,\n        )\n        self.is_connected = False\n\n    async def __aenter__(self) -> \"Database\":\n        await self.connect()\n        return self\n\n    async def __aexit__(\n        self,\n        exc_type: typing.Optional[typing.Type[BaseException]] = None,\n        exc_value: typing.Optional[BaseException] = None,\n        traceback: typing.Optional[TracebackType] = None,\n    ) -> None:\n        await self.disconnect()\n\n    async def fetch_all(\n        self,\n        query: typing.Union[ClauseElement, str],\n        values: typing.Optional[dict] = None,\n    ) -> typing.List[Record]:\n        async with self.connection() as connection:\n            return await connection.fetch_all(query, values)\n\n    async def fetch_one(\n        self,\n        query: typing.Union[ClauseElement, str],\n        values: typing.Optional[dict] = None,\n    ) -> typing.Optional[Record]:\n        async with self.connection() as connection:\n            return await connection.fetch_one(query, values)\n\n    async def fetch_val(\n        self,\n        query: typing.Union[ClauseElement, str],\n        values: typing.Optional[dict] = None,\n        column: typing.Any = 0,\n    ) -> typing.Any:\n        async with self.connection() as connection:\n            return await connection.fetch_val(query, values, column=column)\n\n    async def execute(\n        self,\n        query: typing.Union[ClauseElement, str],\n        values: typing.Optional[dict] = None,\n    ) -> typing.Any:\n        async with self.connection() as connection:\n            return await connection.execute(query, values)\n\n    async def execute_many(\n        self, query: typing.Union[ClauseElement, str], values: list\n    ) -> None:\n        async with self.connection() as connection:\n            return await connection.execute_many(query, values)\n\n    async def iterate(\n        self,\n        query: typing.Union[ClauseElement, str],\n        values: typing.Optional[dict] = None,\n    ) -> typing.AsyncGenerator[typing.Mapping, None]:\n        async with self.connection() as connection:\n            async for record in connection.iterate(query, values):\n                yield record\n\n    def connection(self) -> \"Connection\":\n        if self._global_connection is not None:\n            return self._global_connection\n\n        if not self._connection:\n            self._connection = Connection(self, self._backend)\n\n        return self._connection\n\n    def transaction(\n        self, *, force_rollback: bool = False, **kwargs: typing.Any\n    ) -> \"Transaction\":\n        return Transaction(self.connection, force_rollback=force_rollback, **kwargs)\n\n    @contextlib.contextmanager\n    def force_rollback(self) -> typing.Iterator[None]:\n        initial = self._force_rollback\n        self._force_rollback = True\n        try:\n            yield\n        finally:\n            self._force_rollback = initial\n\n    def _get_backend(self) -> str:\n        return self.SUPPORTED_BACKENDS.get(\n            self.url.scheme, self.SUPPORTED_BACKENDS[self.url.dialect]\n        )"
+      },
+      {
+        "file": "databases/backends/sqlite.py",
+        "name": "SQLiteBackend",
+        "kind": "class",
+        "symbol": "databases.backends.sqlite.SQLiteBackend",
+        "start": 26,
+        "end": 59,
+        "code": "class SQLiteBackend(DatabaseBackend):\n    def __init__(\n        self, database_url: typing.Union[DatabaseURL, str], **options: typing.Any\n    ) -> None:\n        self._database_url = DatabaseURL(database_url)\n        self._options = options\n        self._dialect = pysqlite.dialect(paramstyle=\"qmark\")\n        # aiosqlite does not support decimals\n        self._dialect.supports_native_decimal = False\n        self._pool = SQLitePool(self._database_url, **self._options)\n\n    async def connect(self) -> None:\n        pass\n        # assert self._pool is None, \"DatabaseBackend is already running\"\n        # self._pool = await aiomysql.create_pool(\n        #     host=self._database_url.hostname,\n        #     port=self._database_url.port or 3306,\n        #     user=self._database_url.username or getpass.getuser(),\n        #     password=self._database_url.password,\n        #     db=self._database_url.database,\n        #     autocommit=True,\n        # )\n\n    async def disconnect(self) -> None:\n        # if it extsis, remove reference to connection to cached in-memory database on disconnect\n        if self._pool._memref:\n            self._pool._memref = None\n        # assert self._pool is not None, \"DatabaseBackend is not running\"\n        # self._pool.close()\n        # await self._pool.wait_closed()\n        # self._pool = None\n\n    def connection(self) -> \"SQLiteConnection\":\n        return SQLiteConnection(self._pool, self._dialect)"
+      },
+      {
+        "file": "databases/backends/postgres.py",
+        "name": "PostgresBackend",
+        "kind": "class",
+        "symbol": "databases.backends.postgres.PostgresBackend",
+        "start": 23,
+        "end": 82,
+        "code": "class PostgresBackend(DatabaseBackend):\n    def __init__(\n        self, database_url: typing.Union[DatabaseURL, str], **options: typing.Any\n    ) -> None:\n        self._database_url = DatabaseURL(database_url)\n        self._options = options\n        self._dialect = self._get_dialect()\n        self._pool = None\n\n    def _get_dialect(self) -> Dialect:\n        dialect = pypostgresql.dialect(paramstyle=\"pyformat\")\n\n        dialect.implicit_returning = True\n        dialect.supports_native_enum = True\n        dialect.supports_smallserial = True  # 9.2+\n        dialect._backslash_escapes = False\n        dialect.supports_sane_multi_rowcount = True  # psycopg 2.0.9+\n        dialect._has_native_hstore = True\n        dialect.supports_native_decimal = True\n\n        return dialect\n\n    def _get_connection_kwargs(self) -> dict:\n        url_options = self._database_url.options\n\n        kwargs: typing.Dict[str, typing.Any] = {}\n        min_size = url_options.get(\"min_size\")\n        max_size = url_options.get(\"max_size\")\n        ssl = url_options.get(\"ssl\")\n\n        if min_size is not None:\n            kwargs[\"min_size\"] = int(min_size)\n        if max_size is not None:\n            kwargs[\"max_size\"] = int(max_size)\n        if ssl is not None:\n            kwargs[\"ssl\"] = {\"true\": True, \"false\": False}[ssl.lower()]\n\n        kwargs.update(self._options)\n\n        return kwargs\n\n    async def connect(self) -> None:\n        assert self._pool is None, \"DatabaseBackend is already running\"\n        kwargs = dict(\n            host=self._database_url.hostname,\n            port=self._database_url.port,\n            user=self._database_url.username,\n            password=self._database_url.password,\n            database=self._database_url.database,\n        )\n        kwargs.update(self._get_connection_kwargs())\n        self._pool = await asyncpg.create_pool(**kwargs)\n\n    async def disconnect(self) -> None:\n        assert self._pool is not None, \"DatabaseBackend is not running\"\n        await self._pool.close()\n        self._pool = None\n\n    def connection(self) -> \"PostgresConnection\":\n        return PostgresConnection(self, self._dialect)"
+      },
+      {
+        "file": "databases/backends/mysql.py",
+        "name": "MySQLBackend",
+        "kind": "class",
+        "symbol": "databases.backends.mysql.MySQLBackend",
+        "start": 25,
+        "end": 86,
+        "code": "class MySQLBackend(DatabaseBackend):\n    def __init__(\n        self, database_url: typing.Union[DatabaseURL, str], **options: typing.Any\n    ) -> None:\n        self._database_url = DatabaseURL(database_url)\n        self._options = options\n        self._dialect = pymysql.dialect(paramstyle=\"pyformat\")\n        self._dialect.supports_native_decimal = True\n        self._pool = None\n\n    def _get_connection_kwargs(self) -> dict:\n        url_options = self._database_url.options\n\n        kwargs = {}\n        min_size = url_options.get(\"min_size\")\n        max_size = url_options.get(\"max_size\")\n        pool_recycle = url_options.get(\"pool_recycle\")\n        ssl = url_options.get(\"ssl\")\n        unix_socket = url_options.get(\"unix_socket\")\n\n        if min_size is not None:\n            kwargs[\"minsize\"] = int(min_size)\n        if max_size is not None:\n            kwargs[\"maxsize\"] = int(max_size)\n        if pool_recycle is not None:\n            kwargs[\"pool_recycle\"] = int(pool_recycle)\n        if ssl is not None:\n            kwargs[\"ssl\"] = {\"true\": True, \"false\": False}[ssl.lower()]\n        if unix_socket is not None:\n            kwargs[\"unix_socket\"] = unix_socket\n\n        for key, value in self._options.items():\n            # Coerce 'min_size' and 'max_size' for consistency.\n            if key == \"min_size\":\n                key = \"minsize\"\n            elif key == \"max_size\":\n                key = \"maxsize\"\n            kwargs[key] = value\n\n        return kwargs\n\n    async def connect(self) -> None:\n        assert self._pool is None, \"DatabaseBackend is already running\"\n        kwargs = self._get_connection_kwargs()\n        self._pool = await aiomysql.create_pool(\n            host=self._database_url.hostname,\n            port=self._database_url.port or 3306,\n            user=self._database_url.username or getpass.getuser(),\n            password=self._database_url.password,\n            db=self._database_url.database,\n            autocommit=True,\n            **kwargs,\n        )\n\n    async def disconnect(self) -> None:\n        assert self._pool is not None, \"DatabaseBackend is not running\"\n        self._pool.close()\n        await self._pool.wait_closed()\n        self._pool = None\n\n    def connection(self) -> \"MySQLConnection\":\n        return MySQLConnection(self, self._dialect)"
+      },
+      {
+        "file": "databases/backends/asyncmy.py",
+        "name": "AsyncMyBackend",
+        "kind": "class",
+        "symbol": "databases.backends.asyncmy.AsyncMyBackend",
+        "start": 25,
+        "end": 86,
+        "code": "class AsyncMyBackend(DatabaseBackend):\n    def __init__(\n        self, database_url: typing.Union[DatabaseURL, str], **options: typing.Any\n    ) -> None:\n        self._database_url = DatabaseURL(database_url)\n        self._options = options\n        self._dialect = pymysql.dialect(paramstyle=\"pyformat\")\n        self._dialect.supports_native_decimal = True\n        self._pool = None\n\n    def _get_connection_kwargs(self) -> dict:\n        url_options = self._database_url.options\n\n        kwargs = {}\n        min_size = url_options.get(\"min_size\")\n        max_size = url_options.get(\"max_size\")\n        pool_recycle = url_options.get(\"pool_recycle\")\n        ssl = url_options.get(\"ssl\")\n        unix_socket = url_options.get(\"unix_socket\")\n\n        if min_size is not None:\n            kwargs[\"minsize\"] = int(min_size)\n        if max_size is not None:\n            kwargs[\"maxsize\"] = int(max_size)\n        if pool_recycle is not None:\n            kwargs[\"pool_recycle\"] = int(pool_recycle)\n        if ssl is not None:\n            kwargs[\"ssl\"] = {\"true\": True, \"false\": False}[ssl.lower()]\n        if unix_socket is not None:\n            kwargs[\"unix_socket\"] = unix_socket\n\n        for key, value in self._options.items():\n            # Coerce 'min_size' and 'max_size' for consistency.\n            if key == \"min_size\":\n                key = \"minsize\"\n            elif key == \"max_size\":\n                key = \"maxsize\"\n            kwargs[key] = value\n\n        return kwargs\n\n    async def connect(self) -> None:\n        assert self._pool is None, \"DatabaseBackend is already running\"\n        kwargs = self._get_connection_kwargs()\n        self._pool = await asyncmy.create_pool(\n            host=self._database_url.hostname,\n            port=self._database_url.port or 3306,\n            user=self._database_url.username or getpass.getuser(),\n            password=self._database_url.password,\n            db=self._database_url.database,\n            autocommit=True,\n            **kwargs,\n        )\n\n    async def disconnect(self) -> None:\n        assert self._pool is not None, \"DatabaseBackend is not running\"\n        self._pool.close()\n        await self._pool.wait_closed()\n        self._pool = None\n\n    def connection(self) -> \"AsyncMyConnection\":\n        return AsyncMyConnection(self, self._dialect)"
+      }
+    ],
+    "unresolved": [
+      "databases/importer.py:line: 1",
+      "tests/test_importer.py",
+      "databases/utils.py",
+      "databases/models.py",
+      "databases/core.py:line: 10",
+      "databases/backends/sqlite.py:line: 5",
+      "databases/backends/postgres.py:line: 5",
+      "databases/backends/mysql.py:line: 5",
+      "databases/backends/asyncmy.py:line: 5"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 6,
+    "unresolved_locations": 9,
+    "returned_code_chars": 14853
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 10719,
+    "completion_tokens": 1234,
+    "total_tokens": 11953,
+    "seconds": 44.03750395774841,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 46.44227051734924,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

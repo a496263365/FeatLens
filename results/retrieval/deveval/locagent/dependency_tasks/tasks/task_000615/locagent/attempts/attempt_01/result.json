@@ -1,0 +1,116 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 615,
+  "namespace": "bentoml._internal.utils.validate_metadata",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13196,
+      "input_estimate_after": 13196,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I have identified the key reusable dependencies for implementing the `validate_metadata` function. The analysis shows:\n\n1. **Target location**: `src/bentoml/_internal/utils/__init__.py:validate_metadata` (line 321) - This is the function that needs to be implemented.\n\n2. **Key reusable dependencies**:\n   - `_validate_metadata_entry` function (lines 332-376) in the same file - This function already contains comprehensive validation logic for individual metadata entries, including handling of nested structures, numpy arrays, pandas objects, and basic Python types.\n   - `MetadataType` type definition in `src/bentoml/_internal/types.py` (lines 36-50) - Defines the allowed types for metadata values.\n   - `validate_labels` function (lines 303-313) in `src/bentoml/_internal/utils/__init__.py` - Provides a pattern for validation functions in the same module.\n   - `metadata_validator` function (lines 315-319) in `src/bentoml/_internal/utils/__init__.py` - Shows how `validate_metadata` is intended to be used as a validator.\n\nThe `_validate_metadata_entry` function is particularly important as it already implements the core validation logic that `validate_metadata` should leverage for each entry in the dictionary.\n\n```\nsrc/bentoml/_internal/utils/__init__.py\nline: 332\nfunction: _validate_metadata_entry\n\nsrc/bentoml/_internal/types.py\nline: 36\nline: 50\ntype: MetadataType\n\nsrc/bentoml/_internal/utils/__init__.py\nline: 303\nfunction: validate_labels\n\nsrc/bentoml/_internal/utils/__init__.py\nline: 315\nfunction: metadata_validator\n\nsrc/bentoml/_internal/utils/__init__.py\nline: 297\nfunction: label_validator\n```",
+  "final_locations": {
+    "files": [
+      "src/bentoml/_internal/utils/__init__.py",
+      "src/bentoml/_internal/types.py"
+    ],
+    "entities": [
+      {
+        "file": "src/bentoml/_internal/utils/__init__.py",
+        "name": "_validate_metadata_entry",
+        "kind": "function",
+        "symbol": "bentoml._internal.utils._validate_metadata_entry",
+        "start": 332,
+        "end": 376,
+        "code": "def _validate_metadata_entry(entry: MetadataType) -> MetadataType:\n    if isinstance(entry, dict):\n        validate_metadata(entry)\n    elif isinstance(entry, list):\n        for i, val in enumerate(entry):\n            entry[i] = _validate_metadata_entry(val)\n    elif isinstance(entry, tuple):\n        entry = tuple((_validate_metadata_entry(x) for x in entry))\n\n    elif LazyType(\"numpy\", \"ndarray\").isinstance(entry):\n        entry = entry.tolist()  # type: ignore (LazyType)\n        _validate_metadata_entry(entry)\n    elif LazyType(\"numpy\", \"generic\").isinstance(entry):\n        entry = entry.item()  # type: ignore (LazyType)\n        _validate_metadata_entry(entry)\n    elif LazyType(\"scipy.sparse\", \"spmatrix\").isinstance(entry):\n        raise ValueError(\n            \"SciPy sparse matrices are currently not supported as metadata items; consider using a dictionary instead\"\n        )\n    elif LazyType(\"pandas\", \"Series\").isinstance(entry):\n        entry = {entry.name: entry.to_dict()}\n        _validate_metadata_entry(entry)\n    elif LazyType(\"pandas.api.extensions\", \"ExtensionArray\").isinstance(entry):\n        entry = entry.to_numpy().tolist()  # type: ignore (LazyType)\n        _validate_metadata_entry(entry)\n    elif LazyType(\"pandas\", \"DataFrame\").isinstance(entry):\n        entry = entry.to_dict()  # type: ignore (LazyType)\n        validate_metadata(entry)  # type: ignore (LazyType)\n    elif LazyType(\"pandas\", \"Timestamp\").isinstance(entry):\n        entry = entry.to_pydatetime()  # type: ignore (LazyType)\n    elif LazyType(\"pandas\", \"Timedelta\").isinstance(entry):\n        entry = entry.to_pytimedelta()  # type: ignore (LazyType)\n    elif LazyType(\"pandas\", \"Period\").isinstance(entry):\n        entry = entry.to_timestamp().to_pydatetime()  # type: ignore (LazyType)\n    elif LazyType(\"pandas\", \"Interval\").isinstance(entry):\n        entry = (entry.left, entry.right)  # type: ignore (LazyType)\n        _validate_metadata_entry(entry)\n    elif not isinstance(\n        entry, (str, bytes, bool, int, float, complex, datetime, date, time, timedelta)\n    ):\n        raise ValueError(\n            f\"metadata entries must be basic python types like 'str', 'int', or 'complex', got '{type(entry).__name__}'\"\n        )\n\n    return entry"
+      },
+      {
+        "file": "src/bentoml/_internal/types.py",
+        "name": "MetadataType",
+        "kind": "variable",
+        "symbol": "bentoml._internal.types.MetadataType",
+        "start": 36,
+        "end": 50,
+        "code": "MetadataType: t.TypeAlias = t.Union[\n    str,\n    bytes,\n    bool,\n    int,\n    float,\n    complex,\n    datetime,\n    date,\n    time,\n    timedelta,\n    t.List[\"MetadataType\"],\n    t.Tuple[\"MetadataType\"],\n    t.Dict[str, \"MetadataType\"],\n]"
+      },
+      {
+        "file": "src/bentoml/_internal/utils/__init__.py",
+        "name": "validate_labels",
+        "kind": "function",
+        "symbol": "bentoml._internal.utils.validate_labels",
+        "start": 303,
+        "end": 312,
+        "code": "def validate_labels(labels: dict[str, str]):\n    if not isinstance(labels, dict):\n        raise ValueError(\"labels must be a dict!\")\n\n    for key, val in labels.items():\n        if not isinstance(key, str):\n            raise ValueError(\"label keys must be strings\")\n\n        if not isinstance(val, str):\n            raise ValueError(\"label values must be strings\")"
+      },
+      {
+        "file": "src/bentoml/_internal/utils/__init__.py",
+        "name": "metadata_validator",
+        "kind": "function",
+        "symbol": "bentoml._internal.utils.metadata_validator",
+        "start": 315,
+        "end": 318,
+        "code": "def metadata_validator(\n    _: t.Any, _attr: attr.Attribute[MetadataDict], metadata: MetadataDict\n):\n    validate_metadata(metadata)"
+      },
+      {
+        "file": "src/bentoml/_internal/utils/__init__.py",
+        "name": "label_validator",
+        "kind": "function",
+        "symbol": "bentoml._internal.utils.label_validator",
+        "start": 297,
+        "end": 300,
+        "code": "def label_validator(\n    _: t.Any, _attr: attr.Attribute[dict[str, str]], labels: dict[str, str]\n):\n    validate_labels(labels)"
+      }
+    ],
+    "unresolved": [
+      "1. **Target location**: `src/bentoml/_internal/utils/__init__.py:validate_metadata` (line 321) - This is the function that needs to be implemented."
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "bentoml._internal.utils._validate_metadata_entry"
+    ],
+    "exact_hit_dependencies": [
+      "bentoml._internal.utils._validate_metadata_entry"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 3115
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30141,
+    "completion_tokens": 1276,
+    "total_tokens": 31417,
+    "seconds": 78.15172600746155,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 122.92709803581238,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

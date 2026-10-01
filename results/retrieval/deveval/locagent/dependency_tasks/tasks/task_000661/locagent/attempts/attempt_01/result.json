@@ -1,0 +1,88 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 661,
+  "namespace": "diffprivlib.models.standard_scaler._incremental_mean_and_var",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7236,
+      "input_estimate_after": 7236,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\ndiffprivlib/tools/nanvar.py\nfunction: nanvar\n\ndiffprivlib/tools/nanmean.py\nfunction: nanmean\n\ndiffprivlib/utils.py\nfunction: check_random_state\n\ndiffprivlib/validation.py\nfunction: DiffprivlibMixin._check_bounds\n\ndiffprivlib/models/standard_scaler.py\nline: 250\nfunction: StandardScaler.partial_fit\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/utils.py",
+      "diffprivlib/validation.py",
+      "diffprivlib/models/standard_scaler.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/utils.py",
+        "name": "check_random_state",
+        "kind": "function",
+        "symbol": "diffprivlib.utils.check_random_state",
+        "start": 75,
+        "end": 102,
+        "code": "def check_random_state(seed, secure=False):\n    \"\"\"Turn seed into a np.random.RandomState or secrets.SystemRandom instance.\n\n    If secure=True, and seed is None (or was generated from a previous None seed), then secrets is used.  Otherwise a\n    np.random.RandomState is used.\n\n    Parameters\n    ----------\n    seed : None, int or instance of RandomState\n        If seed is None and secure is False, return the RandomState singleton used by np.random.\n        If seed is None and secure is True, return a SystemRandom instance from secrets.\n        If seed is an int, return a new RandomState instance seeded with seed.\n        If seed is already a RandomState or SystemRandom instance, return it.\n        Otherwise raise ValueError.\n\n    secure : bool, default: False\n        Specifies if a secure random number generator from secrets can be used.\n    \"\"\"\n    if secure:\n        if isinstance(seed, secrets.SystemRandom):\n            return seed\n\n        if seed is None or seed is np.random.mtrand._rand:  # pylint: disable=protected-access\n            return secrets.SystemRandom()\n    elif isinstance(seed, secrets.SystemRandom):\n        raise ValueError(\"secrets.SystemRandom instance cannot be passed when secure is False.\")\n\n    return skl_check_random_state(seed)"
+      },
+      {
+        "file": "diffprivlib/models/standard_scaler.py",
+        "name": "StandardScaler.partial_fit",
+        "kind": "function",
+        "symbol": "diffprivlib.models.standard_scaler.StandardScaler.partial_fit",
+        "start": 182,
+        "end": 267,
+        "code": "    def partial_fit(self, X, y=None, sample_weight=None):\n        \"\"\"Online computation of mean and std with differential privacy on X for later scaling.  All of X is processed\n        as a single batch.  This is intended for cases when `fit` is not feasible due to very large number of\n        `n_samples` or because X is read from a continuous stream.\n\n        The algorithm for incremental mean and std is given in Equation 1.5a,b in Chan, Tony F., Gene H. Golub, and\n        Randall J. LeVeque. \"Algorithms for computing the sample variance: Analysis and recommendations.\" The American\n        Statistician 37.3 (1983): 242-247:\n\n        Parameters\n        ----------\n        X : {array-like}, shape [n_samples, n_features]\n            The data used to compute the mean and standard deviation used for later scaling along the features axis.\n\n        y\n            Ignored\n\n        sample_weight\n            Ignored by diffprivlib.  Present for consistency with sklearn API.\n\n        \"\"\"\n        self._validate_params()\n        self.accountant.check(self.epsilon, 0)\n\n        if sample_weight is not None:\n            self._warn_unused_args(\"sample_weight\")\n\n        random_state = check_random_state(self.random_state)\n\n        epsilon_0 = self.epsilon / 2 if self.with_std else self.epsilon\n\n        X = self._validate_data(X, accept_sparse=False, copy=self.copy, estimator=self, dtype=float,\n                                force_all_finite='allow-nan')\n\n        if self.bounds is None:\n            warnings.warn(\"Bounds parameter hasn't been specified, so falling back to determining bounds from the \"\n                          \"data.\\n This will result in additional privacy leakage.  To ensure differential privacy \"\n                          \"with no additional privacy loss, specify `bounds` for each valued returned by np.mean().\",\n                          PrivacyLeakWarning)\n            self.bounds = (np.min(X, axis=0), np.max(X, axis=0))\n\n        self.bounds = self._check_bounds(self.bounds, X.shape[1])\n        X = self._clip_to_bounds(X, self.bounds)\n\n        # Even in the case of `with_mean=False`, we update the mean anyway. This is needed for the incremental\n        # computation of the var See incr_mean_variance_axis and _incremental_mean_variance_axis\n\n        # if n_samples_seen_ is an integer (i.e. no missing values), we need to transform it to a NumPy array of\n        # shape (n_features,) required by incr_mean_variance_axis and _incremental_variance_axis\n        if hasattr(self, 'n_samples_seen_') and isinstance(self.n_samples_seen_, (int, np.integer)):\n            self.n_samples_seen_ = np.repeat(self.n_samples_seen_, X.shape[1]).astype(np.int64)\n\n        if not hasattr(self, 'n_samples_seen_'):\n            self.n_samples_seen_ = np.zeros(X.shape[1], dtype=np.int64)\n\n        # First pass\n        if not hasattr(self, 'scale_'):\n            self.mean_ = .0\n            if self.with_std:\n                self.var_ = .0\n            else:\n                self.var_ = None\n\n        if not self.with_mean and not self.with_std:\n            self.mean_ = None\n            self.var_ = None\n            self.n_samples_seen_ += X.shape[0] - np.isnan(X).sum(axis=0)\n        else:\n            self.mean_, self.var_, self.n_samples_seen_ = _incremental_mean_and_var(\n                X, epsilon_0, self.bounds, self.mean_, self.var_, self.n_samples_seen_, random_state\n            )\n\n        # for backward-compatibility, reduce n_samples_seen_ to an integer\n        # if the number of samples is the same for each feature (i.e. no\n        # missing values)\n        if np.ptp(self.n_samples_seen_) == 0:\n            self.n_samples_seen_ = self.n_samples_seen_[0]\n\n        if self.with_std:\n            self.scale_ = _handle_zeros_in_scale(np.sqrt(self.var_))\n        else:\n            self.scale_ = None\n\n        self.accountant.spend(self.epsilon, 0)\n\n        return self"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/tools/nanvar.py",
+      "diffprivlib/tools/nanmean.py",
+      "diffprivlib/validation.py:function: DiffprivlibMixin._check_bounds"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 2,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 5174
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 25196,
+    "completion_tokens": 1658,
+    "total_tokens": 26854,
+    "seconds": 106.56427073478699,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 110.16456770896912,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

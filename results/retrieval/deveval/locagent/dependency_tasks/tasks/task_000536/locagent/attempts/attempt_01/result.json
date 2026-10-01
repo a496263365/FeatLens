@@ -1,0 +1,99 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 536,
+  "namespace": "mopidy.internal.xdg.get_dirs",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6449,
+      "input_estimate_after": 6449,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmopidy/internal/xdg.py\nline: 36\nfunction: _get_user_dirs\n\nmopidy/__main__.py\nline: 155\nfunction: create_core_dirs\n\nmopidy/core/actor.py\nclass: Core\nfunction: _get_data_dir\n\nmopidy/internal/xdg.py\nline: 47\nline: 52\nline: 54\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/internal/xdg.py",
+      "mopidy/__main__.py",
+      "mopidy/core/actor.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/internal/xdg.py",
+        "name": "_get_user_dirs",
+        "kind": "function",
+        "symbol": "mopidy.internal.xdg._get_user_dirs",
+        "start": 36,
+        "end": 68,
+        "code": "def _get_user_dirs(xdg_config_dir):\n    \"\"\"Returns a dict of XDG dirs read from\n    ``$XDG_CONFIG_HOME/user-dirs.dirs``.\n\n    This is used at import time for most users of :mod:`mopidy`. By rolling our\n    own implementation instead of using :meth:`glib.get_user_special_dir` we\n    make it possible for many extensions to run their test suites, which are\n    importing parts of :mod:`mopidy`, in a virtualenv with global site-packages\n    disabled, and thus no :mod:`glib` available.\n    \"\"\"\n\n    dirs_file = xdg_config_dir / \"user-dirs.dirs\"\n\n    if not dirs_file.exists():\n        return {}\n\n    data = dirs_file.read_bytes()\n    data = b\"[XDG_USER_DIRS]\\n\" + data\n    data = data.replace(b\"$HOME\", bytes(pathlib.Path.home()))\n    data = data.replace(b'\"', b\"\")\n\n    config = configparser.RawConfigParser()\n    config.read_string(data.decode())\n\n    result = {}\n    for k, v in config.items(\"XDG_USER_DIRS\"):\n        if v is None:\n            continue\n        if isinstance(k, bytes):\n            k = k.decode()\n        result[k.upper()] = pathlib.Path(v).resolve()\n\n    return result"
+      },
+      {
+        "file": "mopidy/__main__.py",
+        "name": "create_core_dirs",
+        "kind": "function",
+        "symbol": "mopidy.__main__.create_core_dirs",
+        "start": 155,
+        "end": 158,
+        "code": "def create_core_dirs(config):\n    path.get_or_create_dir(config[\"core\"][\"cache_dir\"])\n    path.get_or_create_dir(config[\"core\"][\"config_dir\"])\n    path.get_or_create_dir(config[\"core\"][\"data_dir\"])"
+      },
+      {
+        "file": "mopidy/core/actor.py",
+        "name": "Core",
+        "kind": "class",
+        "symbol": "mopidy.core.actor.Core",
+        "start": 23,
+        "end": 231,
+        "code": "class Core(\n    pykka.ThreadingActor,\n    audio.AudioListener,\n    backend.BackendListener,\n    mixer.MixerListener,\n):\n    library = None\n    \"\"\"An instance of :class:`~mopidy.core.LibraryController`\"\"\"\n\n    history = None\n    \"\"\"An instance of :class:`~mopidy.core.HistoryController`\"\"\"\n\n    mixer = None\n    \"\"\"An instance of :class:`~mopidy.core.MixerController`\"\"\"\n\n    playback = None\n    \"\"\"An instance of :class:`~mopidy.core.PlaybackController`\"\"\"\n\n    playlists = None\n    \"\"\"An instance of :class:`~mopidy.core.PlaylistsController`\"\"\"\n\n    tracklist = None\n    \"\"\"An instance of :class:`~mopidy.core.TracklistController`\"\"\"\n\n    def __init__(self, config=None, mixer=None, backends=None, audio=None):\n        super().__init__()\n\n        self._config = config\n\n        self.backends = Backends(backends)\n\n        self.library = pykka.traversable(\n            LibraryController(backends=self.backends, core=self)\n        )\n        self.history = pykka.traversable(HistoryController())\n        self.mixer = pykka.traversable(MixerController(mixer=mixer))\n        self.playback = pykka.traversable(\n            PlaybackController(audio=audio, backends=self.backends, core=self)\n        )\n        self.playlists = pykka.traversable(\n            PlaylistsController(backends=self.backends, core=self)\n        )\n        self.tracklist = pykka.traversable(TracklistController(core=self))\n\n        self.audio = audio\n\n    def get_uri_schemes(self):\n        \"\"\"Get list of URI schemes we can handle\"\"\"\n        futures = [b.uri_schemes for b in self.backends]\n        results = pykka.get_all(futures)\n        uri_schemes = itertools.chain(*results)\n        return sorted(uri_schemes)\n\n    def get_version(self):\n        \"\"\"Get version of the Mopidy core API\"\"\"\n        return versioning.get_version()\n\n    def reached_end_of_stream(self):\n        self.playback._on_end_of_stream()\n\n    def stream_changed(self, uri):\n        self.playback._on_stream_changed(uri)\n\n    def position_changed(self, position):\n        self.playback._on_position_changed(position)\n\n    def state_changed(self, old_state, new_state, target_state):\n        # XXX: This is a temporary fix for issue #232 while we wait for a more\n        # permanent solution with the implementation of issue #234. When the\n        # Spotify play token is lost, the Spotify backend pauses audio\n        # playback, but mopidy.core doesn't know this, so we need to update\n        # mopidy.core's state to match the actual state in mopidy.audio. If we\n        # don't do this, clients will think that we're still playing.\n\n        # We ignore cases when target state is set as this is buffering\n        # updates (at least for now) and we need to get #234 fixed...\n        if (\n            new_state == PlaybackState.PAUSED\n            and not target_state\n            and self.playback.get_state() != PlaybackState.PAUSED\n        ):\n            self.playback.set_state(new_state)\n            self.playback._trigger_track_playback_paused()\n\n    def playlists_loaded(self):\n        # Forward event from backend to frontends\n        CoreListener.send(\"playlists_loaded\")\n\n    def volume_changed(self, volume):\n        # Forward event from mixer to frontends\n        CoreListener.send(\"volume_changed\", volume=volume)\n\n    def mute_changed(self, mute):\n        # Forward event from mixer to frontends\n        CoreListener.send(\"mute_changed\", mute=mute)\n\n    def tags_changed(self, tags):\n        if not self.audio or \"title\" not in tags:\n            return\n\n        tags = self.audio.get_current_tags().get()\n        if not tags:\n            return\n\n        self.playback._stream_title = None\n        # TODO: Do not emit stream title changes for plain tracks. We need a\n        # better way to decide if something is a stream.\n        if \"title\" in tags and tags[\"title\"]:\n            title = tags[\"title\"][0]\n            current_track = self.playback.get_current_track()\n            if current_track is not None and current_track.name != title:\n                self.playback._stream_title = title\n                CoreListener.send(\"stream_title_changed\", title=title)\n\n    def _setup(self):\n        \"\"\"Do not call this function. It is for internal use at startup.\"\"\"\n        try:\n            coverage = []\n            if self._config and \"restore_state\" in self._config[\"core\"]:\n                if self._config[\"core\"][\"restore_state\"]:\n                    coverage = [\n                        \"tracklist\",\n                        \"mode\",\n                        \"play-last\",\n                        \"mixer\",\n                        \"history\",\n                    ]\n            if len(coverage):\n                self._load_state(coverage)\n        except Exception as e:\n            logger.warning(\"Restore state: Unexpected error: %s\", str(e))\n\n    def _teardown(self):\n        \"\"\"Do not call this function. It is for internal use at shutdown.\"\"\"\n        try:\n            if self._config and \"restore_state\" in self._config[\"core\"]:\n                if self._config[\"core\"][\"restore_state\"]:\n                    self._save_state()\n        except Exception as e:\n            logger.warning(\"Unexpected error while saving state: %s\", str(e))\n\n    def _get_data_dir(self):\n        # get or create data director for core\n        data_dir_path = (\n            path.expand_path(self._config[\"core\"][\"data_dir\"]) / \"core\"\n        )\n        path.get_or_create_dir(data_dir_path)\n        return data_dir_path\n\n    def _get_state_file(self):\n        return self._get_data_dir() / \"state.json.gz\"\n\n    def _save_state(self):\n        \"\"\"\n        Save current state to disk.\n        \"\"\"\n\n        state_file = self._get_state_file()\n        logger.info(\"Saving state to %s\", state_file)\n\n        data = {}\n        data[\"version\"] = mopidy.__version__\n        data[\"state\"] = CoreState(\n            tracklist=self.tracklist._save_state(),\n            history=self.history._save_state(),\n            playback=self.playback._save_state(),\n            mixer=self.mixer._save_state(),\n        )\n        storage.dump(state_file, data)\n        logger.debug(\"Saving state done\")\n\n    def _load_state(self, coverage):\n        \"\"\"\n        Restore state from disk.\n\n        Load state from disk and restore it. Parameter ``coverage``\n        limits the amount of data to restore. Possible\n        values for ``coverage`` (list of one or more of):\n\n            - 'tracklist' fill the tracklist\n            - 'mode' set tracklist properties (consume, random, repeat, single)\n            - 'play-last' restore play state ('tracklist' also required)\n            - 'mixer' set mixer volume and mute state\n            - 'history' restore history\n\n        :param coverage: amount of data to restore\n        :type coverage: list of strings\n        \"\"\"\n\n        state_file = self._get_state_file()\n        logger.info(\"Loading state from %s\", state_file)\n\n        data = storage.load(state_file)\n\n        try:\n            # Try only once. If something goes wrong, the next start is clean.\n            state_file.unlink()\n        except OSError:\n            logger.info(\"Failed to delete %s\", state_file)\n\n        if \"state\" in data:\n            core_state = data[\"state\"]\n            validation.check_instance(core_state, CoreState)\n            self.history._load_state(core_state.history, coverage)\n            self.tracklist._load_state(core_state.tracklist, coverage)\n            self.mixer._load_state(core_state.mixer, coverage)\n            # playback after tracklist\n            self.playback._load_state(core_state.playback, coverage)\n        logger.debug(\"Loading state done\")"
+      }
+    ],
+    "unresolved": [
+      "mopidy/core/actor.py:function: _get_data_dir"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "mopidy.internal.xdg._get_user_dirs"
+    ],
+    "exact_hit_dependencies": [
+      "mopidy.internal.xdg._get_user_dirs"
+    ],
+    "returned_entities": 3,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 8887
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 27390,
+    "completion_tokens": 3589,
+    "total_tokens": 30979,
+    "seconds": 107.8841199874878,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 125.25926780700684,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

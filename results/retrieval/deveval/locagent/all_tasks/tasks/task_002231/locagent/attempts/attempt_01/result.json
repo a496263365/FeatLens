@@ -1,0 +1,123 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2231,
+  "namespace": "jwt.utils.force_bytes",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5608,
+      "input_estimate_after": 5608,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies and related code locations that should be inspected to implement the `force_bytes` function:\n\n```\njwt/utils.py\nline: -1\nfunction: base64url_decode\nline: 26\nfunction: base64url_decode.input_bytes = force_bytes(input)\n\njwt/utils.py\nline: -1\nfunction: from_base64url_uint\nline: -1\nfunction: from_base64url_uint.data = base64url_decode(force_bytes(val))\n\njwt/algorithms.py\nline: -1\nclass: HMACAlgorithm\nfunction: HMACAlgorithm.prepare_key\nline: 257\nfunction: HMACAlgorithm.prepare_key.key_bytes = force_bytes(key)\n\njwt/algorithms.py\nline: -1\nclass: HMACAlgorithm\nfunction: HMACAlgorithm.to_jwk\nline: 280\nfunction: HMACAlgorithm.to_jwk.base64url_encode(force_bytes(key_obj))\n\njwt/utils.py\nline: 4\nimport: typing.Union\nline: 16\nfunction: force_bytes.value: Union[bytes, str]\n```",
+  "final_locations": {
+    "files": [
+      "jwt/utils.py",
+      "jwt/algorithms.py"
+    ],
+    "entities": [
+      {
+        "file": "jwt/utils.py",
+        "name": "base64url_decode",
+        "kind": "function",
+        "symbol": "jwt.utils.base64url_decode",
+        "start": 25,
+        "end": 33,
+        "code": "def base64url_decode(input: Union[bytes, str]) -> bytes:\n    input_bytes = force_bytes(input)\n\n    rem = len(input_bytes) % 4\n\n    if rem > 0:\n        input_bytes += b\"=\" * (4 - rem)\n\n    return base64.urlsafe_b64decode(input_bytes)"
+      },
+      {
+        "file": "jwt/utils.py",
+        "name": "from_base64url_uint",
+        "kind": "function",
+        "symbol": "jwt.utils.from_base64url_uint",
+        "start": 52,
+        "end": 54,
+        "code": "def from_base64url_uint(val: Union[bytes, str]) -> int:\n    data = base64url_decode(force_bytes(val))\n    return int.from_bytes(data, byteorder=\"big\")"
+      },
+      {
+        "file": "jwt/algorithms.py",
+        "name": "HMACAlgorithm",
+        "kind": "class",
+        "symbol": "jwt.algorithms.HMACAlgorithm",
+        "start": 241,
+        "end": 310,
+        "code": "class HMACAlgorithm(Algorithm):\n    \"\"\"\n    Performs signing and verification operations using HMAC\n    and the specified hash function.\n    \"\"\"\n\n    SHA256: ClassVar[HashlibHash] = hashlib.sha256\n    SHA384: ClassVar[HashlibHash] = hashlib.sha384\n    SHA512: ClassVar[HashlibHash] = hashlib.sha512\n\n    def __init__(self, hash_alg: HashlibHash) -> None:\n        self.hash_alg = hash_alg\n\n    def prepare_key(self, key: str | bytes) -> bytes:\n        from .utils import is_pem_format\n        from .utils import is_ssh_key\n        key_bytes = force_bytes(key)\n\n        if is_pem_format(key_bytes) or is_ssh_key(key_bytes):\n            raise InvalidKeyError(\n                \"The specified key is an asymmetric key or x509 certificate and\"\n                \" should not be used as an HMAC secret.\"\n            )\n\n        return key_bytes\n\n    @overload\n    @staticmethod\n    def to_jwk(key_obj: str | bytes, as_dict: Literal[True]) -> JWKDict:\n        ...  # pragma: no cover\n\n    @overload\n    @staticmethod\n    def to_jwk(key_obj: str | bytes, as_dict: Literal[False] = False) -> str:\n        ...  # pragma: no cover\n\n    @staticmethod\n    def to_jwk(key_obj: str | bytes, as_dict: bool = False) -> Union[JWKDict, str]:\n        jwk = {\n            \"k\": base64url_encode(force_bytes(key_obj)).decode(),\n            \"kty\": \"oct\",\n        }\n\n        if as_dict:\n            return jwk\n        else:\n            return json.dumps(jwk)\n\n    @staticmethod\n    def from_jwk(jwk: str | JWKDict) -> bytes:\n        try:\n            if isinstance(jwk, str):\n                obj: JWKDict = json.loads(jwk)\n            elif isinstance(jwk, dict):\n                obj = jwk\n            else:\n                raise ValueError\n        except ValueError:\n            raise InvalidKeyError(\"Key is not valid JSON\")\n\n        if obj.get(\"kty\") != \"oct\":\n            raise InvalidKeyError(\"Not an HMAC key\")\n\n        return base64url_decode(obj[\"k\"])\n\n    def sign(self, msg: bytes, key: bytes) -> bytes:\n        return hmac.new(key, msg, self.hash_alg).digest()\n\n    def verify(self, msg: bytes, key: bytes, sig: bytes) -> bool:\n        return hmac.compare_digest(sig, self.sign(msg, key))"
+      },
+      {
+        "file": "jwt/algorithms.py",
+        "name": "HMACAlgorithm.prepare_key",
+        "kind": "function",
+        "symbol": "jwt.algorithms.HMACAlgorithm.prepare_key",
+        "start": 254,
+        "end": 265,
+        "code": "    def prepare_key(self, key: str | bytes) -> bytes:\n        from .utils import is_pem_format\n        from .utils import is_ssh_key\n        key_bytes = force_bytes(key)\n\n        if is_pem_format(key_bytes) or is_ssh_key(key_bytes):\n            raise InvalidKeyError(\n                \"The specified key is an asymmetric key or x509 certificate and\"\n                \" should not be used as an HMAC secret.\"\n            )\n\n        return key_bytes"
+      },
+      {
+        "file": "jwt/algorithms.py",
+        "name": "HMACAlgorithm.to_jwk",
+        "kind": "function",
+        "symbol": "jwt.algorithms.HMACAlgorithm.to_jwk",
+        "start": 278,
+        "end": 287,
+        "code": "    def to_jwk(key_obj: str | bytes, as_dict: bool = False) -> Union[JWKDict, str]:\n        jwk = {\n            \"k\": base64url_encode(force_bytes(key_obj)).decode(),\n            \"kty\": \"oct\",\n        }\n\n        if as_dict:\n            return jwk\n        else:\n            return json.dumps(jwk)"
+      }
+    ],
+    "unresolved": [
+      "jwt/utils.py:line: -1",
+      "jwt/utils.py:function: base64url_decode.input_bytes = force_bytes(input)",
+      "jwt/utils.py:line: -1",
+      "jwt/utils.py:line: -1",
+      "jwt/utils.py:function: from_base64url_uint.data = base64url_decode(force_bytes(val))",
+      "jwt/algorithms.py:line: -1",
+      "jwt/algorithms.py:function: HMACAlgorithm.prepare_key.key_bytes = force_bytes(key)",
+      "jwt/algorithms.py:line: -1",
+      "jwt/algorithms.py:function: HMACAlgorithm.to_jwk",
+      "jwt/algorithms.py:function: HMACAlgorithm.to_jwk.base64url_encode(force_bytes(key_obj))",
+      "jwt/utils.py:line: 4",
+      "jwt/utils.py:function: force_bytes.value: Union[bytes, str]"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 12,
+    "returned_code_chars": 3289
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 20510,
+    "completion_tokens": 703,
+    "total_tokens": 21213,
+    "seconds": 26.260411977767944,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 31.24015522003174,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

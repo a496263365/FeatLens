@@ -1,0 +1,136 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 608,
+  "namespace": "bentoml._internal.runner.strategy.DefaultStrategy.get_worker_count",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 42298,
+      "input_estimate_after": 27582,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 380,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 40191,
+          "retained_content_tokens": 25826
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available context, here are the key reusable dependencies for implementing the `DefaultStrategy.get_worker_count` function:\n\n```\nsrc/bentoml/_internal/runner/runner.py\nclass: AbstractRunner\nfunction: scheduled_worker_count\n\nsrc/bentoml/_internal/runner/runnable.py\nclass: Runnable\nfunction: supports_gpu\nfunction: supports_cpu\n\nsrc/bentoml/_internal/resource.py\nclass: CpuResource\nclass: system_resources\n\nsrc/bentoml/_internal/configuration/containers.py\nclass: BentoMLConfiguration\n```\n\nThese locations contain the core functionality needed for resource checking and worker calculation that would be reused by the target function. The evidence shows these components are already involved in runner and resource management workflows.",
+  "final_locations": {
+    "files": [
+      "src/bentoml/_internal/runner/runner.py",
+      "src/bentoml/_internal/runner/runnable.py",
+      "src/bentoml/_internal/resource.py",
+      "src/bentoml/_internal/configuration/containers.py"
+    ],
+    "entities": [
+      {
+        "file": "src/bentoml/_internal/runner/runner.py",
+        "name": "AbstractRunner",
+        "kind": "class",
+        "symbol": "bentoml._internal.runner.runner.AbstractRunner",
+        "start": 82,
+        "end": 113,
+        "code": "class AbstractRunner(ABC):\n    name: str = attr.field(converter=_to_lower_name, validator=_validate_name)\n    models: list[Model] = attr.field(\n        converter=attr.converters.default_if_none(factory=list),\n        validator=attr.validators.deep_iterable(\n            attr.validators.instance_of(Model),\n            iterable_validator=attr.validators.instance_of(ListModel),\n        ),\n    )\n    resource_config: dict[str, t.Any]\n    runnable_class: type[Runnable]\n    embedded: bool\n\n    @abstractmethod\n    def init_local(self, quiet: bool = False) -> None:\n        \"\"\"\n        Initialize local runnable instance, for testing and debugging only.\n\n        Args:\n            quiet: if True, no logs will be printed\n        \"\"\"\n\n    @abstractmethod\n    def init_client(\n        self,\n        handle_class: type[RunnerHandle] | None = None,\n        *args: t.Any,\n        **kwargs: t.Any,\n    ):\n        \"\"\"\n        Initialize client for a remote runner instance. To be used within API server instance.\n        \"\"\""
+      },
+      {
+        "file": "src/bentoml/_internal/runner/runnable.py",
+        "name": "Runnable",
+        "kind": "class",
+        "symbol": "bentoml._internal.runner.runnable.Runnable",
+        "start": 30,
+        "end": 132,
+        "code": "class Runnable:\n    SUPPORTED_RESOURCES: tuple[str, ...]\n    SUPPORTS_CPU_MULTI_THREADING: bool\n\n    bentoml_runnable_methods__: dict[\n        str, RunnableMethod[t.Any, t.Any, t.Any]\n    ] | None = None\n\n    def __setattr__(self, attr_name: str, value: t.Any):\n        if attr_name in (\"SUPPORTED_RESOURCES\", \"SUPPORTS_CPU_MULTI_THREADING\"):\n            # TODO: add link to custom runner documentation\n            raise BentoMLException(\n                f\"{attr_name} should not be set at runtime; the change will not be reflected in the scheduling strategy. Instead, create separate Runnables with different supported resource configurations.\"\n            )\n\n        super().__setattr__(attr_name, value)\n\n    def __getattribute__(self, item: str) -> t.Any:\n        if item in [\"add_method\", \"method\"]:\n            # TODO: add link to custom runner documentation\n            raise BentoMLException(\n                f\"{item} should not be used at runtime; instead, use {type(self).__name__}.{item} where you define the class.\"\n            )\n\n        return super().__getattribute__(item)\n\n    @classmethod\n    def add_method(\n        cls: t.Type[T],\n        method: t.Callable[t.Concatenate[T, P], t.Any],\n        name: str,\n        *,\n        batchable: bool = False,\n        batch_dim: tuple[int, int] | int = 0,\n        input_spec: LazyType[t.Any] | t.Tuple[LazyType[t.Any], ...] | None = None,\n        output_spec: LazyType[t.Any] | None = None,\n    ):\n        meth = Runnable.method(\n            method,\n            batchable=batchable,\n            batch_dim=batch_dim,\n            input_spec=input_spec,\n            output_spec=output_spec,\n        )\n        setattr(cls, name, meth)\n        meth.__set_name__(cls, name)\n\n    @overload\n    @staticmethod\n    def method(\n        meth: t.Callable[t.Concatenate[T, P], R],\n        *,\n        batchable: bool = False,\n        batch_dim: tuple[int, int] | int = 0,\n        input_spec: AnyType | tuple[AnyType, ...] | None = None,\n        output_spec: AnyType | None = None,\n    ) -> RunnableMethod[T, P, R]:\n        ...\n\n    @overload\n    @staticmethod\n    def method(\n        meth: None = None,\n        *,\n        batchable: bool = False,\n        batch_dim: tuple[int, int] | int = 0,\n        input_spec: AnyType | tuple[AnyType, ...] | None = None,\n        output_spec: AnyType | None = None,\n    ) -> t.Callable[[t.Callable[t.Concatenate[T, P], R]], RunnableMethod[T, P, R]]:\n        ...\n\n    @staticmethod\n    def method(\n        meth: t.Callable[t.Concatenate[T, P], R] | None = None,\n        *,\n        batchable: bool = False,\n        batch_dim: tuple[int, int] | int = 0,\n        input_spec: AnyType | tuple[AnyType, ...] | None = None,\n        output_spec: AnyType | None = None,\n    ) -> (\n        t.Callable[[t.Callable[t.Concatenate[T, P], R]], RunnableMethod[T, P, R]]\n        | RunnableMethod[T, P, R]\n    ):\n        def method_decorator(\n            meth: t.Callable[t.Concatenate[T, P], R]\n        ) -> RunnableMethod[T, P, R]:\n            return RunnableMethod(\n                meth,\n                RunnableMethodConfig(\n                    is_stream=inspect.isasyncgenfunction(meth)\n                    or inspect.isgeneratorfunction(meth),\n                    batchable=batchable,\n                    batch_dim=(batch_dim, batch_dim)\n                    if isinstance(batch_dim, int)\n                    else batch_dim,\n                    input_spec=input_spec,\n                    output_spec=output_spec,\n                ),\n            )\n\n        if callable(meth):\n            return method_decorator(meth)\n        return method_decorator"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "CpuResource",
+        "kind": "class",
+        "symbol": "bentoml._internal.resource.CpuResource",
+        "start": 77,
+        "end": 120,
+        "code": "class CpuResource(Resource[float], resource_id=\"cpu\"):\n    @classmethod\n    def from_spec(cls, spec: t.Any) -> float:\n        \"\"\"\n        Convert spec to CpuResource.\n\n        spec can be a float, int or string.\n        - 1.0 -> 1.0\n        - 1 -> 1.0\n        - \"1\" -> 1.0\n        - \"10m\" -> 0.01\n        \"\"\"\n        if not isinstance(spec, (int, float, str)):\n            raise TypeError(\"cpu must be int, float or str\")\n\n        if isinstance(spec, (int, float)):\n            return float(spec)\n\n        milli_match = re.match(\"([0-9]+)m\", spec)\n        if milli_match:\n            return float(milli_match[1]) / 1000.0\n\n        try:\n            return float(spec)\n        except ValueError:\n            raise BentoMLConfigException(f\"Invalid CPU resource limit '{spec}'. \")\n\n    @classmethod\n    def from_system(cls) -> float:\n        if psutil.POSIX:\n            return query_cgroup_cpu_count()\n        else:\n            return float(query_os_cpu_count())\n\n    @classmethod\n    def validate(cls, val: float):\n        if val < 0:\n            raise BentoMLConfigException(\n                f\"Invalid negative CPU resource limit '{val}'.\"\n            )\n        if not math.isclose(val, cls.from_system()) and val > cls.from_system():\n            raise BentoMLConfigException(\n                f\"CPU resource limit {val} is greater than the system available: {cls.from_system()}\"\n            )"
+      },
+      {
+        "file": "src/bentoml/_internal/resource.py",
+        "name": "system_resources",
+        "kind": "function",
+        "symbol": "bentoml._internal.resource.system_resources",
+        "start": 43,
+        "end": 47,
+        "code": "def system_resources() -> dict[str, t.Any]:\n    res: dict[str, t.Any] = {}\n    for resource_kind, resource in _RESOURCE_REGISTRY.items():\n        res[resource_kind] = resource.from_system()\n    return res"
+      },
+      {
+        "file": "src/bentoml/_internal/configuration/containers.py",
+        "name": "BentoMLConfiguration",
+        "kind": "class",
+        "symbol": "bentoml._internal.configuration.containers.BentoMLConfiguration",
+        "start": 57,
+        "end": 173,
+        "code": "class BentoMLConfiguration:\n    def __init__(\n        self,\n        override_config_file: str | None = None,\n        override_config_values: str | None = None,\n        *,\n        validate_schema: bool = True,\n        use_version: int = 1,\n    ):\n        # Load default configuration with latest version.\n        self.config = get_default_config(version=use_version)\n        spec_module = import_configuration_spec(version=use_version)\n\n        # User override configuration\n        if override_config_file is not None:\n            logger.info(\n                \"Applying user config override from path: %s\" % override_config_file\n            )\n            override = load_config_file(override_config_file)\n            if \"version\" not in override:\n                # If users does not define a version, we then by default assume they are using v1\n                # and we will migrate it to latest version\n                logger.debug(\n                    \"User config does not define a version, assuming given config is version %d...\"\n                    % use_version\n                )\n                current = use_version\n            else:\n                current = override[\"version\"]\n            migration = getattr(import_configuration_spec(current), \"migration\", None)\n            # Running migration layer if it exists\n            if migration is not None:\n                override = migration(override_config=dict(flatten_dict(override)))\n            config_merger.merge(self.config, override)\n\n        if override_config_values is not None:\n            logger.info(\n                \"Applying user config override from ENV VAR: %s\", override_config_values\n            )\n            lines = split_with_quotes(\n                override_config_values,\n                sep=r\"\\s+\",\n                quote='\"',\n                use_regex=True,\n            )\n            override_config_map = {\n                k: yaml.safe_load(v)\n                for k, v in [\n                    split_with_quotes(line, sep=\"=\", quote='\"')\n                    for line in lines\n                    if line.strip()\n                ]\n            }\n            # Note that this values will only support latest version of configuration,\n            # as there is no way for us to infer what values user can pass in.\n            # however, if users pass in a version inside this value, we will that to migrate up\n            # if possible\n            override_version = override_config_map.get(\"version\", use_version)\n            logger.debug(\n                \"Found defined 'version=%d' in BENTOML_CONFIG_OPTIONS.\"\n                % override_version\n            )\n            migration = getattr(\n                import_configuration_spec(override_version), \"migration\", None\n            )\n            # Running migration layer if it exists\n            if migration is not None:\n                override_config_map = migration(override_config=override_config_map)\n            # Previous behaviour, before configuration versioning.\n            try:\n                override = unflatten(override_config_map)\n            except ValueError as e:\n                raise BentoMLConfigException(\n                    f\"Failed to parse config options from the env var:\\n{e}.\\n*** Note: You can use '\\\"' to quote the key if it contains special characters. ***\"\n                ) from None\n            config_merger.merge(self.config, override)\n\n        if override_config_file is not None or override_config_values is not None:\n            self._finalize()\n\n        if validate_schema:\n            try:\n                spec_module.SCHEMA.validate(self.config)\n            except s.SchemaError as e:\n                raise BentoMLConfigException(\n                    f\"Invalid configuration file was given:\\n{e}\"\n                ) from None\n\n    def _finalize(self):\n        RUNNER_CFG_KEYS = [\n            \"batching\",\n            \"resources\",\n            \"logging\",\n            \"metrics\",\n            \"traffic\",\n            \"workers_per_resource\",\n        ]\n        global_runner_cfg = {k: self.config[\"runners\"][k] for k in RUNNER_CFG_KEYS}\n        custom_runners_cfg = dict(\n            filter(\n                lambda kv: kv[0] not in RUNNER_CFG_KEYS,\n                self.config[\"runners\"].items(),\n            )\n        )\n        if custom_runners_cfg:\n            for runner_name, runner_cfg in custom_runners_cfg.items():\n                # key is a runner name\n                if runner_cfg.get(\"resources\") == \"system\":\n                    runner_cfg[\"resources\"] = system_resources()\n                self.config[\"runners\"][runner_name] = config_merger.merge(\n                    deepcopy(global_runner_cfg),\n                    runner_cfg,\n                )\n        expand_env_var_in_values(self.config)\n\n    def to_dict(self) -> providers.ConfigDictType:\n        return t.cast(providers.ConfigDictType, self.config)"
+      }
+    ],
+    "unresolved": [
+      "src/bentoml/_internal/runner/runner.py:function: scheduled_worker_count",
+      "src/bentoml/_internal/runner/runnable.py:function: supports_gpu",
+      "src/bentoml/_internal/runner/runnable.py:function: supports_cpu"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.75,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "bentoml._internal.resource.system_resources",
+      "bentoml._internal.runner.runnable.Runnable",
+      "bentoml._internal.runner.strategy.logger"
+    ],
+    "exact_hit_dependencies": [
+      "bentoml._internal.resource.system_resources",
+      "bentoml._internal.runner.runnable.Runnable"
+    ],
+    "returned_entities": 5,
+    "returned_files": 4,
+    "unresolved_locations": 3,
+    "returned_code_chars": 11115
+  },
+  "usage": {
+    "calls": 3,
+    "successful_calls": 3,
+    "physical_requests": 3,
+    "failed_requests": 0,
+    "prompt_tokens": 36511,
+    "completion_tokens": 354,
+    "total_tokens": 36865,
+    "seconds": 33.143330574035645,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 44.63371133804321,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

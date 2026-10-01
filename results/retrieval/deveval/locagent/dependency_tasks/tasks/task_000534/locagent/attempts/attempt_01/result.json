@@ -1,0 +1,187 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 534,
+  "namespace": "mopidy.internal.validation.check_uri",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11659,
+      "input_estimate_after": 11659,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the following reusable dependencies for implementing the `check_uri` function in `mopidy/internal/validation.py`. These locations provide existing patterns for URI handling, validation, and error handling that should be inspected and reused:\n\n```\nmopidy/internal/validation.py\nline: 53\nfunction: check_choice\nline: 64\nfunction: check_instance\nline: 69\nfunction: check_instances\nline: 88\nfunction: check_query\n\nmopidy/core/library.py\nline: 39\nfunction: LibraryController._get_backend\nline: 107\nfunction: LibraryController._browse\nline: 250\nfunction: LibraryController.refresh\n\nmopidy/m3u/translator.py\nline: 54\nfunction: load_items\nline: 11\nfunction: path_to_uri\n\nmopidy/internal/path.py\nline: 48\nfunction: path_to_uri\nline: 61\nfunction: uri_to_path\n\nmopidy/stream/actor.py\nline: 86\nclass: StreamPlaybackProvider\nfunction: translate_uri\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/internal/validation.py",
+      "mopidy/core/library.py",
+      "mopidy/m3u/translator.py",
+      "mopidy/internal/path.py",
+      "mopidy/stream/actor.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/internal/validation.py",
+        "name": "check_choice",
+        "kind": "function",
+        "symbol": "mopidy.internal.validation.check_choice",
+        "start": 53,
+        "end": 57,
+        "code": "def check_choice(arg, choices, msg=\"Expected one of {choices}, not {arg!r}\"):\n    if arg not in choices:\n        raise exceptions.ValidationError(\n            msg.format(arg=arg, choices=tuple(choices))\n        )"
+      },
+      {
+        "file": "mopidy/internal/validation.py",
+        "name": "check_instance",
+        "kind": "function",
+        "symbol": "mopidy.internal.validation.check_instance",
+        "start": 64,
+        "end": 66,
+        "code": "def check_instance(arg, cls, msg=\"Expected a {name} instance, not {arg!r}\"):\n    if not isinstance(arg, cls):\n        raise exceptions.ValidationError(msg.format(arg=arg, name=cls.__name__))"
+      },
+      {
+        "file": "mopidy/internal/validation.py",
+        "name": "check_instances",
+        "kind": "function",
+        "symbol": "mopidy.internal.validation.check_instances",
+        "start": 69,
+        "end": 72,
+        "code": "def check_instances(arg, cls, msg=\"Expected a list of {name}, not {arg!r}\"):\n    _check_iterable(arg, msg, name=cls.__name__)\n    if not all(isinstance(instance, cls) for instance in arg):\n        raise exceptions.ValidationError(msg.format(arg=arg, name=cls.__name__))"
+      },
+      {
+        "file": "mopidy/internal/validation.py",
+        "name": "check_query",
+        "kind": "function",
+        "symbol": "mopidy.internal.validation.check_query",
+        "start": 88,
+        "end": 114,
+        "code": "def check_query(arg, fields=None, list_values=True):\n    if fields is None:\n        fields = SEARCH_FIELDS\n    # TODO: normalize name  -> track_name\n    # TODO: normalize value -> [value]\n    # TODO: normalize blank -> [] or just remove field?\n    # TODO: remove list_values?\n\n    if not isinstance(arg, Mapping):\n        raise exceptions.ValidationError(\n            f\"Expected a query dictionary, not {arg!r}\"\n        )\n\n    for key, value in arg.items():\n        check_choice(\n            key,\n            fields,\n            msg=\"Expected query field to be one of \" \"{choices}, not {arg!r}\",\n        )\n        if list_values:\n            msg = 'Expected \"{key}\" to be list of strings, not {arg!r}'\n            _check_iterable(value, msg, key=key)\n            [_check_query_value(key, v, msg) for v in value]\n        else:\n            _check_query_value(\n                key, value, 'Expected \"{key}\" to be a string, not {arg!r}'\n            )"
+      },
+      {
+        "file": "mopidy/core/library.py",
+        "name": "LibraryController._get_backend",
+        "kind": "function",
+        "symbol": "mopidy.core.library.LibraryController._get_backend",
+        "start": 38,
+        "end": 40,
+        "code": "    def _get_backend(self, uri):\n        uri_scheme = urllib.parse.urlparse(uri).scheme\n        return self.backends.with_library.get(uri_scheme, None)"
+      },
+      {
+        "file": "mopidy/core/library.py",
+        "name": "LibraryController._browse",
+        "kind": "function",
+        "symbol": "mopidy.core.library.LibraryController._browse",
+        "start": 106,
+        "end": 118,
+        "code": "    def _browse(self, uri):\n        scheme = urllib.parse.urlparse(uri).scheme\n        backend = self.backends.with_library_browse.get(scheme)\n\n        if not backend:\n            return []\n\n        with _backend_error_handling(backend):\n            result = backend.library.browse(uri).get()\n            validation.check_instances(result, models.Ref)\n            return result\n\n        return []"
+      },
+      {
+        "file": "mopidy/core/library.py",
+        "name": "LibraryController.refresh",
+        "kind": "function",
+        "symbol": "mopidy.core.library.LibraryController.refresh",
+        "start": 239,
+        "end": 261,
+        "code": "    def refresh(self, uri=None):\n        \"\"\"\n        Refresh library. Limit to URI and below if an URI is given.\n\n        :param uri: directory or track URI\n        :type uri: string\n        \"\"\"\n        uri is None or validation.check_uri(uri)\n\n        futures = {}\n        backends = {}\n        uri_scheme = urllib.parse.urlparse(uri).scheme if uri else None\n\n        for backend_scheme, backend in self.backends.with_library.items():\n            backends.setdefault(backend, set()).add(backend_scheme)\n\n        for backend, backend_schemes in backends.items():\n            if uri_scheme is None or uri_scheme in backend_schemes:\n                futures[backend] = backend.library.refresh(uri)\n\n        for backend, future in futures.items():\n            with _backend_error_handling(backend):\n                future.get()"
+      },
+      {
+        "file": "mopidy/m3u/translator.py",
+        "name": "load_items",
+        "kind": "function",
+        "symbol": "mopidy.m3u.translator.load_items",
+        "start": 46,
+        "end": 64,
+        "code": "def load_items(fp, basedir):\n    refs = []\n    name = None\n    for line in filter(None, (line.strip() for line in fp)):\n        if line.startswith(\"#\"):\n            if line.startswith(\"#EXTINF:\"):\n                name = line.partition(\",\")[2]\n            continue\n        elif not urllib.parse.urlsplit(line).scheme:\n            path = basedir / line\n            if not name:\n                name = name_from_path(path)\n            uri = path_to_uri(path, scheme=\"file\")\n        else:\n            # TODO: ensure this is urlencoded\n            uri = line  # do *not* extract name from (stream?) URI path\n        refs.append(models.Ref.track(uri=uri, name=name))\n        name = None\n    return refs"
+      },
+      {
+        "file": "mopidy/m3u/translator.py",
+        "name": "path_to_uri",
+        "kind": "function",
+        "symbol": "mopidy.m3u.translator.path_to_uri",
+        "start": 11,
+        "end": 16,
+        "code": "def path_to_uri(path, scheme=Extension.ext_name):\n    \"\"\"Convert file path to URI.\"\"\"\n    from . import Extension\n    bytes_path = os.path.normpath(bytes(path))\n    uripath = urllib.parse.quote_from_bytes(bytes_path)\n    return urllib.parse.urlunsplit((scheme, None, uripath, None, None))"
+      },
+      {
+        "file": "mopidy/internal/path.py",
+        "name": "path_to_uri",
+        "kind": "function",
+        "symbol": "mopidy.internal.path.path_to_uri",
+        "start": 48,
+        "end": 58,
+        "code": "def path_to_uri(path):\n    \"\"\"\n    Convert OS specific path to file:// URI.\n\n    Accepts either unicode strings or bytestrings. The encoding of any\n    bytestring will be maintained so that :func:`uri_to_path` can return the\n    same bytestring.\n\n    Returns a file:// URI as an unicode string.\n    \"\"\"\n    return pathlib.Path(path).as_uri()"
+      },
+      {
+        "file": "mopidy/internal/path.py",
+        "name": "uri_to_path",
+        "kind": "function",
+        "symbol": "mopidy.internal.path.uri_to_path",
+        "start": 61,
+        "end": 67,
+        "code": "def uri_to_path(uri):\n    \"\"\"\n    Convert an URI to a OS specific path.\n    \"\"\"\n    bytes_path = urllib.parse.unquote_to_bytes(urllib.parse.urlsplit(uri).path)\n    unicode_path = bytes_path.decode(errors=\"surrogateescape\")\n    return pathlib.Path(unicode_path)"
+      },
+      {
+        "file": "mopidy/stream/actor.py",
+        "name": "StreamPlaybackProvider.translate_uri",
+        "kind": "function",
+        "symbol": "mopidy.stream.actor.StreamPlaybackProvider.translate_uri",
+        "start": 85,
+        "end": 99,
+        "code": "    def translate_uri(self, uri):\n        if urllib.parse.urlsplit(uri).scheme not in self.backend.uri_schemes:\n            return None\n\n        if self.backend._blacklist_re.match(uri):\n            logger.debug(\"URI matched metadata lookup blacklist: %s\", uri)\n            return uri\n\n        unwrapped_uri, _ = _unwrap_stream(\n            uri,\n            timeout=self.backend._timeout,\n            scanner=self.backend._scanner,\n            requests_session=self.backend._session,\n        )\n        return unwrapped_uri"
+      },
+      {
+        "file": "mopidy/stream/actor.py",
+        "name": "StreamPlaybackProvider",
+        "kind": "class",
+        "symbol": "mopidy.stream.actor.StreamPlaybackProvider",
+        "start": 84,
+        "end": 99,
+        "code": "class StreamPlaybackProvider(backend.PlaybackProvider):\n    def translate_uri(self, uri):\n        if urllib.parse.urlsplit(uri).scheme not in self.backend.uri_schemes:\n            return None\n\n        if self.backend._blacklist_re.match(uri):\n            logger.debug(\"URI matched metadata lookup blacklist: %s\", uri)\n            return uri\n\n        unwrapped_uri, _ = _unwrap_stream(\n            uri,\n            timeout=self.backend._timeout,\n            scanner=self.backend._scanner,\n            requests_session=self.backend._session,\n        )\n        return unwrapped_uri"
+      }
+    ],
+    "unresolved": [
+      "mopidy/stream/actor.py:function: translate_uri"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 13,
+    "returned_files": 5,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5672
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 28949,
+    "completion_tokens": 581,
+    "total_tokens": 29530,
+    "seconds": 99.05768513679504,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 118.19045186042786,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

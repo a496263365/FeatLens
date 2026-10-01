@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 523,
+  "namespace": "mopidy.ext.load_extensions",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10628,
+      "input_estimate_after": 10628,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmopidy/ext.py\nline: 26\nclass: ExtensionData\n\nmopidy/ext.py\nline: 271\nfunction: validate_extension_data\n\nmopidy/internal/deps.py\nline: 16\nfunction: format_dependency_list\n\nmopidy/ext.py\nline: 34\nclass: Extension\n\nmopidy/ext.py\nline: 170\nclass: Registry\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/ext.py",
+      "mopidy/internal/deps.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/ext.py",
+        "name": "ExtensionData",
+        "kind": "class",
+        "symbol": "mopidy.ext.ExtensionData",
+        "start": 26,
+        "end": 31,
+        "code": "class ExtensionData(NamedTuple):\n    extension: \"Extension\"\n    entry_point: Any\n    config_schema: ConfigSchema\n    config_defaults: Any\n    command: Optional[Command]"
+      },
+      {
+        "file": "mopidy/ext.py",
+        "name": "validate_extension_data",
+        "kind": "function",
+        "symbol": "mopidy.ext.validate_extension_data",
+        "start": 271,
+        "end": 357,
+        "code": "def validate_extension_data(data: ExtensionData) -> bool:\n    \"\"\"Verify extension's dependencies and environment.\n\n    :param extensions: an extension to check\n    :returns: if extension should be run\n    \"\"\"\n\n    from mopidy import exceptions\n    logger.debug(\"Validating extension: %s\", data.extension.ext_name)\n\n    if data.extension.ext_name != data.entry_point.name:\n        logger.warning(\n            \"Disabled extension %(ep)s: entry point name (%(ep)s) \"\n            \"does not match extension name (%(ext)s)\",\n            {\"ep\": data.entry_point.name, \"ext\": data.extension.ext_name},\n        )\n        return False\n\n    try:\n        data.entry_point.require()\n    except pkg_resources.DistributionNotFound as exc:\n        logger.info(\n            \"Disabled extension %s: Dependency %s not found\",\n            data.extension.ext_name,\n            exc,\n        )\n        return False\n    except pkg_resources.VersionConflict as exc:\n        if len(exc.args) == 2:\n            found, required = exc.args\n            logger.info(\n                \"Disabled extension %s: %s required, but found %s at %s\",\n                data.extension.ext_name,\n                required,\n                found,\n                found.location,\n            )\n        else:\n            logger.info(\n                \"Disabled extension %s: %s\", data.extension.ext_name, exc\n            )\n        return False\n\n    try:\n        data.extension.validate_environment()\n    except exceptions.ExtensionError as exc:\n        logger.info(\"Disabled extension %s: %s\", data.extension.ext_name, exc)\n        return False\n    except Exception:\n        logger.exception(\n            \"Validating extension %s failed with an exception.\",\n            data.extension.ext_name,\n        )\n        return False\n\n    if not data.config_schema:\n        logger.error(\n            \"Extension %s does not have a config schema, disabling.\",\n            data.extension.ext_name,\n        )\n        return False\n    elif not isinstance(data.config_schema.get(\"enabled\"), config_lib.Boolean):\n        logger.error(\n            'Extension %s does not have the required \"enabled\" config'\n            \" option, disabling.\",\n            data.extension.ext_name,\n        )\n        return False\n\n    for key, value in data.config_schema.items():\n        if not isinstance(value, config_lib.ConfigValue):\n            logger.error(\n                \"Extension %s config schema contains an invalid value\"\n                ' for the option \"%s\", disabling.',\n                data.extension.ext_name,\n                key,\n            )\n            return False\n\n    if not data.config_defaults:\n        logger.error(\n            \"Extension %s does not have a default config, disabling.\",\n            data.extension.ext_name,\n        )\n        return False\n\n    return True"
+      },
+      {
+        "file": "mopidy/internal/deps.py",
+        "name": "format_dependency_list",
+        "kind": "function",
+        "symbol": "mopidy.internal.deps.format_dependency_list",
+        "start": 12,
+        "end": 34,
+        "code": "def format_dependency_list(adapters=None):\n    if adapters is None:\n        dist_names = {\n            ep.dist.project_name\n            for ep in pkg_resources.iter_entry_points(\"mopidy.ext\")\n            if ep.dist.project_name != \"Mopidy\"\n        }\n        dist_infos = [\n            functools.partial(pkg_info, dist_name) for dist_name in dist_names\n        ]\n\n        adapters = (\n            [\n                executable_info,\n                platform_info,\n                python_info,\n                functools.partial(pkg_info, \"Mopidy\", True),\n            ]\n            + dist_infos\n            + [gstreamer_info]\n        )\n\n    return \"\\n\".join(_format_dependency(a()) for a in adapters)"
+      },
+      {
+        "file": "mopidy/ext.py",
+        "name": "Extension",
+        "kind": "class",
+        "symbol": "mopidy.ext.Extension",
+        "start": 34,
+        "end": 167,
+        "code": "class Extension:\n\n    \"\"\"Base class for Mopidy extensions\"\"\"\n\n    dist_name: str\n    \"\"\"The extension's distribution name, as registered on PyPI\n\n    Example: ``Mopidy-Soundspot``\n    \"\"\"\n\n    ext_name: str\n    \"\"\"The extension's short name, as used in setup.py and as config section\n    name\n\n    Example: ``soundspot``\n    \"\"\"\n\n    version: str\n    \"\"\"The extension's version\n\n    Should match the :attr:`__version__` attribute on the extension's main\n    Python module and the version registered on PyPI.\n    \"\"\"\n\n    def get_default_config(self) -> str:\n        \"\"\"The extension's default config as a text string.\n\n        :returns: str\n        \"\"\"\n        raise NotImplementedError(\n            'Add at least a config section with \"enabled = true\"'\n        )\n\n    def get_config_schema(self) -> ConfigSchema:\n        \"\"\"The extension's config validation schema\n\n        :returns: :class:`~mopidy.config.schemas.ConfigSchema`\n        \"\"\"\n        schema = config_lib.ConfigSchema(self.ext_name)\n        schema[\"enabled\"] = config_lib.Boolean()\n        return schema\n\n    @classmethod\n    def get_cache_dir(cls, config: Config) -> Path:\n        \"\"\"Get or create cache directory for the extension.\n\n        Use this directory to cache data that can safely be thrown away.\n\n        :param config: the Mopidy config object\n        :return: pathlib.Path\n        \"\"\"\n        if cls.ext_name is None:\n            raise AssertionError\n        cache_dir_path = (\n            path.expand_path(config[\"core\"][\"cache_dir\"]) / cls.ext_name\n        )\n        path.get_or_create_dir(cache_dir_path)\n        return cache_dir_path\n\n    @classmethod\n    def get_config_dir(cls, config: Config) -> Path:\n        \"\"\"Get or create configuration directory for the extension.\n\n        :param config: the Mopidy config object\n        :return: pathlib.Path\n        \"\"\"\n        if cls.ext_name is None:\n            raise AssertionError\n        config_dir_path = (\n            path.expand_path(config[\"core\"][\"config_dir\"]) / cls.ext_name\n        )\n        path.get_or_create_dir(config_dir_path)\n        return config_dir_path\n\n    @classmethod\n    def get_data_dir(cls, config: Config) -> Path:\n        \"\"\"Get or create data directory for the extension.\n\n        Use this directory to store data that should be persistent.\n\n        :param config: the Mopidy config object\n        :returns: pathlib.Path\n        \"\"\"\n        if cls.ext_name is None:\n            raise AssertionError\n        data_dir_path = (\n            path.expand_path(config[\"core\"][\"data_dir\"]) / cls.ext_name\n        )\n        path.get_or_create_dir(data_dir_path)\n        return data_dir_path\n\n    def get_command(self) -> Optional[Command]:\n        \"\"\"Command to expose to command line users running ``mopidy``.\n\n        :returns:\n          Instance of a :class:`~mopidy.commands.Command` class.\n        \"\"\"\n        pass\n\n    def validate_environment(self) -> None:\n        \"\"\"Checks if the extension can run in the current environment.\n\n        Dependencies described by :file:`setup.py` are checked by Mopidy, so\n        you should not check their presence here.\n\n        If a problem is found, raise :exc:`~mopidy.exceptions.ExtensionError`\n        with a message explaining the issue.\n\n        :raises: :exc:`~mopidy.exceptions.ExtensionError`\n        :returns: :class:`None`\n        \"\"\"\n        pass\n\n    def setup(self, registry: \"Registry\") -> None:\n        \"\"\"\n        Register the extension's components in the extension :class:`Registry`.\n\n        For example, to register a backend::\n\n            def setup(self, registry):\n                from .backend import SoundspotBackend\n                registry.add('backend', SoundspotBackend)\n\n        See :class:`Registry` for a list of registry keys with a special\n        meaning. Mopidy will instantiate and start any classes registered under\n        the ``frontend`` and ``backend`` registry keys.\n\n        This method can also be used for other setup tasks not involving the\n        extension registry.\n\n        :param registry: the extension registry\n        :type registry: :class:`Registry`\n        \"\"\"\n        raise NotImplementedError"
+      },
+      {
+        "file": "mopidy/ext.py",
+        "name": "Registry",
+        "kind": "class",
+        "symbol": "mopidy.ext.Registry",
+        "start": 170,
+        "end": 207,
+        "code": "class Registry(Mapping):\n\n    \"\"\"Registry of components provided by Mopidy extensions.\n\n    Passed to the :meth:`~Extension.setup` method of all extensions. The\n    registry can be used like a dict of string keys and lists.\n\n    Some keys have a special meaning, including, but not limited to:\n\n    - ``backend`` is used for Mopidy backend classes.\n    - ``frontend`` is used for Mopidy frontend classes.\n\n    Extensions can use the registry for allow other to extend the extension\n    itself. For example the ``Mopidy-Local`` historically used the\n    ``local:library`` key to allow other extensions to register library\n    providers for ``Mopidy-Local`` to use. Extensions should namespace\n    custom keys with the extension's :attr:`~Extension.ext_name`,\n    e.g. ``local:foo`` or ``http:bar``.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self._registry: Dict[str, List[Type[Any]]] = {}\n\n    def add(self, name: str, cls: Type[Any]) -> None:\n        \"\"\"Add a component to the registry.\n\n        Multiple classes can be registered to the same name.\n        \"\"\"\n        self._registry.setdefault(name, []).append(cls)\n\n    def __getitem__(self, name: str) -> List[Type[Any]]:\n        return self._registry.setdefault(name, [])\n\n    def __iter__(self) -> Iterator[str]:\n        return iter(self._registry)\n\n    def __len__(self) -> int:\n        return len(self._registry)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.2222222222222222,
+    "dependency_count": 9,
+    "hit_dependencies": [
+      "mopidy.ext.Extension",
+      "mopidy.ext.ExtensionData",
+      "mopidy.ext.logger"
+    ],
+    "exact_hit_dependencies": [
+      "mopidy.ext.Extension",
+      "mopidy.ext.ExtensionData"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 9203
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 28655,
+    "completion_tokens": 2374,
+    "total_tokens": 31029,
+    "seconds": 130.33651423454285,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 149.56740427017212,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

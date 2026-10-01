@@ -1,0 +1,137 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2081,
+  "namespace": "sumy.summarizers.sum_basic.SumBasicSummarizer._compute_word_freq",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12160,
+      "input_estimate_after": 12160,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify several reusable dependencies for implementing the `_compute_word_freq` function in `sumy/summarizers/sum_basic.py`. The function needs to compute word frequencies from a list of words, and I can see existing patterns in the codebase for similar functionality.\n\nHere are the key locations containing reusable dependencies:\n\n```\nsumy/summarizers/kl.py\nline: 42\nclass: KLSummarizer\nfunction: _compute_word_freq\n\nsumy/summarizers/edmundson_key.py\nline: 6\nimport: from collections import Counter\nline: 27\nfunction: EdmundsonKeyMethod._compute_significant_words\n\nsumy/models/tf.py\nline: 8\nimport: from collections import Counter\nline: 25\nclass: TfDocumentModel\nfunction: __init__\n\nsumy/summarizers/lex_rank.py\nline: 12\nimport: from collections import Counter\nline: 59\nfunction: LexRankSummarizer._compute_tf\n\nsumy/summarizers/sum_basic.py\nline: 66\nfunction: SumBasicSummarizer._compute_tf\nline: 68\nline: 69\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/kl.py",
+      "sumy/summarizers/edmundson_key.py",
+      "sumy/models/tf.py",
+      "sumy/summarizers/lex_rank.py",
+      "sumy/summarizers/sum_basic.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer._compute_word_freq",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer._compute_word_freq",
+        "start": 42,
+        "end": 46,
+        "code": "    def _compute_word_freq(list_of_words):\n        word_freq = {}\n        for w in list_of_words:\n            word_freq[w] = word_freq.get(w, 0) + 1\n        return word_freq"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.kl.KLSummarizer",
+        "start": 11,
+        "end": 147,
+        "code": "class KLSummarizer(AbstractSummarizer):\n    \"\"\"\n    Method that greedily adds sentences to a summary so long as it decreases the\n    KL Divergence.\n    Source: http://www.aclweb.org/anthology/N09-1041\n    \"\"\"\n\n    stop_words = frozenset()\n\n    def __call__(self, document, sentences_count):\n        sentences = document.sentences\n        ratings = self._compute_ratings(sentences)\n\n        return self._get_best_sentences(sentences, sentences_count, ratings)\n\n    @staticmethod\n    def _get_all_words_in_doc(sentences):\n        return [w for s in sentences for w in s.words]\n\n    def _get_content_words_in_sentence(self, sentence):\n        normalized_words = self._normalize_words(sentence.words)\n        normalized_content_words = self._filter_out_stop_words(normalized_words)\n        return normalized_content_words\n\n    def _normalize_words(self, words):\n        return [self.normalize_word(w) for w in words]\n\n    def _filter_out_stop_words(self, words):\n        return [w for w in words if w not in self.stop_words]\n\n    @staticmethod\n    def _compute_word_freq(list_of_words):\n        word_freq = {}\n        for w in list_of_words:\n            word_freq[w] = word_freq.get(w, 0) + 1\n        return word_freq\n\n    def _get_all_content_words_in_doc(self, sentences):\n        all_words = self._get_all_words_in_doc(sentences)\n        content_words = self._filter_out_stop_words(all_words)\n        normalized_content_words = self._normalize_words(content_words)\n        return normalized_content_words\n\n    def compute_tf(self, sentences):\n        \"\"\"\n        Computes the normalized term frequency as explained in http://www.tfidf.com/\n\n        :type sentences: [sumy.models.dom.Sentence]\n        \"\"\"\n        content_words = self._get_all_content_words_in_doc(sentences)\n        content_words_count = len(content_words)\n        content_words_freq = self._compute_word_freq(content_words)\n        content_word_tf = dict((w, f / content_words_count) for w, f in content_words_freq.items())\n        return content_word_tf\n\n    def _joint_freq(self, word_list_1, word_list_2):\n        # combined length of the word lists\n        total_len = len(word_list_1) + len(word_list_2)\n\n        # word frequencies within each list\n        wc1 = self._compute_word_freq(word_list_1)\n        wc2 = self._compute_word_freq(word_list_2)\n\n        # inputs the counts from the first list\n        joint = wc1.copy()\n\n        # adds in the counts of the second list\n        for k in wc2:\n            if k in joint:\n                joint[k] += wc2[k]\n            else:\n                joint[k] = wc2[k]\n\n        # divides total counts by the combined length\n        for k in joint:\n            joint[k] /= float(total_len)\n\n        return joint\n\n    @staticmethod\n    def _kl_divergence(summary_freq, doc_freq):\n        \"\"\"\n        Note: Could import scipy.stats and use scipy.stats.entropy(doc_freq, summary_freq)\n        but this gives equivalent value without the import\n        \"\"\"\n        sum_val = 0\n        for w in summary_freq:\n            frequency = doc_freq.get(w)\n            if frequency:  # missing or zero = no frequency\n                sum_val += frequency * math.log(frequency / summary_freq[w])\n\n        return sum_val\n\n    @staticmethod\n    def _find_index_of_best_sentence(kls):\n        \"\"\"\n        the best sentence is the one with the smallest kl_divergence\n        \"\"\"\n        return kls.index(min(kls))\n\n    def _compute_ratings(self, sentences):\n        word_freq = self.compute_tf(sentences)\n        ratings = {}\n        summary = []\n\n        # make it a list so that it can be modified\n        sentences_list = list(sentences)\n\n        # get all content words once for efficiency\n        sentences_as_words = [self._get_content_words_in_sentence(s) for s in sentences]\n\n        # Removes one sentence per iteration by adding to summary\n        while len(sentences_list) > 0:\n            # will store all the kls values for this pass\n            kls = []\n\n            # converts summary to word list\n            summary_as_word_list = self._get_all_words_in_doc(summary)\n\n            for s in sentences_as_words:\n                # calculates the joint frequency through combining the word lists\n                joint_freq = self._joint_freq(s, summary_as_word_list)\n\n                # adds the calculated kl divergence to the list in index = sentence used\n                kls.append(self._kl_divergence(joint_freq, word_freq))\n\n            # to consider and then add it into the summary\n            index_to_remove = self._find_index_of_best_sentence(kls)\n            best_sentence = sentences_list.pop(index_to_remove)\n            del sentences_as_words[index_to_remove]\n            summary.append(best_sentence)\n\n            # value is the iteration in which it was removed multiplied by -1 so that\n            # the first sentences removed (the most important) have highest values\n            ratings[best_sentence] = -1 * len(ratings)\n\n        return ratings"
+      },
+      {
+        "file": "sumy/summarizers/edmundson_key.py",
+        "name": "EdmundsonKeyMethod._compute_significant_words",
+        "kind": "function",
+        "symbol": "sumy.summarizers.edmundson_key.EdmundsonKeyMethod._compute_significant_words",
+        "start": 21,
+        "end": 37,
+        "code": "    def _compute_significant_words(self, document, weight):\n        # keep only stems contained in bonus words\n        words = map(self.stem_word, document.words)\n        words = filter(self._is_bonus_word, words)\n\n        # compute frequencies of bonus words in document\n        word_counts = Counter(words)\n        word_frequencies = word_counts.values()\n\n        # no frequencies means no significant words\n        if not word_frequencies:\n            return ()\n\n        # return only words greater than weight\n        max_word_frequency = max(word_frequencies)\n        return tuple(word for word, frequency in word_counts.items()\n            if frequency/max_word_frequency > weight)"
+      },
+      {
+        "file": "sumy/models/tf.py",
+        "name": "TfDocumentModel.__init__",
+        "kind": "function",
+        "symbol": "sumy.models.tf.TfDocumentModel.__init__",
+        "start": 15,
+        "end": 26,
+        "code": "    def __init__(self, words, tokenizer=None):\n        if isinstance(words, string_types) and tokenizer is None:\n            raise ValueError(\n                \"Tokenizer has to be given if ``words`` is not a sequence.\")\n        elif isinstance(words, string_types):\n            words = tokenizer.to_words(to_unicode(words))\n        elif not isinstance(words, Sequence):\n            raise ValueError(\n                \"Parameter ``words`` has to be sequence or string with tokenizer given.\")\n\n        self._terms = Counter(map(unicode.lower, words))\n        self._max_frequency = max(self._terms.values()) if self._terms else 1"
+      },
+      {
+        "file": "sumy/models/tf.py",
+        "name": "TfDocumentModel",
+        "kind": "class",
+        "symbol": "sumy.models.tf.TfDocumentModel",
+        "start": 13,
+        "end": 88,
+        "code": "class TfDocumentModel(object):\n    \"\"\"Term-Frequency document model (term = word).\"\"\"\n    def __init__(self, words, tokenizer=None):\n        if isinstance(words, string_types) and tokenizer is None:\n            raise ValueError(\n                \"Tokenizer has to be given if ``words`` is not a sequence.\")\n        elif isinstance(words, string_types):\n            words = tokenizer.to_words(to_unicode(words))\n        elif not isinstance(words, Sequence):\n            raise ValueError(\n                \"Parameter ``words`` has to be sequence or string with tokenizer given.\")\n\n        self._terms = Counter(map(unicode.lower, words))\n        self._max_frequency = max(self._terms.values()) if self._terms else 1\n\n    @property\n    def magnitude(self):\n        \"\"\"\n        Lenght/norm/magnitude of vector representation of document.\n        This is usually denoted by ||d||.\n        \"\"\"\n        return math.sqrt(sum(t**2 for t in self._terms.values()))\n\n    @property\n    def terms(self):\n        return self._terms.keys()\n\n    def most_frequent_terms(self, count=0):\n        \"\"\"\n        Returns ``count`` of terms sorted by their frequency\n        in descending order.\n\n        :parameter int count:\n            Max. number of returned terms. Value 0 means no limit (default).\n        \"\"\"\n        # sort terms by number of occurrences in descending order\n        terms = sorted(self._terms.items(), key=lambda i: -i[1])\n\n        terms = tuple(i[0] for i in terms)\n        if count == 0:\n            return terms\n        elif count > 0:\n            return terms[:count]\n        else:\n            raise ValueError(\n                \"Only non-negative values are allowed for count of terms.\")\n\n    def term_frequency(self, term):\n        \"\"\"\n        Returns frequency of term in document.\n\n        :returns int:\n            Returns count of words in document.\n        \"\"\"\n        return self._terms.get(term, 0)\n\n    def normalized_term_frequency(self, term, smooth=0.0):\n        \"\"\"\n        Returns normalized frequency of term in document.\n        http://nlp.stanford.edu/IR-book/html/htmledition/maximum-tf-normalization-1.html\n\n        :parameter float smooth:\n            0.0 <= smooth <= 1.0, generally set to 0.4, although some\n            early work used the value 0.5. The term is a smoothing term\n            whose role is to damp the contribution of the second term.\n            It may be viewed as a scaling down of TF by the largest TF\n            value in document.\n        :returns float:\n            0.0 <= frequency <= 1.0, where 0 means no occurrence in document\n            and 1 the most frequent term in document.\n        \"\"\"\n        frequency = self.term_frequency(term) / self._max_frequency\n        return smooth + (1.0 - smooth)*frequency\n\n    def __repr__(self):\n        return \"<TfDocumentModel %s>\" % pformat(self._terms)"
+      },
+      {
+        "file": "sumy/summarizers/lex_rank.py",
+        "name": "LexRankSummarizer._compute_tf",
+        "kind": "function",
+        "symbol": "sumy.summarizers.lex_rank.LexRankSummarizer._compute_tf",
+        "start": 58,
+        "end": 71,
+        "code": "    def _compute_tf(self, sentences):\n        tf_values = map(Counter, sentences)\n\n        tf_metrics = []\n        for sentence in tf_values:\n            metrics = {}\n            max_tf = self._find_tf_max(sentence)\n\n            for term, tf in sentence.items():\n                metrics[term] = tf / max_tf\n\n            tf_metrics.append(metrics)\n\n        return tf_metrics"
+      },
+      {
+        "file": "sumy/summarizers/sum_basic.py",
+        "name": "SumBasicSummarizer._compute_tf",
+        "kind": "function",
+        "symbol": "sumy.summarizers.sum_basic.SumBasicSummarizer._compute_tf",
+        "start": 61,
+        "end": 69,
+        "code": "    def _compute_tf(self, sentences):\n        \"\"\"\n        Computes the normalized term frequency as explained in http://www.tfidf.com/\n        \"\"\"\n        content_words = self._get_all_content_words_in_doc(sentences)\n        content_words_count = len(content_words)\n        content_words_freq = self._compute_word_freq(content_words)\n        content_word_tf = dict((k, v / content_words_count) for (k, v) in content_words_freq.items())\n        return content_word_tf"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/kl.py:function: _compute_word_freq",
+      "sumy/summarizers/edmundson_key.py:line: 6",
+      "sumy/models/tf.py:line: 8",
+      "sumy/models/tf.py:function: __init__",
+      "sumy/summarizers/lex_rank.py:line: 12"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 5,
+    "unresolved_locations": 5,
+    "returned_code_chars": 10139
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 27001,
+    "completion_tokens": 677,
+    "total_tokens": 27678,
+    "seconds": 66.73111414909363,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 72.84697937965393,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

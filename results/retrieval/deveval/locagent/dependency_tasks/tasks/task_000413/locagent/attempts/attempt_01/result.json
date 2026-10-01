@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 413,
+  "namespace": "rest_framework.fields.is_simple_callable",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7648,
+      "input_estimate_after": 7648,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nrest_framework/fields.py\nline: 481\nfunction: Field.get_default\n\nrest_framework/fields.py\nline: 260\nfunction: CreateOnlyDefault.__call__\n\nrest_framework/relations.py\nline: (varies)\nfunction: RelatedField.get_attribute\nfunction: ManyRelatedField.get_attribute\n\nrest_framework/serializers.py\nline: (varies)\nfunction: Serializer.to_representation\n\nrest_framework/fields.py\nline: 58\nfunction: is_simple_callable\n```",
+  "final_locations": {
+    "files": [
+      "rest_framework/fields.py",
+      "rest_framework/relations.py",
+      "rest_framework/serializers.py"
+    ],
+    "entities": [
+      {
+        "file": "rest_framework/fields.py",
+        "name": "Field.get_default",
+        "kind": "function",
+        "symbol": "rest_framework.fields.Field.get_default",
+        "start": 481,
+        "end": 499,
+        "code": "    def get_default(self):\n        \"\"\"\n        Return the default value to use when validating data if no input\n        is provided for this field.\n\n        If a default has not been set for this field then this will simply\n        raise `SkipField`, indicating that no value should be set in the\n        validated data for this field.\n        \"\"\"\n        if self.default is empty or getattr(self.root, 'partial', False):\n            # No default, or this is a partial update.\n            raise SkipField()\n        if callable(self.default):\n            if getattr(self.default, 'requires_context', False):\n                return self.default(self)\n            else:\n                return self.default()\n\n        return self.default"
+      },
+      {
+        "file": "rest_framework/fields.py",
+        "name": "CreateOnlyDefault.__call__",
+        "kind": "function",
+        "symbol": "rest_framework.fields.CreateOnlyDefault.__call__",
+        "start": 260,
+        "end": 269,
+        "code": "    def __call__(self, serializer_field):\n        is_update = serializer_field.parent.instance is not None\n        if is_update:\n            raise SkipField()\n        if callable(self.default):\n            if getattr(self.default, 'requires_context', False):\n                return self.default(serializer_field)\n            else:\n                return self.default()\n        return self.default"
+      },
+      {
+        "file": "rest_framework/relations.py",
+        "name": "RelatedField.get_attribute",
+        "kind": "function",
+        "symbol": "rest_framework.relations.RelatedField.get_attribute",
+        "start": 170,
+        "end": 190,
+        "code": "    def get_attribute(self, instance):\n        if self.use_pk_only_optimization() and self.source_attrs:\n            # Optimized case, return a mock object only containing the pk attribute.\n            try:\n                attribute_instance = get_attribute(instance, self.source_attrs[:-1])\n                value = attribute_instance.serializable_value(self.source_attrs[-1])\n                if is_simple_callable(value):\n                    # Handle edge case where the relationship `source` argument\n                    # points to a `get_relationship()` method on the model.\n                    value = value()\n\n                # Handle edge case where relationship `source` argument points\n                # to an instance instead of a pk (e.g., a `@property`).\n                value = getattr(value, 'pk', value)\n\n                return PKOnlyObject(pk=value)\n            except AttributeError:\n                pass\n\n        # Standard case, return the object instance.\n        return super().get_attribute(instance)"
+      },
+      {
+        "file": "rest_framework/relations.py",
+        "name": "ManyRelatedField.get_attribute",
+        "kind": "function",
+        "symbol": "rest_framework.relations.ManyRelatedField.get_attribute",
+        "start": 571,
+        "end": 600,
+        "code": "    def get_attribute(self, instance):\n        # Can't have any relationships if not created\n        if hasattr(instance, 'pk') and instance.pk is None:\n            return []\n\n        try:\n            relationship = get_attribute(instance, self.source_attrs)\n        except (KeyError, AttributeError) as exc:\n            if self.default is not empty:\n                return self.get_default()\n            if self.allow_null:\n                return None\n            if not self.required:\n                raise SkipField()\n            msg = (\n                'Got {exc_type} when attempting to get a value for field '\n                '`{field}` on serializer `{serializer}`.\\nThe serializer '\n                'field might be named incorrectly and not match '\n                'any attribute or key on the `{instance}` instance.\\n'\n                'Original exception text was: {exc}.'.format(\n                    exc_type=type(exc).__name__,\n                    field=self.field_name,\n                    serializer=self.parent.__class__.__name__,\n                    instance=instance.__class__.__name__,\n                    exc=exc\n                )\n            )\n            raise type(exc)(msg)\n\n        return relationship.all() if hasattr(relationship, 'all') else relationship"
+      },
+      {
+        "file": "rest_framework/serializers.py",
+        "name": "Serializer.to_representation",
+        "kind": "function",
+        "symbol": "rest_framework.serializers.Serializer.to_representation",
+        "start": 498,
+        "end": 522,
+        "code": "    def to_representation(self, instance):\n        \"\"\"\n        Object instance -> Dict of primitive datatypes.\n        \"\"\"\n        ret = OrderedDict()\n        fields = self._readable_fields\n\n        for field in fields:\n            try:\n                attribute = field.get_attribute(instance)\n            except SkipField:\n                continue\n\n            # We skip `to_representation` for `None` values so that fields do\n            # not have to explicitly deal with that case.\n            #\n            # For related fields with `use_pk_only_optimization` we need to\n            # resolve the pk value.\n            check_for_none = attribute.pk if isinstance(attribute, PKOnlyObject) else attribute\n            if check_for_none is None:\n                ret[field.field_name] = None\n            else:\n                ret[field.field_name] = field.to_representation(attribute)\n\n        return ret"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4336
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17970,
+    "completion_tokens": 1360,
+    "total_tokens": 19330,
+    "seconds": 51.10836100578308,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 87.61219906806946,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

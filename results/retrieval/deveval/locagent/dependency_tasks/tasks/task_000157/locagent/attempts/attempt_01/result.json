@@ -1,0 +1,159 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 157,
+  "namespace": "alembic.operations.ops.CreateIndexOp.from_index",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 34372,
+      "input_estimate_after": 27028,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 734,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 1192,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 7,
+          "role": "tool",
+          "original_content_tokens": 27828,
+          "retained_content_tokens": 22919
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the key reusable dependencies for implementing the `CreateIndexOp.from_index` method. The target method needs to extract information from an SQLAlchemy `Index` object and create a `CreateIndexOp` instance. Looking at the code, I can see several existing patterns and dependencies that should be reused:\n\n1. **Other `from_*` methods in constraint operations** - These show the pattern for extracting information from SQLAlchemy schema objects\n2. **`DropIndexOp.from_index` method** - This is the reverse operation and shows how to extract index properties\n3. **`sqla_compat` utilities** - Used for compatibility functions with SQLAlchemy\n4. **`schemaobj.SchemaObjects`** - Used for creating schema objects in migration context\n5. **Other constraint operation patterns** - For consistency with the codebase\n\nHere are the specific locations containing reusable dependencies:\n\n```\nalembic/operations/ops.py\nline: 1050\nline: 1056\nclass: DropIndexOp\nfunction: DropIndexOp.from_index\n\nalembic/operations/ops.py\nline: 270\nline: 279\nclass: CreatePrimaryKeyOp\nfunction: CreatePrimaryKeyOp.from_constraint\n\nalembic/operations/ops.py\nline: 394\nline: 413\nclass: CreateUniqueConstraintOp\nfunction: CreateUniqueConstraintOp.from_constraint\n\nalembic/operations/ops.py\nline: 533\nline: 572\nclass: CreateForeignKeyOp\nfunction: CreateForeignKeyOp.from_constraint\n\nalembic/util/sqla_compat.py\nline: (not shown in evidence but referenced)\nfunction: sqla_compat._table_for_constraint\nfunction: sqla_compat.constraint_name_or_none\n```",
+  "final_locations": {
+    "files": [
+      "alembic/operations/ops.py",
+      "alembic/util/sqla_compat.py"
+    ],
+    "entities": [
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "DropIndexOp.from_index",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.DropIndexOp.from_index",
+        "start": 1050,
+        "end": 1058,
+        "code": "    def from_index(cls, index: Index) -> DropIndexOp:\n        assert index.table is not None\n        return cls(\n            index.name,  # type: ignore[arg-type]\n            table_name=index.table.name,\n            schema=index.table.schema,\n            _reverse=CreateIndexOp.from_index(index),\n            **index.kwargs,\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "DropIndexOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.DropIndexOp",
+        "start": 1023,
+        "end": 1141,
+        "code": "class DropIndexOp(MigrateOperation):\n    \"\"\"Represent a drop index operation.\"\"\"\n\n    def __init__(\n        self,\n        index_name: Union[quoted_name, str, conv],\n        table_name: Optional[str] = None,\n        *,\n        schema: Optional[str] = None,\n        if_exists: Optional[bool] = None,\n        _reverse: Optional[CreateIndexOp] = None,\n        **kw: Any,\n    ) -> None:\n        self.index_name = index_name\n        self.table_name = table_name\n        self.schema = schema\n        self.if_exists = if_exists\n        self._reverse = _reverse\n        self.kw = kw\n\n    def to_diff_tuple(self) -> Tuple[str, Index]:\n        return (\"remove_index\", self.to_index())\n\n    def reverse(self) -> CreateIndexOp:\n        return CreateIndexOp.from_index(self.to_index())\n\n    @classmethod\n    def from_index(cls, index: Index) -> DropIndexOp:\n        assert index.table is not None\n        return cls(\n            index.name,  # type: ignore[arg-type]\n            table_name=index.table.name,\n            schema=index.table.schema,\n            _reverse=CreateIndexOp.from_index(index),\n            **index.kwargs,\n        )\n\n    def to_index(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> Index:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n\n        # need a dummy column name here since SQLAlchemy\n        # 0.7.6 and further raises on Index with no columns\n        return schema_obj.index(\n            self.index_name,\n            self.table_name,\n            self._reverse.columns if self._reverse else [\"x\"],\n            schema=self.schema,\n            **self.kw,\n        )\n\n    @classmethod\n    def drop_index(\n        cls,\n        operations: Operations,\n        index_name: str,\n        table_name: Optional[str] = None,\n        *,\n        schema: Optional[str] = None,\n        if_exists: Optional[bool] = None,\n        **kw: Any,\n    ) -> None:\n        r\"\"\"Issue a \"drop index\" instruction using the current\n        migration context.\n\n        e.g.::\n\n            drop_index(\"accounts\")\n\n        :param index_name: name of the index.\n        :param table_name: name of the owning table.  Some\n         backends such as Microsoft SQL Server require this.\n        :param schema: Optional schema name to operate within.  To control\n         quoting of the schema outside of the default behavior, use\n         the SQLAlchemy construct\n         :class:`~sqlalchemy.sql.elements.quoted_name`.\n\n        :param if_exists: If True, adds IF EXISTS operator when\n         dropping the index.\n\n         .. versionadded:: 1.12.0\n\n        :param \\**kw: Additional keyword arguments not mentioned above are\n         dialect specific, and passed in the form\n         ``<dialectname>_<argname>``.\n         See the documentation regarding an individual dialect at\n         :ref:`dialect_toplevel` for detail on documented arguments.\n\n        \"\"\"\n        op = cls(\n            index_name,\n            table_name=table_name,\n            schema=schema,\n            if_exists=if_exists,\n            **kw,\n        )\n        return operations.invoke(op)\n\n    @classmethod\n    def batch_drop_index(\n        cls, operations: BatchOperations, index_name: str, **kw: Any\n    ) -> None:\n        \"\"\"Issue a \"drop index\" instruction using the\n        current batch migration context.\n\n        .. seealso::\n\n            :meth:`.Operations.drop_index`\n\n        \"\"\"\n\n        op = cls(\n            index_name,\n            table_name=operations.impl.table_name,\n            schema=operations.impl.schema,\n            **kw,\n        )\n        return operations.invoke(op)"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreatePrimaryKeyOp.from_constraint",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.CreatePrimaryKeyOp.from_constraint",
+        "start": 270,
+        "end": 279,
+        "code": "    def from_constraint(cls, constraint: Constraint) -> CreatePrimaryKeyOp:\n        constraint_table = sqla_compat._table_for_constraint(constraint)\n        pk_constraint = cast(\"PrimaryKeyConstraint\", constraint)\n        return cls(\n            sqla_compat.constraint_name_or_none(pk_constraint.name),\n            constraint_table.name,\n            pk_constraint.columns.keys(),\n            schema=constraint_table.schema,\n            **pk_constraint.dialect_kwargs,\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreatePrimaryKeyOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.CreatePrimaryKeyOp",
+        "start": 249,
+        "end": 365,
+        "code": "class CreatePrimaryKeyOp(AddConstraintOp):\n    \"\"\"Represent a create primary key operation.\"\"\"\n\n    constraint_type = \"primarykey\"\n\n    def __init__(\n        self,\n        constraint_name: Optional[sqla_compat._ConstraintNameDefined],\n        table_name: str,\n        columns: Sequence[str],\n        *,\n        schema: Optional[str] = None,\n        **kw: Any,\n    ) -> None:\n        self.constraint_name = constraint_name\n        self.table_name = table_name\n        self.columns = columns\n        self.schema = schema\n        self.kw = kw\n\n    @classmethod\n    def from_constraint(cls, constraint: Constraint) -> CreatePrimaryKeyOp:\n        constraint_table = sqla_compat._table_for_constraint(constraint)\n        pk_constraint = cast(\"PrimaryKeyConstraint\", constraint)\n        return cls(\n            sqla_compat.constraint_name_or_none(pk_constraint.name),\n            constraint_table.name,\n            pk_constraint.columns.keys(),\n            schema=constraint_table.schema,\n            **pk_constraint.dialect_kwargs,\n        )\n\n    def to_constraint(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> PrimaryKeyConstraint:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n\n        return schema_obj.primary_key_constraint(\n            self.constraint_name,\n            self.table_name,\n            self.columns,\n            schema=self.schema,\n            **self.kw,\n        )\n\n    @classmethod\n    def create_primary_key(\n        cls,\n        operations: Operations,\n        constraint_name: Optional[str],\n        table_name: str,\n        columns: List[str],\n        *,\n        schema: Optional[str] = None,\n    ) -> None:\n        \"\"\"Issue a \"create primary key\" instruction using the current\n        migration context.\n\n        e.g.::\n\n            from alembic import op\n\n            op.create_primary_key(\"pk_my_table\", \"my_table\", [\"id\", \"version\"])\n\n        This internally generates a :class:`~sqlalchemy.schema.Table` object\n        containing the necessary columns, then generates a new\n        :class:`~sqlalchemy.schema.PrimaryKeyConstraint`\n        object which it then associates with the\n        :class:`~sqlalchemy.schema.Table`.\n        Any event listeners associated with this action will be fired\n        off normally.   The :class:`~sqlalchemy.schema.AddConstraint`\n        construct is ultimately used to generate the ALTER statement.\n\n        :param constraint_name: Name of the primary key constraint.  The name\n         is necessary so that an ALTER statement can be emitted.  For setups\n         that use an automated naming scheme such as that described at\n         :ref:`sqla:constraint_naming_conventions`\n         ``name`` here can be ``None``, as the event listener will\n         apply the name to the constraint object when it is associated\n         with the table.\n        :param table_name: String name of the target table.\n        :param columns: a list of string column names to be applied to the\n         primary key constraint.\n        :param schema: Optional schema name to operate within.  To control\n         quoting of the schema outside of the default behavior, use\n         the SQLAlchemy construct\n         :class:`~sqlalchemy.sql.elements.quoted_name`.\n\n        \"\"\"\n        op = cls(constraint_name, table_name, columns, schema=schema)\n        return operations.invoke(op)\n\n    @classmethod\n    def batch_create_primary_key(\n        cls,\n        operations: BatchOperations,\n        constraint_name: str,\n        columns: List[str],\n    ) -> None:\n        \"\"\"Issue a \"create primary key\" instruction using the\n        current batch migration context.\n\n        The batch form of this call omits the ``table_name`` and ``schema``\n        arguments from the call.\n\n        .. seealso::\n\n            :meth:`.Operations.create_primary_key`\n\n        \"\"\"\n        op = cls(\n            constraint_name,\n            operations.impl.table_name,\n            columns,\n            schema=operations.impl.schema,\n        )\n        return operations.invoke(op)"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateUniqueConstraintOp.from_constraint",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.CreateUniqueConstraintOp.from_constraint",
+        "start": 394,
+        "end": 413,
+        "code": "    def from_constraint(\n        cls, constraint: Constraint\n    ) -> CreateUniqueConstraintOp:\n        constraint_table = sqla_compat._table_for_constraint(constraint)\n\n        uq_constraint = cast(\"UniqueConstraint\", constraint)\n\n        kw: dict = {}\n        if uq_constraint.deferrable:\n            kw[\"deferrable\"] = uq_constraint.deferrable\n        if uq_constraint.initially:\n            kw[\"initially\"] = uq_constraint.initially\n        kw.update(uq_constraint.dialect_kwargs)\n        return cls(\n            sqla_compat.constraint_name_or_none(uq_constraint.name),\n            constraint_table.name,\n            [c.name for c in uq_constraint.columns],\n            schema=constraint_table.schema,\n            **kw,\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateUniqueConstraintOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.CreateUniqueConstraintOp",
+        "start": 373,
+        "end": 500,
+        "code": "class CreateUniqueConstraintOp(AddConstraintOp):\n    \"\"\"Represent a create unique constraint operation.\"\"\"\n\n    constraint_type = \"unique\"\n\n    def __init__(\n        self,\n        constraint_name: Optional[sqla_compat._ConstraintNameDefined],\n        table_name: str,\n        columns: Sequence[str],\n        *,\n        schema: Optional[str] = None,\n        **kw: Any,\n    ) -> None:\n        self.constraint_name = constraint_name\n        self.table_name = table_name\n        self.columns = columns\n        self.schema = schema\n        self.kw = kw\n\n    @classmethod\n    def from_constraint(\n        cls, constraint: Constraint\n    ) -> CreateUniqueConstraintOp:\n        constraint_table = sqla_compat._table_for_constraint(constraint)\n\n        uq_constraint = cast(\"UniqueConstraint\", constraint)\n\n        kw: dict = {}\n        if uq_constraint.deferrable:\n            kw[\"deferrable\"] = uq_constraint.deferrable\n        if uq_constraint.initially:\n            kw[\"initially\"] = uq_constraint.initially\n        kw.update(uq_constraint.dialect_kwargs)\n        return cls(\n            sqla_compat.constraint_name_or_none(uq_constraint.name),\n            constraint_table.name,\n            [c.name for c in uq_constraint.columns],\n            schema=constraint_table.schema,\n            **kw,\n        )\n\n    def to_constraint(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> UniqueConstraint:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n        return schema_obj.unique_constraint(\n            self.constraint_name,\n            self.table_name,\n            self.columns,\n            schema=self.schema,\n            **self.kw,\n        )\n\n    @classmethod\n    def create_unique_constraint(\n        cls,\n        operations: Operations,\n        constraint_name: Optional[str],\n        table_name: str,\n        columns: Sequence[str],\n        *,\n        schema: Optional[str] = None,\n        **kw: Any,\n    ) -> Any:\n        \"\"\"Issue a \"create unique constraint\" instruction using the\n        current migration context.\n\n        e.g.::\n\n            from alembic import op\n            op.create_unique_constraint(\"uq_user_name\", \"user\", [\"name\"])\n\n        This internally generates a :class:`~sqlalchemy.schema.Table` object\n        containing the necessary columns, then generates a new\n        :class:`~sqlalchemy.schema.UniqueConstraint`\n        object which it then associates with the\n        :class:`~sqlalchemy.schema.Table`.\n        Any event listeners associated with this action will be fired\n        off normally.   The :class:`~sqlalchemy.schema.AddConstraint`\n        construct is ultimately used to generate the ALTER statement.\n\n        :param name: Name of the unique constraint.  The name is necessary\n         so that an ALTER statement can be emitted.  For setups that\n         use an automated naming scheme such as that described at\n         :ref:`sqla:constraint_naming_conventions`,\n         ``name`` here can be ``None``, as the event listener will\n         apply the name to the constraint object when it is associated\n         with the table.\n        :param table_name: String name of the source table.\n        :param columns: a list of string column names in the\n         source table.\n        :param deferrable: optional bool. If set, emit DEFERRABLE or\n         NOT DEFERRABLE when issuing DDL for this constraint.\n        :param initially: optional string. If set, emit INITIALLY <value>\n         when issuing DDL for this constraint.\n        :param schema: Optional schema name to operate within.  To control\n         quoting of the schema outside of the default behavior, use\n         the SQLAlchemy construct\n         :class:`~sqlalchemy.sql.elements.quoted_name`.\n\n        \"\"\"\n\n        op = cls(constraint_name, table_name, columns, schema=schema, **kw)\n        return operations.invoke(op)\n\n    @classmethod\n    def batch_create_unique_constraint(\n        cls,\n        operations: BatchOperations,\n        constraint_name: str,\n        columns: Sequence[str],\n        **kw: Any,\n    ) -> Any:\n        \"\"\"Issue a \"create unique constraint\" instruction using the\n        current batch migration context.\n\n        The batch form of this call omits the ``source`` and ``schema``\n        arguments from the call.\n\n        .. seealso::\n\n            :meth:`.Operations.create_unique_constraint`\n\n        \"\"\"\n        kw[\"schema\"] = operations.impl.schema\n        op = cls(constraint_name, operations.impl.table_name, columns, **kw)\n        return operations.invoke(op)"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateForeignKeyOp.from_constraint",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.CreateForeignKeyOp.from_constraint",
+        "start": 533,
+        "end": 572,
+        "code": "    def from_constraint(cls, constraint: Constraint) -> CreateForeignKeyOp:\n        fk_constraint = cast(\"ForeignKeyConstraint\", constraint)\n        kw: dict = {}\n        if fk_constraint.onupdate:\n            kw[\"onupdate\"] = fk_constraint.onupdate\n        if fk_constraint.ondelete:\n            kw[\"ondelete\"] = fk_constraint.ondelete\n        if fk_constraint.initially:\n            kw[\"initially\"] = fk_constraint.initially\n        if fk_constraint.deferrable:\n            kw[\"deferrable\"] = fk_constraint.deferrable\n        if fk_constraint.use_alter:\n            kw[\"use_alter\"] = fk_constraint.use_alter\n        if fk_constraint.match:\n            kw[\"match\"] = fk_constraint.match\n\n        (\n            source_schema,\n            source_table,\n            source_columns,\n            target_schema,\n            target_table,\n            target_columns,\n            onupdate,\n            ondelete,\n            deferrable,\n            initially,\n        ) = sqla_compat._fk_spec(fk_constraint)\n\n        kw[\"source_schema\"] = source_schema\n        kw[\"referent_schema\"] = target_schema\n        kw.update(fk_constraint.dialect_kwargs)\n        return cls(\n            sqla_compat.constraint_name_or_none(fk_constraint.name),\n            source_table,\n            target_table,\n            source_columns,\n            target_columns,\n            **kw,\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateForeignKeyOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.CreateForeignKeyOp",
+        "start": 508,
+        "end": 726,
+        "code": "class CreateForeignKeyOp(AddConstraintOp):\n    \"\"\"Represent a create foreign key constraint operation.\"\"\"\n\n    constraint_type = \"foreignkey\"\n\n    def __init__(\n        self,\n        constraint_name: Optional[sqla_compat._ConstraintNameDefined],\n        source_table: str,\n        referent_table: str,\n        local_cols: List[str],\n        remote_cols: List[str],\n        **kw: Any,\n    ) -> None:\n        self.constraint_name = constraint_name\n        self.source_table = source_table\n        self.referent_table = referent_table\n        self.local_cols = local_cols\n        self.remote_cols = remote_cols\n        self.kw = kw\n\n    def to_diff_tuple(self) -> Tuple[str, ForeignKeyConstraint]:\n        return (\"add_fk\", self.to_constraint())\n\n    @classmethod\n    def from_constraint(cls, constraint: Constraint) -> CreateForeignKeyOp:\n        fk_constraint = cast(\"ForeignKeyConstraint\", constraint)\n        kw: dict = {}\n        if fk_constraint.onupdate:\n            kw[\"onupdate\"] = fk_constraint.onupdate\n        if fk_constraint.ondelete:\n            kw[\"ondelete\"] = fk_constraint.ondelete\n        if fk_constraint.initially:\n            kw[\"initially\"] = fk_constraint.initially\n        if fk_constraint.deferrable:\n            kw[\"deferrable\"] = fk_constraint.deferrable\n        if fk_constraint.use_alter:\n            kw[\"use_alter\"] = fk_constraint.use_alter\n        if fk_constraint.match:\n            kw[\"match\"] = fk_constraint.match\n\n        (\n            source_schema,\n            source_table,\n            source_columns,\n            target_schema,\n            target_table,\n            target_columns,\n            onupdate,\n            ondelete,\n            deferrable,\n            initially,\n        ) = sqla_compat._fk_spec(fk_constraint)\n\n        kw[\"source_schema\"] = source_schema\n        kw[\"referent_schema\"] = target_schema\n        kw.update(fk_constraint.dialect_kwargs)\n        return cls(\n            sqla_compat.constraint_name_or_none(fk_constraint.name),\n            source_table,\n            target_table,\n            source_columns,\n            target_columns,\n            **kw,\n        )\n\n    def to_constraint(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> ForeignKeyConstraint:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n        return schema_obj.foreign_key_constraint(\n            self.constraint_name,\n            self.source_table,\n            self.referent_table,\n            self.local_cols,\n            self.remote_cols,\n            **self.kw,\n        )\n\n    @classmethod\n    def create_foreign_key(\n        cls,\n        operations: Operations,\n        constraint_name: Optional[str],\n        source_table: str,\n        referent_table: str,\n        local_cols: List[str],\n        remote_cols: List[str],\n        *,\n        onupdate: Optional[str] = None,\n        ondelete: Optional[str] = None,\n        deferrable: Optional[bool] = None,\n        initially: Optional[str] = None,\n        match: Optional[str] = None,\n        source_schema: Optional[str] = None,\n        referent_schema: Optional[str] = None,\n        **dialect_kw: Any,\n    ) -> None:\n        \"\"\"Issue a \"create foreign key\" instruction using the\n        current migration context.\n\n        e.g.::\n\n            from alembic import op\n\n            op.create_foreign_key(\n                \"fk_user_address\",\n                \"address\",\n                \"user\",\n                [\"user_id\"],\n                [\"id\"],\n            )\n\n        This internally generates a :class:`~sqlalchemy.schema.Table` object\n        containing the necessary columns, then generates a new\n        :class:`~sqlalchemy.schema.ForeignKeyConstraint`\n        object which it then associates with the\n        :class:`~sqlalchemy.schema.Table`.\n        Any event listeners associated with this action will be fired\n        off normally.   The :class:`~sqlalchemy.schema.AddConstraint`\n        construct is ultimately used to generate the ALTER statement.\n\n        :param constraint_name: Name of the foreign key constraint.  The name\n         is necessary so that an ALTER statement can be emitted.  For setups\n         that use an automated naming scheme such as that described at\n         :ref:`sqla:constraint_naming_conventions`,\n         ``name`` here can be ``None``, as the event listener will\n         apply the name to the constraint object when it is associated\n         with the table.\n        :param source_table: String name of the source table.\n        :param referent_table: String name of the destination table.\n        :param local_cols: a list of string column names in the\n         source table.\n        :param remote_cols: a list of string column names in the\n         remote table.\n        :param onupdate: Optional string. If set, emit ON UPDATE <value> when\n         issuing DDL for this constraint. Typical values include CASCADE,\n         DELETE and RESTRICT.\n        :param ondelete: Optional string. If set, emit ON DELETE <value> when\n         issuing DDL for this constraint. Typical values include CASCADE,\n         DELETE and RESTRICT.\n        :param deferrable: optional bool. If set, emit DEFERRABLE or NOT\n         DEFERRABLE when issuing DDL for this constraint.\n        :param source_schema: Optional schema name of the source table.\n        :param referent_schema: Optional schema name of the destination table.\n\n        \"\"\"\n\n        op = cls(\n            constraint_name,\n            source_table,\n            referent_table,\n            local_cols,\n            remote_cols,\n            onupdate=onupdate,\n            ondelete=ondelete,\n            deferrable=deferrable,\n            source_schema=source_schema,\n            referent_schema=referent_schema,\n            initially=initially,\n            match=match,\n            **dialect_kw,\n        )\n        return operations.invoke(op)\n\n    @classmethod\n    def batch_create_foreign_key(\n        cls,\n        operations: BatchOperations,\n        constraint_name: str,\n        referent_table: str,\n        local_cols: List[str],\n        remote_cols: List[str],\n        *,\n        referent_schema: Optional[str] = None,\n        onupdate: Optional[str] = None,\n        ondelete: Optional[str] = None,\n        deferrable: Optional[bool] = None,\n        initially: Optional[str] = None,\n        match: Optional[str] = None,\n        **dialect_kw: Any,\n    ) -> None:\n        \"\"\"Issue a \"create foreign key\" instruction using the\n        current batch migration context.\n\n        The batch form of this call omits the ``source`` and ``source_schema``\n        arguments from the call.\n\n        e.g.::\n\n            with batch_alter_table(\"address\") as batch_op:\n                batch_op.create_foreign_key(\n                    \"fk_user_address\",\n                    \"user\",\n                    [\"user_id\"],\n                    [\"id\"],\n                )\n\n        .. seealso::\n\n            :meth:`.Operations.create_foreign_key`\n\n        \"\"\"\n        op = cls(\n            constraint_name,\n            operations.impl.table_name,\n            referent_table,\n            local_cols,\n            remote_cols,\n            onupdate=onupdate,\n            ondelete=ondelete,\n            deferrable=deferrable,\n            source_schema=operations.impl.schema,\n            referent_schema=referent_schema,\n            initially=initially,\n            match=match,\n            **dialect_kw,\n        )\n        return operations.invoke(op)"
+      }
+    ],
+    "unresolved": [
+      "alembic/util/sqla_compat.py:function: sqla_compat._table_for_constraint",
+      "alembic/util/sqla_compat.py:function: sqla_compat.constraint_name_or_none"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 22509
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 36309,
+    "completion_tokens": 647,
+    "total_tokens": 36956,
+    "seconds": 68.25548386573792,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 107.53382849693298,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

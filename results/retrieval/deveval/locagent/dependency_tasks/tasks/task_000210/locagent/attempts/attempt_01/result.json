@@ -1,0 +1,144 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 210,
+  "namespace": "datasette.app.Datasette.ensure_permissions",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9613,
+      "input_estimate_after": 9613,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I have identified the key reusable dependencies for implementing the `ensure_permissions` function. The analysis shows that `ensure_permissions` needs to check permissions using the existing permission system, handle forbidden exceptions, and work with actor objects. Here are the verified locations containing reusable dependencies:\n\n```\ndatasette/default_permissions.py\nfunction: permission_allowed\nline: 6\n\ndatasette/forbidden.py\nfunction: forbidden\nline: 6\n\ndatasette/utils/asgi.py\nclass: Request\nfunction: actor\nline: 112\n\ndatasette/views/special.py\nclass: PermissionsDebugView\nfunction: get\nline: 97\n\ndatasette/views/row.py\nclass: RowView\nfunction: data\nline: 16\n```",
+  "final_locations": {
+    "files": [
+      "datasette/default_permissions.py",
+      "datasette/forbidden.py",
+      "datasette/utils/asgi.py",
+      "datasette/views/special.py",
+      "datasette/views/row.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/default_permissions.py",
+        "name": "permission_allowed",
+        "kind": "function",
+        "symbol": "datasette.default_permissions.permission_allowed",
+        "start": 6,
+        "end": 51,
+        "code": "def permission_allowed(datasette, actor, action, resource):\n    async def inner():\n        if action in (\"permissions-debug\", \"debug-menu\"):\n            if actor and actor.get(\"id\") == \"root\":\n                return True\n        elif action == \"view-instance\":\n            allow = datasette.metadata(\"allow\")\n            if allow is not None:\n                return actor_matches_allow(actor, allow)\n        elif action == \"view-database\":\n            if resource == \"_internal\" and (actor is None or actor.get(\"id\") != \"root\"):\n                return False\n            database_allow = datasette.metadata(\"allow\", database=resource)\n            if database_allow is None:\n                return None\n            return actor_matches_allow(actor, database_allow)\n        elif action == \"view-table\":\n            database, table = resource\n            tables = datasette.metadata(\"tables\", database=database) or {}\n            table_allow = (tables.get(table) or {}).get(\"allow\")\n            if table_allow is None:\n                return None\n            return actor_matches_allow(actor, table_allow)\n        elif action == \"view-query\":\n            # Check if this query has a \"allow\" block in metadata\n            database, query_name = resource\n            query = await datasette.get_canned_query(database, query_name, actor)\n            assert query is not None\n            allow = query.get(\"allow\")\n            if allow is None:\n                return None\n            return actor_matches_allow(actor, allow)\n        elif action == \"execute-sql\":\n            # Only use default_allow_sql setting if it is set to False:\n            default_allow_sql = (\n                None if datasette.setting(\"default_allow_sql\") else False\n            )\n            # Use allow_sql block from database block, or from top-level\n            database_allow_sql = datasette.metadata(\"allow_sql\", database=resource)\n            if database_allow_sql is None:\n                database_allow_sql = datasette.metadata(\"allow_sql\")\n            if database_allow_sql is None:\n                return default_allow_sql\n            return actor_matches_allow(actor, database_allow_sql)\n\n    return inner"
+      },
+      {
+        "file": "datasette/forbidden.py",
+        "name": "forbidden",
+        "kind": "function",
+        "symbol": "datasette.forbidden.forbidden",
+        "start": 6,
+        "end": 20,
+        "code": "def forbidden(datasette, request, message):\n    async def inner():\n        return Response.html(\n            await datasette.render_template(\n                \"error.html\",\n                {\n                    \"title\": \"Forbidden\",\n                    \"error\": message,\n                },\n                request=request,\n            ),\n            status=403,\n        )\n\n    return inner"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Request",
+        "kind": "class",
+        "symbol": "datasette.utils.asgi.Request",
+        "start": 36,
+        "end": 144,
+        "code": "class Request:\n    def __init__(self, scope, receive):\n        self.scope = scope\n        self.receive = receive\n\n    def __repr__(self):\n        return '<asgi.Request method=\"{}\" url=\"{}\">'.format(self.method, self.url)\n\n    @property\n    def method(self):\n        return self.scope[\"method\"]\n\n    @property\n    def url(self):\n        return urlunparse(\n            (self.scheme, self.host, self.path, None, self.query_string, None)\n        )\n\n    @property\n    def url_vars(self):\n        return (self.scope.get(\"url_route\") or {}).get(\"kwargs\") or {}\n\n    @property\n    def scheme(self):\n        return self.scope.get(\"scheme\") or \"http\"\n\n    @property\n    def headers(self):\n        return {\n            k.decode(\"latin-1\").lower(): v.decode(\"latin-1\")\n            for k, v in self.scope.get(\"headers\") or []\n        }\n\n    @property\n    def host(self):\n        return self.headers.get(\"host\") or \"localhost\"\n\n    @property\n    def cookies(self):\n        cookies = SimpleCookie()\n        cookies.load(self.headers.get(\"cookie\", \"\"))\n        return {key: value.value for key, value in cookies.items()}\n\n    @property\n    def path(self):\n        if self.scope.get(\"raw_path\") is not None:\n            return self.scope[\"raw_path\"].decode(\"latin-1\").partition(\"?\")[0]\n        else:\n            path = self.scope[\"path\"]\n            if isinstance(path, str):\n                return path\n            else:\n                return path.decode(\"utf-8\")\n\n    @property\n    def query_string(self):\n        return (self.scope.get(\"query_string\") or b\"\").decode(\"latin-1\")\n\n    @property\n    def full_path(self):\n        qs = self.query_string\n        return \"{}{}\".format(self.path, (\"?\" + qs) if qs else \"\")\n\n    @property\n    def args(self):\n\n        # parsed_params = MultiParams()\n        # query_string = self.scope.get('query_string', b'').decode('utf-8')\n        # if query_string:\n        #     for key, value in parse_qs(query_string).items():\n        #         parsed_params.add(key, value)\n        # return parsed_params\n        return MultiParams(parse_qs(qs=self.query_string, keep_blank_values=True))\n\n\n    @property\n    def actor(self):\n        return self.scope.get(\"actor\", None)\n\n    async def post_body(self):\n        body = b\"\"\n        more_body = True\n        while more_body:\n            message = await self.receive()\n            assert message[\"type\"] == \"http.request\", message\n            body += message.get(\"body\", b\"\")\n            more_body = message.get(\"more_body\", False)\n        return body\n\n    async def post_vars(self):\n        body = await self.post_body()\n        return dict(parse_qsl(body.decode(\"utf-8\"), keep_blank_values=True))\n\n    @classmethod\n    def fake(cls, path_with_query_string, method=\"GET\", scheme=\"http\", url_vars=None):\n        \"\"\"Useful for constructing Request objects for tests\"\"\"\n        path, _, query_string = path_with_query_string.partition(\"?\")\n        scope = {\n            \"http_version\": \"1.1\",\n            \"method\": method,\n            \"path\": path,\n            \"raw_path\": path_with_query_string.encode(\"latin-1\"),\n            \"query_string\": query_string.encode(\"latin-1\"),\n            \"scheme\": scheme,\n            \"type\": \"http\",\n        }\n        if url_vars:\n            scope[\"url_route\"] = {\"kwargs\": url_vars}\n        return cls(scope, None)"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Request.actor",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.Request.actor",
+        "start": 112,
+        "end": 113,
+        "code": "    def actor(self):\n        return self.scope.get(\"actor\", None)"
+      },
+      {
+        "file": "datasette/views/special.py",
+        "name": "PermissionsDebugView",
+        "kind": "class",
+        "symbol": "datasette.views.special.PermissionsDebugView",
+        "start": 93,
+        "end": 106,
+        "code": "class PermissionsDebugView(BaseView):\n    name = \"permissions_debug\"\n    has_json_alternate = False\n\n    async def get(self, request):\n        await self.ds.ensure_permissions(request.actor, [\"view-instance\"])\n        if not await self.ds.permission_allowed(request.actor, \"permissions-debug\"):\n            raise Forbidden(\"Permission denied\")\n        return await self.render(\n            [\"permissions_debug.html\"],\n            request,\n            # list() avoids error if check is performed during template render:\n            {\"permission_checks\": list(reversed(self.ds._permission_checks))},\n        )"
+      },
+      {
+        "file": "datasette/views/special.py",
+        "name": "PermissionsDebugView.get",
+        "kind": "function",
+        "symbol": "datasette.views.special.PermissionsDebugView.get",
+        "start": 97,
+        "end": 106,
+        "code": "    async def get(self, request):\n        await self.ds.ensure_permissions(request.actor, [\"view-instance\"])\n        if not await self.ds.permission_allowed(request.actor, \"permissions-debug\"):\n            raise Forbidden(\"Permission denied\")\n        return await self.render(\n            [\"permissions_debug.html\"],\n            request,\n            # list() avoids error if check is performed during template render:\n            {\"permission_checks\": list(reversed(self.ds._permission_checks))},\n        )"
+      },
+      {
+        "file": "datasette/views/row.py",
+        "name": "RowView",
+        "kind": "class",
+        "symbol": "datasette.views.row.RowView",
+        "start": 13,
+        "end": 148,
+        "code": "class RowView(DataView):\n    name = \"row\"\n\n    async def data(self, request, default_labels=False):\n        database_route = tilde_decode(request.url_vars[\"database\"])\n        table = tilde_decode(request.url_vars[\"table\"])\n        try:\n            db = self.ds.get_database(route=database_route)\n        except KeyError:\n            raise NotFound(\"Database not found: {}\".format(database_route))\n        database = db.name\n\n        # Ensure user has permission to view this row\n        visible, private = await self.ds.check_visibility(\n            request.actor,\n            permissions=[\n                (\"view-table\", (database, table)),\n                (\"view-database\", database),\n                \"view-instance\",\n            ],\n        )\n        if not visible:\n            raise Forbidden(\"You do not have permission to view this table\")\n\n        pk_values = urlsafe_components(request.url_vars[\"pks\"])\n        try:\n            db = self.ds.get_database(route=database_route)\n        except KeyError:\n            raise NotFound(\"Database not found: {}\".format(database_route))\n        database = db.name\n        sql, params, pks = await _sql_params_pks(db, table, pk_values)\n        results = await db.execute(sql, params, truncate=True)\n        columns = [r[0] for r in results.description]\n        rows = list(results.rows)\n        if not rows:\n            raise NotFound(f\"Record not found: {pk_values}\")\n\n        async def template_data():\n            display_columns, display_rows = await display_columns_and_rows(\n                self.ds,\n                database,\n                table,\n                results.description,\n                rows,\n                link_column=False,\n                truncate_cells=0,\n            )\n            for column in display_columns:\n                column[\"sortable\"] = False\n            return {\n                \"private\": private,\n                \"foreign_key_tables\": await self.foreign_key_tables(\n                    database, table, pk_values\n                ),\n                \"display_columns\": display_columns,\n                \"display_rows\": display_rows,\n                \"custom_table_templates\": [\n                    f\"_table-{to_css_class(database)}-{to_css_class(table)}.html\",\n                    f\"_table-row-{to_css_class(database)}-{to_css_class(table)}.html\",\n                    \"_table.html\",\n                ],\n                \"metadata\": (self.ds.metadata(\"databases\") or {})\n                .get(database, {})\n                .get(\"tables\", {})\n                .get(table, {}),\n            }\n\n        data = {\n            \"database\": database,\n            \"table\": table,\n            \"rows\": rows,\n            \"columns\": columns,\n            \"primary_keys\": pks,\n            \"primary_key_values\": pk_values,\n            \"units\": self.ds.table_metadata(database, table).get(\"units\", {}),\n        }\n\n        if \"foreign_key_tables\" in (request.args.get(\"_extras\") or \"\").split(\",\"):\n            data[\"foreign_key_tables\"] = await self.foreign_key_tables(\n                database, table, pk_values\n            )\n\n        return (\n            data,\n            template_data,\n            (\n                f\"row-{to_css_class(database)}-{to_css_class(table)}.html\",\n                \"row.html\",\n            ),\n        )\n\n    async def foreign_key_tables(self, database, table, pk_values):\n        if len(pk_values) != 1:\n            return []\n        db = self.ds.databases[database]\n        all_foreign_keys = await db.get_all_foreign_keys()\n        foreign_keys = all_foreign_keys[table][\"incoming\"]\n        if len(foreign_keys) == 0:\n            return []\n\n        sql = \"select \" + \", \".join(\n            [\n                \"(select count(*) from {table} where {column}=:id)\".format(\n                    table=escape_sqlite(fk[\"other_table\"]),\n                    column=escape_sqlite(fk[\"other_column\"]),\n                )\n                for fk in foreign_keys\n            ]\n        )\n        try:\n            rows = list(await db.execute(sql, {\"id\": pk_values[0]}))\n        except QueryInterrupted:\n            # Almost certainly hit the timeout\n            return []\n\n        foreign_table_counts = dict(\n            zip(\n                [(fk[\"other_table\"], fk[\"other_column\"]) for fk in foreign_keys],\n                list(rows[0]),\n            )\n        )\n        foreign_key_tables = []\n        for fk in foreign_keys:\n            count = (\n                foreign_table_counts.get((fk[\"other_table\"], fk[\"other_column\"])) or 0\n            )\n            key = fk[\"other_column\"]\n            if key.startswith(\"_\"):\n                key += \"__exact\"\n            link = \"{}?{}={}\".format(\n                self.ds.urls.table(database, fk[\"other_table\"]),\n                key,\n                \",\".join(pk_values),\n            )\n            foreign_key_tables.append({**fk, **{\"count\": count, \"link\": link}})\n        return foreign_key_tables"
+      },
+      {
+        "file": "datasette/views/row.py",
+        "name": "RowView.data",
+        "kind": "function",
+        "symbol": "datasette.views.row.RowView.data",
+        "start": 16,
+        "end": 102,
+        "code": "    async def data(self, request, default_labels=False):\n        database_route = tilde_decode(request.url_vars[\"database\"])\n        table = tilde_decode(request.url_vars[\"table\"])\n        try:\n            db = self.ds.get_database(route=database_route)\n        except KeyError:\n            raise NotFound(\"Database not found: {}\".format(database_route))\n        database = db.name\n\n        # Ensure user has permission to view this row\n        visible, private = await self.ds.check_visibility(\n            request.actor,\n            permissions=[\n                (\"view-table\", (database, table)),\n                (\"view-database\", database),\n                \"view-instance\",\n            ],\n        )\n        if not visible:\n            raise Forbidden(\"You do not have permission to view this table\")\n\n        pk_values = urlsafe_components(request.url_vars[\"pks\"])\n        try:\n            db = self.ds.get_database(route=database_route)\n        except KeyError:\n            raise NotFound(\"Database not found: {}\".format(database_route))\n        database = db.name\n        sql, params, pks = await _sql_params_pks(db, table, pk_values)\n        results = await db.execute(sql, params, truncate=True)\n        columns = [r[0] for r in results.description]\n        rows = list(results.rows)\n        if not rows:\n            raise NotFound(f\"Record not found: {pk_values}\")\n\n        async def template_data():\n            display_columns, display_rows = await display_columns_and_rows(\n                self.ds,\n                database,\n                table,\n                results.description,\n                rows,\n                link_column=False,\n                truncate_cells=0,\n            )\n            for column in display_columns:\n                column[\"sortable\"] = False\n            return {\n                \"private\": private,\n                \"foreign_key_tables\": await self.foreign_key_tables(\n                    database, table, pk_values\n                ),\n                \"display_columns\": display_columns,\n                \"display_rows\": display_rows,\n                \"custom_table_templates\": [\n                    f\"_table-{to_css_class(database)}-{to_css_class(table)}.html\",\n                    f\"_table-row-{to_css_class(database)}-{to_css_class(table)}.html\",\n                    \"_table.html\",\n                ],\n                \"metadata\": (self.ds.metadata(\"databases\") or {})\n                .get(database, {})\n                .get(\"tables\", {})\n                .get(table, {}),\n            }\n\n        data = {\n            \"database\": database,\n            \"table\": table,\n            \"rows\": rows,\n            \"columns\": columns,\n            \"primary_keys\": pks,\n            \"primary_key_values\": pk_values,\n            \"units\": self.ds.table_metadata(database, table).get(\"units\", {}),\n        }\n\n        if \"foreign_key_tables\" in (request.args.get(\"_extras\") or \"\").split(\",\"):\n            data[\"foreign_key_tables\"] = await self.foreign_key_tables(\n                database, table, pk_values\n            )\n\n        return (\n            data,\n            template_data,\n            (\n                f\"row-{to_css_class(database)}-{to_css_class(table)}.html\",\n                \"row.html\",\n            ),\n        )"
+      }
+    ],
+    "unresolved": [
+      "datasette/utils/asgi.py:function: actor",
+      "datasette/views/special.py:function: get",
+      "datasette/views/row.py:function: data"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 5,
+    "unresolved_locations": 3,
+    "returned_code_chars": 15239
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30515,
+    "completion_tokens": 558,
+    "total_tokens": 31073,
+    "seconds": 70.76511001586914,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 83.51522159576416,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

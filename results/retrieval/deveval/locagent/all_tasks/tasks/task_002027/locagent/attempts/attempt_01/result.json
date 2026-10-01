@@ -1,0 +1,110 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2027,
+  "namespace": "csvs_to_sqlite.utils.table_exists",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11940,
+      "input_estimate_after": 11940,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify several reusable dependencies that should be inspected to implement the `table_exists` function. The function needs to check if a table exists in a SQLite database, and there are existing patterns in the codebase for querying SQLite metadata.\n\n```\ncsvs_to_sqlite/utils.py\nline: 152\nline: 156\nfunction: LookupTable.ensure_table_exists\n\ncsvs_to_sqlite/utils.py\nline: 306\nline: 308\nfunction: get_create_table_sql\n\ncsvs_to_sqlite/utils.py\nline: 187\nline: 189\nfunction: LookupTable.__repr__\n\ncsvs_to_sqlite/utils.py\nline: 206\nline: 209\nfunction: LookupTable.id_for_value\n\ncsvs_to_sqlite/cli.py\nline: 248\nline: 250\ncontext: table_exists usage pattern\n```",
+  "final_locations": {
+    "files": [
+      "csvs_to_sqlite/utils.py",
+      "csvs_to_sqlite/cli.py"
+    ],
+    "entities": [
+      {
+        "file": "csvs_to_sqlite/utils.py",
+        "name": "LookupTable.ensure_table_exists",
+        "kind": "function",
+        "symbol": "csvs_to_sqlite.utils.LookupTable.ensure_table_exists",
+        "start": 151,
+        "end": 182,
+        "code": "    def ensure_table_exists(self):\n        if not self.conn.execute(\n            \"\"\"\n            SELECT name\n            FROM sqlite_master\n            WHERE type='table'\n            AND name=?\n        \"\"\",\n            (self.table_name,),\n        ).fetchall():\n            create_sql = \"\"\"\n                CREATE TABLE \"{table_name}\" (\n                    \"id\" INTEGER PRIMARY KEY,\n                    \"{value_column}\" TEXT\n                );\n            \"\"\".format(\n                table_name=self.table_name, value_column=self.value_column\n            )\n            self.conn.execute(create_sql)\n            if self.index_fts:\n                # Add a FTS index on the value_column\n                self.conn.execute(\n                    \"\"\"\n                    CREATE VIRTUAL TABLE \"{fts_table_name}\"\n                    USING {fts_version} ({value_column}, content=\"{table_name}\");\n                \"\"\".format(\n                        fts_version=best_fts_version(),\n                        fts_table_name=self.fts_table_name,\n                        table_name=self.table_name,\n                        value_column=self.value_column,\n                    )\n                )"
+      },
+      {
+        "file": "csvs_to_sqlite/utils.py",
+        "name": "get_create_table_sql",
+        "kind": "function",
+        "symbol": "csvs_to_sqlite.utils.get_create_table_sql",
+        "start": 271,
+        "end": 318,
+        "code": "def get_create_table_sql(\n    table_name, df, index=True, sql_type_overrides=None, primary_keys=None\n):\n    # Create a temporary table with just the first row\n    # We do this in memory because we just want to get the\n    # CREATE TABLE statement\n    # Returns (sql, columns)\n    conn = sqlite3.connect(\":memory:\")\n    # Before calling to_sql we need correct the dtypes that we will be using\n    # to pick the right SQL column types. pandas mostly gets this right...\n    # except for columns that contain a mixture of integers and Nones. These\n    # will be incorrectly detected as being of DB type REAL when we want them\n    # to be INTEGER instead.\n    # http://pandas.pydata.org/pandas-docs/stable/gotchas.html#support-for-integer-na\n    sql_type_overrides = sql_type_overrides or {}\n    if isinstance(df, pd.DataFrame):\n        columns_and_types = df.dtypes.iteritems()\n    elif isinstance(df, pd.Series):\n        columns_and_types = [(df.name, df.dtype)]\n    for column, dtype in columns_and_types:\n        # Are any of these float columns?\n        if dtype in (np.float32, np.float64):\n            # if every non-NaN value is an integer, switch to int\n            if isinstance(df, pd.Series):\n                series = df\n            else:\n                series = df[column]\n            num_non_integer_floats = series.map(\n                lambda v: not np.isnan(v) and not v.is_integer()\n            ).sum()\n            if num_non_integer_floats == 0:\n                # Everything was NaN or an integer-float - switch type:\n                sql_type_overrides[column] = \"INTEGER\"\n\n    df[:1].to_sql(table_name, conn, index=index, dtype=sql_type_overrides)\n    sql = conn.execute(\n        \"select sql from sqlite_master where name = ?\", [table_name]\n    ).fetchone()[0]\n    columns = [\n        row[1] for row in conn.execute(\"PRAGMA table_info([{}])\".format(table_name))\n    ]\n    if primary_keys:\n        # Rewrite SQL to add PRIMARY KEY (col1, col2) at end\n        assert sql[-1] == \")\"\n        sql = sql[:-1] + \"  ,PRIMARY KEY ({cols})\\n)\".format(\n            cols=\", \".join(\"[{}]\".format(col) for col in primary_keys)\n        )\n    return sql, columns"
+      },
+      {
+        "file": "csvs_to_sqlite/utils.py",
+        "name": "LookupTable.__repr__",
+        "kind": "function",
+        "symbol": "csvs_to_sqlite.utils.LookupTable.__repr__",
+        "start": 184,
+        "end": 190,
+        "code": "    def __repr__(self):\n        return \"<{}: {} rows>\".format(\n            self.table_name,\n            self.conn.execute(\n                'select count(*) from \"{}\"'.format(self.table_name)\n            ).fetchone()[0],\n        )"
+      },
+      {
+        "file": "csvs_to_sqlite/utils.py",
+        "name": "LookupTable.id_for_value",
+        "kind": "function",
+        "symbol": "csvs_to_sqlite.utils.LookupTable.id_for_value",
+        "start": 192,
+        "end": 235,
+        "code": "    def id_for_value(self, value):\n        if pd.isnull(value):\n            return None\n        # value should be a string\n        if not isinstance(value, six.string_types):\n            if isinstance(value, float):\n                value = \"{0:g}\".format(value)\n            else:\n                value = six.text_type(value)\n        try:\n            # First try our in-memory cache\n            return self.cache[value]\n        except KeyError:\n            # Next try the database table\n            sql = 'SELECT id FROM \"{table_name}\" WHERE \"{value_column}\"=?'.format(\n                table_name=self.table_name, value_column=self.value_column\n            )\n            result = self.conn.execute(sql, (value,)).fetchall()\n            if result:\n                id = result[0][0]\n            else:\n                # Not in DB! Insert it\n                cursor = self.conn.cursor()\n                cursor.execute(\n                    \"\"\"\n                    INSERT INTO \"{table_name}\" (\"{value_column}\") VALUES (?);\n                \"\"\".format(\n                        table_name=self.table_name, value_column=self.value_column\n                    ),\n                    (value,),\n                )\n                id = cursor.lastrowid\n                if self.index_fts:\n                    # And update FTS index\n                    sql = \"\"\"\n                        INSERT INTO \"{fts_table_name}\" (rowid, \"{value_column}\") VALUES (?, ?);\n                    \"\"\".format(\n                        fts_table_name=self.fts_table_name,\n                        value_column=self.value_column,\n                    )\n                    cursor.execute(sql, (id, value))\n\n            self.cache[value] = id\n            return id"
+      },
+      {
+        "file": "csvs_to_sqlite/cli.py",
+        "name": "cli",
+        "kind": "function",
+        "symbol": "csvs_to_sqlite.cli.cli",
+        "start": 149,
+        "end": 298,
+        "code": "def cli(\n    paths,\n    dbname,\n    separator,\n    quoting,\n    skip_errors,\n    replace_tables,\n    table,\n    extract_column,\n    date,\n    datetime,\n    datetime_format,\n    primary_key,\n    fts,\n    index,\n    shape,\n    filename_column,\n    fixed_columns,\n    fixed_columns_int,\n    fixed_columns_float,\n    no_index_fks,\n    no_fulltext_fks,\n    just_strings,\n):\n    \"\"\"\n    PATHS: paths to individual .csv files or to directories containing .csvs\n\n    DBNAME: name of the SQLite database file to create\n    \"\"\"\n    # make plural for more readable code:\n    extract_columns = extract_column\n    del extract_column\n\n    if extract_columns:\n        click.echo(\"extract_columns={}\".format(extract_columns))\n    if dbname.endswith(\".csv\"):\n        raise click.BadParameter(\"dbname must not end with .csv\")\n    if \".\" not in dbname:\n        dbname += \".db\"\n\n    db_existed = os.path.exists(dbname)\n\n    conn = sqlite3.connect(dbname)\n\n    dataframes = []\n    csvs = csvs_from_paths(paths)\n    sql_type_overrides = None\n    for name, path in csvs.items():\n        try:\n            df = load_csv(\n                path, separator, skip_errors, quoting, shape, just_strings=just_strings\n            )\n            df.table_name = table or name\n            if filename_column:\n                df[filename_column] = name\n                if shape:\n                    shape += \",{}\".format(filename_column)\n            if fixed_columns:\n                for colname, value in fixed_columns:\n                    df[colname] = value\n                    if shape:\n                        shape += \",{}\".format(colname)\n            if fixed_columns_int:\n                for colname, value in fixed_columns_int:\n                    df[colname] = value\n                    if shape:\n                        shape += \",{}\".format(colname)\n            if fixed_columns_float:\n                for colname, value in fixed_columns_float:\n                    df[colname] = value\n                    if shape:\n                        shape += \",{}\".format(colname)\n            sql_type_overrides = apply_shape(df, shape)\n            apply_dates_and_datetimes(df, date, datetime, datetime_format)\n            dataframes.append(df)\n        except LoadCsvError as e:\n            click.echo(\"Could not load {}: {}\".format(path, e), err=True)\n\n    click.echo(\"Loaded {} dataframes\".format(len(dataframes)))\n\n    # Use extract_columns to build a column:(table,label) dictionary\n    foreign_keys = {}\n    for col in extract_columns:\n        bits = col.split(\":\")\n        if len(bits) == 3:\n            foreign_keys[bits[0]] = (bits[1], bits[2])\n        elif len(bits) == 2:\n            foreign_keys[bits[0]] = (bits[1], \"value\")\n        else:\n            foreign_keys[bits[0]] = (bits[0], \"value\")\n\n    # Now we have loaded the dataframes, we can refactor them\n    created_tables = {}\n    refactored = refactor_dataframes(\n        conn, dataframes, foreign_keys, not no_fulltext_fks\n    )\n    for df in refactored:\n        # This is a bit trickier because we need to\n        # create the table with extra SQL for foreign keys\n        if replace_tables and table_exists(conn, df.table_name):\n            drop_table(conn, df.table_name)\n        if table_exists(conn, df.table_name):\n            df.to_sql(df.table_name, conn, if_exists=\"append\", index=False)\n        else:\n            to_sql_with_foreign_keys(\n                conn,\n                df,\n                df.table_name,\n                foreign_keys,\n                sql_type_overrides,\n                primary_keys=primary_key,\n                index_fks=not no_index_fks,\n            )\n            created_tables[df.table_name] = df\n        if index:\n            for index_defn in index:\n                add_index(conn, df.table_name, index_defn)\n\n    # Create FTS tables\n    if fts:\n        fts_version = best_fts_version()\n        if not fts_version:\n            conn.close()\n            raise click.BadParameter(\n                \"Your SQLite version does not support any variant of FTS\"\n            )\n        # Check that columns make sense\n        for table, df in created_tables.items():\n            for fts_column in fts:\n                if fts_column not in df.columns:\n                    raise click.BadParameter(\n                        'FTS column \"{}\" does not exist'.format(fts_column)\n                    )\n\n        generate_and_populate_fts(conn, created_tables.keys(), fts, foreign_keys)\n\n    conn.close()\n\n    if db_existed:\n        click.echo(\n            \"Added {} CSV file{} to {}\".format(\n                len(csvs), \"\" if len(csvs) == 1 else \"s\", dbname\n            )\n        )\n    else:\n        click.echo(\n            \"Created {} from {} CSV file{}\".format(\n                dbname, len(csvs), \"\" if len(csvs) == 1 else \"s\"\n            )\n        )"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 10087
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 29895,
+    "completion_tokens": 568,
+    "total_tokens": 30463,
+    "seconds": 57.56029725074768,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 58.03626585006714,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,102 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 315,
+  "namespace": "boto.dynamodb2.items.Item.save",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2360,
+      "input_estimate_after": 2360,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboto/dynamodb2/table.py\nfunction: Table.put_item\nfunction: Table.get_item\nfunction: Table.new_item\n\nboto/mashups/order.py\nfunction: Order.place\n\nboto/dynamodb2/items.py\nline: 415\nfunction: Item.save\n```",
+  "final_locations": {
+    "files": [
+      "boto/dynamodb2/table.py",
+      "boto/mashups/order.py",
+      "boto/dynamodb2/items.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/dynamodb2/table.py",
+        "name": "Table.put_item",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.table.Table.put_item",
+        "start": 791,
+        "end": 822,
+        "code": "    def put_item(self, data, overwrite=False):\n        \"\"\"\n        Saves an entire item to DynamoDB.\n\n        By default, if any part of the ``Item``'s original data doesn't match\n        what's currently in DynamoDB, this request will fail. This prevents\n        other processes from updating the data in between when you read the\n        item & when your request to update the item's data is processed, which\n        would typically result in some data loss.\n\n        Requires a ``data`` parameter, which should be a dictionary of the data\n        you'd like to store in DynamoDB.\n\n        Optionally accepts an ``overwrite`` parameter, which should be a\n        boolean. If you provide ``True``, this will tell DynamoDB to blindly\n        overwrite whatever data is present, if any.\n\n        Returns ``True`` on success.\n\n        Example::\n\n            >>> users.put_item(data={\n            ...     'username': 'jane',\n            ...     'first_name': 'Jane',\n            ...     'last_name': 'Doe',\n            ...     'date_joined': 126478915,\n            ... })\n            True\n\n        \"\"\"\n        item = Item(self, data=data)\n        return item.save(overwrite=overwrite)"
+      },
+      {
+        "file": "boto/dynamodb2/table.py",
+        "name": "Table.get_item",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.table.Table.get_item",
+        "start": 654,
+        "end": 711,
+        "code": "    def get_item(self, consistent=False, attributes=None, **kwargs):\n        \"\"\"\n        Fetches an item (record) from a table in DynamoDB.\n\n        To specify the key of the item you'd like to get, you can specify the\n        key attributes as kwargs.\n\n        Optionally accepts a ``consistent`` parameter, which should be a\n        boolean. If you provide ``True``, it will perform\n        a consistent (but more expensive) read from DynamoDB.\n        (Default: ``False``)\n\n        Optionally accepts an ``attributes`` parameter, which should be a\n        list of fieldname to fetch. (Default: ``None``, which means all fields\n        should be fetched)\n\n        Returns an ``Item`` instance containing all the data for that record.\n\n        Raises an ``ItemNotFound`` exception if the item is not found.\n\n        Example::\n\n            # A simple hash key.\n            >>> john = users.get_item(username='johndoe')\n            >>> john['first_name']\n            'John'\n\n            # A complex hash+range key.\n            >>> john = users.get_item(username='johndoe', last_name='Doe')\n            >>> john['first_name']\n            'John'\n\n            # A consistent read (assuming the data might have just changed).\n            >>> john = users.get_item(username='johndoe', consistent=True)\n            >>> john['first_name']\n            'Johann'\n\n            # With a key that is an invalid variable name in Python.\n            # Also, assumes a different schema than previous examples.\n            >>> john = users.get_item(**{\n            ...     'date-joined': 127549192,\n            ... })\n            >>> john['first_name']\n            'John'\n\n        \"\"\"\n        raw_key = self._encode_keys(kwargs)\n        item_data = self.connection.get_item(\n            self.table_name,\n            raw_key,\n            attributes_to_get=attributes,\n            consistent_read=consistent\n        )\n        if 'Item' not in item_data:\n            raise exceptions.ItemNotFound(\"Item %s couldn't be found.\" % kwargs)\n        item = Item(self)\n        item.load(item_data)\n        return item"
+      },
+      {
+        "file": "boto/dynamodb2/table.py",
+        "name": "Table.new_item",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.table.Table.new_item",
+        "start": 778,
+        "end": 789,
+        "code": "    def new_item(self, *args):\n        \"\"\"\n        Returns a new, blank item\n\n        This is mostly for consistency with boto.dynamodb\n        \"\"\"\n        if not self.schema:\n            self.describe()\n        data = {}\n        for x, arg in enumerate(args):\n            data[self.schema[x].name] = arg\n        return Item(self, data=data)"
+      },
+      {
+        "file": "boto/mashups/order.py",
+        "name": "Order.place",
+        "kind": "function",
+        "symbol": "boto.mashups.order.Order.place",
+        "start": 181,
+        "end": 208,
+        "code": "    def place(self, block=True):\n        if get_domain() is None:\n            print('SDB Persistence Domain not set')\n            domain_name = self.get_string('Specify SDB Domain')\n            set_domain(domain_name)\n        s = ServerSet()\n        for item in self.items:\n            r = item.ami.run(min_count=1, max_count=item.quantity,\n                             key_name=item.key.name, user_data=item.get_userdata_string(),\n                             security_groups=item.groups, instance_type=item.instance_type,\n                             placement=item.zone.name)\n            if block:\n                states = [i.state for i in r.instances]\n                if states.count('running') != len(states):\n                    print(states)\n                    time.sleep(15)\n                    states = [i.update() for i in r.instances]\n            for i in r.instances:\n                server = Server()\n                server.name = item.name\n                server.instance_id = i.id\n                server.reservation = r\n                server.save()\n                s.append(server)\n        if len(s) == 1:\n            return s[0]\n        else:\n            return s"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4793
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 12844,
+    "completion_tokens": 895,
+    "total_tokens": 13739,
+    "seconds": 34.06803107261658,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 89.57821655273438,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

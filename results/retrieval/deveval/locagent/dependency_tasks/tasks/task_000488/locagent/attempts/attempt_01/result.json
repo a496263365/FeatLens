@@ -1,0 +1,108 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 488,
+  "namespace": "sumy.summarizers.edmundson.EdmundsonSummarizer.key_method",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5056,
+      "input_estimate_after": 5056,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the verified evidence, here are the reusable dependencies for implementing the `key_method` in `EdmundsonSummarizer`:\n\n```\nsumy/summarizers/edmundson_key.py\nclass: EdmundsonKeyMethod\nfunction: __call__\nfunction: _compute_significant_words\nfunction: _rate_sentence\n\nsumy/summarizers/_summarizer.py\nclass: AbstractSummarizer\n\nsumy/models/__init__.py\n(For Document model structure)\n\nsumy/parsers/html.py\nfunction: HtmlParser.document\n\nsumy/parsers/plaintext.py\nfunction: PlaintextParser.document\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/edmundson_key.py",
+      "sumy/summarizers/_summarizer.py",
+      "sumy/models/__init__.py",
+      "sumy/parsers/html.py",
+      "sumy/parsers/plaintext.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/edmundson_key.py",
+        "name": "EdmundsonKeyMethod",
+        "kind": "class",
+        "symbol": "sumy.summarizers.edmundson_key.EdmundsonKeyMethod",
+        "start": 10,
+        "end": 54,
+        "code": "class EdmundsonKeyMethod(AbstractSummarizer):\n    def __init__(self, stemmer, bonus_words):\n        super(EdmundsonKeyMethod, self).__init__(stemmer)\n        self._bonus_words = bonus_words\n\n    def __call__(self, document, sentences_count, weight):\n        significant_words = self._compute_significant_words(document, weight)\n\n        return self._get_best_sentences(document.sentences,\n            sentences_count, self._rate_sentence, significant_words)\n\n    def _compute_significant_words(self, document, weight):\n        # keep only stems contained in bonus words\n        words = map(self.stem_word, document.words)\n        words = filter(self._is_bonus_word, words)\n\n        # compute frequencies of bonus words in document\n        word_counts = Counter(words)\n        word_frequencies = word_counts.values()\n\n        # no frequencies means no significant words\n        if not word_frequencies:\n            return ()\n\n        # return only words greater than weight\n        max_word_frequency = max(word_frequencies)\n        return tuple(word for word, frequency in word_counts.items()\n            if frequency/max_word_frequency > weight)\n\n    def _is_bonus_word(self, word):\n        return word in self._bonus_words\n\n    def _rate_sentence(self, sentence, significant_words):\n        words = map(self.stem_word, sentence.words)\n        return sum(w in significant_words for w in words)\n\n    def rate_sentences(self, document, weight=0.5):\n        significant_words = self._compute_significant_words(document, weight)\n\n        rated_sentences = {}\n        for sentence in document.sentences:\n            rated_sentences[sentence] = self._rate_sentence(sentence,\n                significant_words)\n\n        return rated_sentences"
+      },
+      {
+        "file": "sumy/summarizers/_summarizer.py",
+        "name": "AbstractSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers._summarizer.AbstractSummarizer",
+        "start": 17,
+        "end": 53,
+        "code": "class AbstractSummarizer(object):\n    def __init__(self, stemmer=null_stemmer):\n        if not callable(stemmer):\n            raise ValueError(\"Stemmer has to be a callable object\")\n\n        self._stemmer = stemmer\n\n    def __call__(self, document, sentences_count):\n        raise NotImplementedError(\"This method should be overriden in subclass\")\n\n    def stem_word(self, word):\n        return self._stemmer(self.normalize_word(word))\n\n    @staticmethod\n    def normalize_word(word):\n        return to_unicode(word).lower()\n\n    @staticmethod\n    def _get_best_sentences(sentences, count, rating, *args, **kwargs):\n        rate = rating\n        if isinstance(rating, dict):\n            assert not args and not kwargs\n            rate = lambda s: rating[s]\n\n        infos = (SentenceInfo(s, o, rate(s, *args, **kwargs))\n            for o, s in enumerate(sentences))\n\n        # sort sentences by rating in descending order\n        infos = sorted(infos, key=attrgetter(\"rating\"), reverse=True)\n        # get `count` first best rated sentences\n        if not callable(count):\n            count = ItemsCount(count)\n        infos = count(infos)\n        # sort sentences by their order in document\n        infos = sorted(infos, key=attrgetter(\"order\"))\n\n        return tuple(i.sentence for i in infos)"
+      },
+      {
+        "file": "sumy/parsers/html.py",
+        "name": "HtmlParser.document",
+        "kind": "function",
+        "symbol": "sumy.parsers.html.HtmlParser.document",
+        "start": 80,
+        "end": 105,
+        "code": "    def document(self):\n        # \"a\", \"abbr\", \"acronym\", \"b\", \"big\", \"blink\", \"blockquote\", \"cite\", \"code\",\n        # \"dd\", \"del\", \"dfn\", \"dir\", \"dl\", \"dt\", \"em\", \"h\", \"h1\", \"h2\", \"h3\", \"h4\",\n        # \"h5\", \"h6\", \"i\", \"ins\", \"kbd\", \"li\", \"marquee\", \"menu\", \"ol\", \"pre\", \"q\",\n        # \"s\", \"samp\", \"strike\", \"strong\", \"sub\", \"sup\", \"tt\", \"u\", \"ul\", \"var\",\n\n        annotated_text = self._article.main_text\n\n        paragraphs = []\n        for paragraph in annotated_text:\n            sentences = []\n\n            current_text = \"\"\n            for text, annotations in paragraph:\n                if annotations and (\"h1\" in annotations or \"h2\" in annotations or \"h3\" in annotations):\n                    sentences.append(Sentence(text, self._tokenizer, is_heading=True))\n                # skip <pre> nodes\n                elif not (annotations and \"pre\" in annotations):\n                    # be sure to not add empty space between word and punctuations\n                    current_text += \"\" + text if text[0] in punctuation else \" \" + text\n\n            new_sentences = self.tokenize_sentences(current_text)\n            sentences.extend(Sentence(s, self._tokenizer) for s in new_sentences)\n            paragraphs.append(Paragraph(sentences))\n\n        return ObjectDocumentModel(paragraphs)"
+      },
+      {
+        "file": "sumy/parsers/plaintext.py",
+        "name": "PlaintextParser.document",
+        "kind": "function",
+        "symbol": "sumy.parsers.plaintext.PlaintextParser.document",
+        "start": 60,
+        "end": 78,
+        "code": "    def document(self):\n        current_paragraph = []\n        paragraphs = []\n        for line in self._text.splitlines():\n            line = line.strip()\n            if line.isupper():\n                heading = Sentence(line, self._tokenizer, is_heading=True)\n                current_paragraph.append(heading)\n            elif not line and current_paragraph:\n                sentences = self._to_sentences(current_paragraph)\n                paragraphs.append(Paragraph(sentences))\n                current_paragraph = []\n            elif line:\n                current_paragraph.append(line)\n\n        sentences = self._to_sentences(current_paragraph)\n        paragraphs.append(Paragraph(sentences))\n\n        return ObjectDocumentModel(paragraphs)"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/edmundson_key.py:function: __call__",
+      "sumy/summarizers/edmundson_key.py:function: _compute_significant_words",
+      "sumy/summarizers/edmundson_key.py:function: _rate_sentence"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 5,
+    "unresolved_locations": 3,
+    "returned_code_chars": 5067
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18510,
+    "completion_tokens": 800,
+    "total_tokens": 19310,
+    "seconds": 45.75163245201111,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 46.569029331207275,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

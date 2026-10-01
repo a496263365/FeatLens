@@ -1,0 +1,109 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 51,
+  "namespace": "chatette.cli.terminal_writer.TerminalWriter.write",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6342,
+      "input_estimate_after": 6342,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nchatette/cli/terminal_writer.py\nline: 19-91\nclass: TerminalWriter\nfunction: flush\nfunction: error_log\n\nchatette/facade.py\nfunction: Facade.run_generation\n\nchatette/cli/interactive_commands/command_strategy.py\nfunction: CommandStrategy.execute\n```",
+  "final_locations": {
+    "files": [
+      "chatette/cli/terminal_writer.py",
+      "chatette/facade.py",
+      "chatette/cli/interactive_commands/command_strategy.py"
+    ],
+    "entities": [
+      {
+        "file": "chatette/cli/terminal_writer.py",
+        "name": "TerminalWriter",
+        "kind": "class",
+        "symbol": "chatette.cli.terminal_writer.TerminalWriter",
+        "start": 19,
+        "end": 91,
+        "code": "class TerminalWriter(object):\n    \"\"\"Wrapper of `print` that can write to stdout or to a file.\"\"\"\n    def __init__(self, redirection_type=RedirectionType.append,\n                 redirection_file_path=None):\n        self.redirection_file_path = redirection_file_path\n        self.buffered_text = None\n\n        self._file_mode = None\n        self.set_redirection_type(redirection_type)\n\n    def reset(self):\n        self.redirection_file_path = None\n        self.buffered_text = None\n    def set_redirection_type(self, redirection_type):\n        \"\"\"\n        Sets redirection type.\n        @pre: `redirection_type` is of type `RedirectionType`.\n        \"\"\"\n        if redirection_type == RedirectionType.append:\n            self._file_mode = 'a+'\n        elif redirection_type == RedirectionType.truncate:\n            self._file_mode = 'w+'\n        elif redirection_type == RedirectionType.quiet:\n            self._file_mode = 'quiet'\n\n    def get_redirection(self):\n        \"\"\"\n        Returns a 2-tuple containing the type and file path of the redirection.\n        If this wrapper doesn't redirect to any file (or ignore prints),\n        returns `None`.\n        \"\"\"\n        if self._file_mode is None:\n            return None\n        if self._file_mode == 'quiet':\n            return (RedirectionType.quiet, None)\n        if self._file_mode == 'a+':\n            return (RedirectionType.append, self.redirection_file_path)\n        if self._file_mode == 'w+':\n            return (RedirectionType.truncate, self.redirection_file_path)\n        return None\n\n\n    def write(self, text):\n        pass\n\n\n\n\n\n\n\n\n\n    def error_log(self, text):\n        processed_text = ''.join(['\\t' + line + '\\n'\n                                  for line in text.split('\\n')])\n        self.write(\"[ERROR]\"+processed_text[:-1])\n\n\n    def flush(self):\n        \"\"\"\n        Flushes the buffered text to the redirection file\n        if such a file is provided.\n        \"\"\"\n        if self.redirection_file_path is not None:\n            # Create file if it doesn't exist\n            if not os.path.isfile(self.redirection_file_path):\n                io.open(self.redirection_file_path, 'w+').close()\n            # Write to the file if needed\n            if self.buffered_text is not None:\n                with io.open(self.redirection_file_path, self._file_mode) as f:\n                    print(self.buffered_text, '\\n', sep='', file=f)\n        self.buffered_text = None"
+      },
+      {
+        "file": "chatette/cli/terminal_writer.py",
+        "name": "TerminalWriter.flush",
+        "kind": "function",
+        "symbol": "chatette.cli.terminal_writer.TerminalWriter.flush",
+        "start": 78,
+        "end": 91,
+        "code": "    def flush(self):\n        \"\"\"\n        Flushes the buffered text to the redirection file\n        if such a file is provided.\n        \"\"\"\n        if self.redirection_file_path is not None:\n            # Create file if it doesn't exist\n            if not os.path.isfile(self.redirection_file_path):\n                io.open(self.redirection_file_path, 'w+').close()\n            # Write to the file if needed\n            if self.buffered_text is not None:\n                with io.open(self.redirection_file_path, self._file_mode) as f:\n                    print(self.buffered_text, '\\n', sep='', file=f)\n        self.buffered_text = None"
+      },
+      {
+        "file": "chatette/facade.py",
+        "name": "Facade.run_generation",
+        "kind": "function",
+        "symbol": "chatette.facade.Facade.run_generation",
+        "start": 104,
+        "end": 133,
+        "code": "    def run_generation(self, adapter_str=None):\n        \"\"\"\"\n        Runs the generation of all intents and writes them out to the output\n        file(s) using the adapter `adapter` if one is provided.\n        @pre: the parsing has been done.\n        \"\"\"\n        if adapter_str is None:\n            adapter = self.adapter\n        else:\n            adapter = adapter_factory.create_adapter(adapter_str)\n\n        self.generator = Generator()\n        synonyms = AST.get_or_create().get_entities_synonyms()\n\n        if os.path.exists(self.output_dir_path):\n            if self.force_overwriting or self._ask_confirmation():\n                shutil.rmtree(self.output_dir_path)\n            else:\n                print_DBG(\"Aborting generation. Exiting without any change.\")\n                return\n\n        train_examples = list(self.generator.generate_train())\n        if train_examples:\n            adapter.write(os.path.join(self.output_dir_path, \"train\"),\n                          train_examples, synonyms)\n        test_examples = list(self.generator.generate_test(train_examples))\n        if test_examples:\n            adapter.write(os.path.join(self.output_dir_path, \"test\"),\n                          test_examples, synonyms)\n        print_DBG(\"Generation over\")"
+      },
+      {
+        "file": "chatette/cli/interactive_commands/command_strategy.py",
+        "name": "CommandStrategy.execute",
+        "kind": "function",
+        "symbol": "chatette.cli.interactive_commands.command_strategy.CommandStrategy.execute",
+        "start": 272,
+        "end": 314,
+        "code": "    def execute(self):\n        \"\"\"\n        Executes the whole command represented by this object.\n        This method can be overriden by subclasses if a different algorithm is\n        required.\n        \"\"\"\n        # TODO support variations\n        if len(self.command_tokens) < 3:\n            self.print_wrapper.error_log(\n                \"Missing some arguments\\nUsage: \" + self.usage_str\n            )\n            return\n\n        unit_type = CommandStrategy.get_unit_type_from_str(self.command_tokens[1])\n        if unit_type is None:\n            self.print_wrapper.error_log(\n                \"Unknown unit type: '\" + str(self.command_tokens[1]) + \"'.\"\n            )\n            return\n\n        unit_regex = self.get_regex_name(self.command_tokens[2])\n        if unit_regex is None:\n            try:\n                [unit_name, variation_name] = \\\n                    CommandStrategy.split_exact_unit_name(\n                        self.command_tokens[2]\n                    )\n            except SyntaxError:\n                self.print_wrapper.error_log(\n                    \"Unit identifier couldn't be interpreted. \" + \\\n                    \"Did you mean to escape some hashtags '#'?\")\n                return\n            self.execute_on_unit(unit_type, unit_name, variation_name)\n        else:\n            count = 0\n            for unit_name in self.next_matching_unit_name(\n                unit_type, unit_regex\n            ):\n                self.execute_on_unit(unit_type, unit_name)\n                count += 1\n            if count == 0:\n                self.print_wrapper.write(\"No \" + unit_type.name + \" matched.\")\n        self.finish_execution()"
+      }
+    ],
+    "unresolved": [
+      "chatette/cli/terminal_writer.py:function: flush",
+      "chatette/cli/terminal_writer.py:function: error_log"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "chatette.cli.terminal_writer.TerminalWriter._file_mode",
+      "chatette.cli.terminal_writer.TerminalWriter.buffered_text",
+      "chatette.cli.terminal_writer.TerminalWriter.redirection_file_path"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 5992
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 27224,
+    "completion_tokens": 326,
+    "total_tokens": 27550,
+    "seconds": 44.09157991409302,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 46.1019389629364,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

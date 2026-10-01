@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 138,
+  "namespace": "zulipterminal.ui_tools.buttons.TopButton.update_widget",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nzulipterminal/ui_tools/buttons.py\nline: 69\nclass: TopButton\nfunction: update_widget\n\nzulipterminal/ui_tools/buttons.py\nline: 414\nclass: MessageLinkButton\nfunction: update_widget\n\nzulipterminal/ui_tools/buttons.py\nline: 58\nclass: TopButton\nfunction: update_count\n\nzulipterminal/model.py\nline: (referenced by update_count)\nfunction: Model._handle_update_message_flags_event\n\nzulipterminal/ui_tools/buttons.py\nline: (referenced by update_count)\nfunction: StreamButton.mark_muted\n```",
+  "final_locations": {
+    "files": [
+      "zulipterminal/ui_tools/buttons.py",
+      "zulipterminal/model.py"
+    ],
+    "entities": [
+      {
+        "file": "zulipterminal/ui_tools/buttons.py",
+        "name": "TopButton",
+        "kind": "class",
+        "symbol": "zulipterminal.ui_tools.buttons.TopButton",
+        "start": 18,
+        "end": 96,
+        "code": "class TopButton(urwid.Button):\n    def __init__(\n        self,\n        *,\n        controller: Any,\n        caption: str,\n        show_function: Callable[[], Any],\n        prefix_character: Union[str, Tuple[Any, str]] = \"\\N{BULLET}\",\n        text_color: Optional[str] = None,\n        count: int = 0,\n        count_style: Optional[str] = None,\n    ) -> None:\n        self.controller = controller\n        self._caption = caption\n        self.show_function = show_function\n        self.prefix_character = prefix_character\n        self.original_color = text_color\n        self.count = count\n        self.count_style = count_style\n\n        super().__init__(\"\")\n\n        self.button_prefix = urwid.Text(\"\")\n        self._label.set_wrap_mode(\"ellipsis\")\n        self._label.get_cursor_coords = lambda x: None\n        self.button_suffix = urwid.Text(\"\")\n\n        cols = urwid.Columns(\n            [\n                (\"pack\", self.button_prefix),\n                self._label,\n                (\"pack\", self.button_suffix),\n            ]\n        )\n        self._w = urwid.AttrMap(cols, None, \"selected\")\n\n        self.update_count(count, text_color)\n\n        urwid.connect_signal(self, \"click\", self.activate)\n\n    def update_count(self, count: int, text_color: Optional[str] = None) -> None:\n        new_color = self.original_color if text_color is None else text_color\n\n        self.count = count\n        if count == 0:\n            count_text = \"\"\n        else:\n            count_text = str(count)\n\n        self.update_widget((self.count_style, count_text), new_color)\n\n    def update_widget(\n        self, count_text: Tuple[Optional[str], str], text_color: Optional[str]\n    ) -> Any:\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n    def activate(self, key: Any) -> None:\n        self.controller.view.show_left_panel(visible=False)\n        self.controller.view.show_right_panel(visible=False)\n        self.controller.view.body.focus_col = 1\n        self.show_function()\n\n    def keypress(self, size: urwid_Size, key: str) -> Optional[str]:\n        if is_command_key(\"ENTER\", key):\n            self.activate(key)\n            return None\n        else:  # This is in the else clause, to avoid multiple activation\n            return super().keypress(size, key)"
+      },
+      {
+        "file": "zulipterminal/ui_tools/buttons.py",
+        "name": "MessageLinkButton.update_widget",
+        "kind": "function",
+        "symbol": "zulipterminal.ui_tools.buttons.MessageLinkButton.update_widget",
+        "start": 414,
+        "end": 420,
+        "code": "    def update_widget(self, caption: str, display_attr: Optional[str] = None) -> None:\n        \"\"\"\n        Overrides the existing button widget for custom styling.\n        \"\"\"\n        # Set cursor position next to len(caption) to avoid the cursor.\n        icon = urwid.SelectableIcon(caption, cursor_position=len(caption) + 1)\n        self._w = urwid.AttrMap(icon, display_attr, focus_map=\"selected\")"
+      },
+      {
+        "file": "zulipterminal/ui_tools/buttons.py",
+        "name": "MessageLinkButton",
+        "kind": "class",
+        "symbol": "zulipterminal.ui_tools.buttons.MessageLinkButton",
+        "start": 401,
+        "end": 623,
+        "code": "class MessageLinkButton(urwid.Button):\n    def __init__(\n        self, *, controller: Any, caption: str, link: str, display_attr: Optional[str]\n    ) -> None:\n        self.controller = controller\n        self.model = self.controller.model\n        self.view = self.controller.view\n        self.link = link\n\n        super().__init__(\"\")\n        self.update_widget(caption, display_attr)\n        urwid.connect_signal(self, \"click\", callback=self.handle_link)\n\n    def update_widget(self, caption: str, display_attr: Optional[str] = None) -> None:\n        \"\"\"\n        Overrides the existing button widget for custom styling.\n        \"\"\"\n        # Set cursor position next to len(caption) to avoid the cursor.\n        icon = urwid.SelectableIcon(caption, cursor_position=len(caption) + 1)\n        self._w = urwid.AttrMap(icon, display_attr, focus_map=\"selected\")\n\n    def handle_link(self, *_: Any) -> None:\n        \"\"\"\n        Classifies and handles link.\n        \"\"\"\n        from zulipterminal.helper import process_media\n        server_url = self.model.server_url\n        if self.link.startswith(urljoin(server_url, \"/#narrow/\")):\n            self.handle_narrow_link()\n        elif self.link.startswith(urljoin(server_url, \"/user_uploads/\")):\n            # Exit pop-up promptly, let the media download in the background.\n            if self.controller.is_any_popup_open():\n                self.controller.exit_popup()\n            process_media(self.controller, self.link)\n\n    @staticmethod\n    def _decode_stream_data(encoded_stream_data: str) -> DecodedStream:\n        \"\"\"\n        Returns a dict with optional stream ID and stream name.\n        \"\"\"\n        # Modern links come patched with the stream ID and '-' as delimiters.\n        from zulipterminal.config.regexes import REGEX_INTERNAL_LINK_STREAM_ID\n        if re.match(REGEX_INTERNAL_LINK_STREAM_ID, encoded_stream_data):\n            stream_id, *_ = encoded_stream_data.split(\"-\")\n            # Given how encode_stream() in zerver/lib/url_encoding.py\n            # replaces ' ' with '-' in the stream name, skip extracting the\n            # stream name to avoid any ambiguity.\n            return DecodedStream(stream_id=int(stream_id), stream_name=None)\n        else:\n            # Deprecated links did not start with the stream ID.\n            stream_name = hash_util_decode(encoded_stream_data)\n            return DecodedStream(stream_id=None, stream_name=stream_name)\n\n    @staticmethod\n    def _decode_message_id(message_id: str) -> Optional[int]:\n        \"\"\"\n        Returns either the compatible near message ID or None.\n        \"\"\"\n        try:\n            return int(message_id)\n        except ValueError:\n            return None\n\n    @classmethod\n    def _parse_narrow_link(cls, link: str) -> ParsedNarrowLink:\n        \"\"\"\n        Returns either a dict with narrow parameters for supported links or an\n        empty dict.\n        \"\"\"\n        # NOTE: The optional stream_id link version is deprecated. The extended\n        # support is for old messages.\n        # We expect the fragment to be one of the following types:\n        # a. narrow/stream/[{stream_id}-]{stream-name}\n        # b. narrow/stream/[{stream_id}-]{stream-name}/near/{message_id}\n        # c. narrow/stream/[{stream_id}-]{stream-name}/topic/\n        #    {encoded.20topic.20name}\n        # d. narrow/stream/[{stream_id}-]{stream-name}/topic/\n        #    {encoded.20topic.20name}/near/{message_id}\n        fragments = urlparse(link.rstrip(\"/\")).fragment.split(\"/\")\n        len_fragments = len(fragments)\n        parsed_link = ParsedNarrowLink()\n\n        if len_fragments == 3 and fragments[1] == \"stream\":\n            stream_data = cls._decode_stream_data(fragments[2])\n            parsed_link = dict(narrow=\"stream\", stream=stream_data)\n\n        elif (\n            len_fragments == 5 and fragments[1] == \"stream\" and fragments[3] == \"topic\"\n        ):\n            stream_data = cls._decode_stream_data(fragments[2])\n            topic_name = hash_util_decode(fragments[4])\n            parsed_link = dict(\n                narrow=\"stream:topic\", stream=stream_data, topic_name=topic_name\n            )\n\n        elif len_fragments == 5 and fragments[1] == \"stream\" and fragments[3] == \"near\":\n            stream_data = cls._decode_stream_data(fragments[2])\n            message_id = cls._decode_message_id(fragments[4])\n            parsed_link = dict(\n                narrow=\"stream:near\", stream=stream_data, message_id=message_id\n            )\n\n        elif (\n            len_fragments == 7\n            and fragments[1] == \"stream\"\n            and fragments[3] == \"topic\"\n            and fragments[5] == \"near\"\n        ):\n            stream_data = cls._decode_stream_data(fragments[2])\n            topic_name = hash_util_decode(fragments[4])\n            message_id = cls._decode_message_id(fragments[6])\n            parsed_link = dict(\n                narrow=\"stream:topic:near\",\n                stream=stream_data,\n                topic_name=topic_name,\n                message_id=message_id,\n            )\n\n        return parsed_link\n\n    def _validate_and_patch_stream_data(self, parsed_link: ParsedNarrowLink) -> str:\n        \"\"\"\n        Validates stream data and patches the optional value in the nested\n        DecodedStream dict.\n        \"\"\"\n        stream_id = parsed_link[\"stream\"][\"stream_id\"]\n        stream_name = parsed_link[\"stream\"][\"stream_name\"]\n        assert (stream_id is None and stream_name is not None) or (\n            stream_id is not None and stream_name is None\n        )\n\n        model = self.model\n        # Validate stream ID and name.\n        if (stream_id and not model.is_user_subscribed_to_stream(stream_id)) or (\n            stream_name and not model.is_valid_stream(stream_name)\n        ):\n            # TODO: Narrow to the concerned stream in a 'preview' mode or\n            # report whether the stream id is invalid instead.\n            return \"The stream seems to be either unknown or unsubscribed\"\n\n        # Patch the optional value.\n        if not stream_id:\n            stream_id = cast(int, model.stream_id_from_name(stream_name))\n            parsed_link[\"stream\"][\"stream_id\"] = stream_id\n        else:\n            stream_name = cast(str, model.stream_dict[stream_id][\"name\"])\n            parsed_link[\"stream\"][\"stream_name\"] = stream_name\n\n        return \"\"\n\n    def _validate_narrow_link(self, parsed_link: ParsedNarrowLink) -> str:\n        \"\"\"\n        Returns either an empty string for a successful validation or an\n        appropriate validation error.\n        \"\"\"\n        if not parsed_link:\n            return \"The narrow link seems to be either broken or unsupported\"\n\n        # Validate stream data.\n        if \"stream\" in parsed_link:\n            error = self._validate_and_patch_stream_data(parsed_link)\n            if error:\n                return error\n\n        # Validate topic name.\n        if \"topic_name\" in parsed_link:\n            topic_name = parsed_link[\"topic_name\"]\n            stream_id = parsed_link[\"stream\"][\"stream_id\"]\n\n            if topic_name not in self.model.topics_in_stream(stream_id):\n                return \"Invalid topic name\"\n\n        # Validate message ID for near.\n        if \"near\" in parsed_link[\"narrow\"]:\n            message_id = parsed_link.get(\"message_id\")\n\n            if message_id is None:\n                return \"Invalid message ID\"\n\n        return \"\"\n\n    def _switch_narrow_to(self, parsed_link: ParsedNarrowLink) -> None:\n        \"\"\"\n        Switches narrow via narrow_to_* methods.\n        \"\"\"\n        narrow = parsed_link[\"narrow\"]\n        if \"stream\" == narrow:\n            self.controller.narrow_to_stream(\n                stream_name=parsed_link[\"stream\"][\"stream_name\"],\n            )\n        elif \"stream:near\" == narrow:\n            self.controller.narrow_to_stream(\n                stream_name=parsed_link[\"stream\"][\"stream_name\"],\n                contextual_message_id=parsed_link[\"message_id\"],\n            )\n        elif \"stream:topic\" == narrow:\n            self.controller.narrow_to_topic(\n                stream_name=parsed_link[\"stream\"][\"stream_name\"],\n                topic_name=parsed_link[\"topic_name\"],\n            )\n        elif \"stream:topic:near\" == narrow:\n            self.controller.narrow_to_topic(\n                stream_name=parsed_link[\"stream\"][\"stream_name\"],\n                topic_name=parsed_link[\"topic_name\"],\n                contextual_message_id=parsed_link[\"message_id\"],\n            )\n\n    def handle_narrow_link(self) -> None:\n        \"\"\"\n        Narrows to the respective narrow if the narrow link is valid or updates\n        the footer with an appropriate validation error message.\n        \"\"\"\n        parsed_link = self._parse_narrow_link(self.link)\n        error = self._validate_narrow_link(parsed_link)\n\n        if error:\n            self.controller.report_error([f\" {error}\"])\n        else:\n            self._switch_narrow_to(parsed_link)\n\n            # Exit pop-up if MessageLinkButton exists in one.\n            if self.controller.is_any_popup_open():\n                self.controller.exit_popup()"
+      },
+      {
+        "file": "zulipterminal/ui_tools/buttons.py",
+        "name": "TopButton.update_count",
+        "kind": "function",
+        "symbol": "zulipterminal.ui_tools.buttons.TopButton.update_count",
+        "start": 58,
+        "end": 67,
+        "code": "    def update_count(self, count: int, text_color: Optional[str] = None) -> None:\n        new_color = self.original_color if text_color is None else text_color\n\n        self.count = count\n        if count == 0:\n            count_text = \"\"\n        else:\n            count_text = str(count)\n\n        self.update_widget((self.count_style, count_text), new_color)"
+      },
+      {
+        "file": "zulipterminal/model.py",
+        "name": "Model._handle_update_message_flags_event",
+        "kind": "function",
+        "symbol": "zulipterminal.model.Model._handle_update_message_flags_event",
+        "start": 1547,
+        "end": 1603,
+        "code": "    def _handle_update_message_flags_event(self, event: Event) -> None:\n        \"\"\"\n        Handle change to message flags (eg. starred, read)\n        \"\"\"\n        assert event[\"type\"] == \"update_message_flags\"\n        if self.server_feature_level is None or self.server_feature_level < 32:\n            operation = event[\"operation\"]\n        else:\n            operation = event[\"op\"]\n\n        if event[\"all\"]:  # FIXME Should handle eventually\n            return\n\n        flag_to_change = event[\"flag\"]\n        if flag_to_change not in {\"starred\", \"read\"}:\n            return\n\n        if flag_to_change == \"read\" and operation == \"remove\":\n            return\n\n        indexed_message_ids = set(self.index[\"messages\"])\n        message_ids_to_mark = set(event[\"messages\"])\n\n        for message_id in message_ids_to_mark & indexed_message_ids:\n            msg = self.index[\"messages\"][message_id]\n            if operation == \"add\":\n                if flag_to_change not in msg[\"flags\"]:\n                    msg[\"flags\"].append(flag_to_change)\n                if flag_to_change == \"starred\":\n                    self.index[\"starred_msg_ids\"].add(message_id)\n            elif operation == \"remove\":\n                if flag_to_change in msg[\"flags\"]:\n                    msg[\"flags\"].remove(flag_to_change)\n                if (\n                    message_id in self.index[\"starred_msg_ids\"]\n                    and flag_to_change == \"starred\"\n                ):\n                    self.index[\"starred_msg_ids\"].remove(message_id)\n            else:\n                raise RuntimeError(event, msg[\"flags\"])\n\n            self.index[\"messages\"][message_id] = msg\n            self._update_rendered_view(message_id)\n\n        if operation == \"add\" and flag_to_change == \"read\":\n            set_count(\n                list(message_ids_to_mark & indexed_message_ids), self.controller, -1\n            )\n\n        if flag_to_change == \"starred\" and operation in [\"add\", \"remove\"]:\n            # update starred count in view\n            len_ids = len(message_ids_to_mark)\n            count = -len_ids if operation == \"remove\" else len_ids\n            self.controller.view.starred_button.update_count(\n                self.controller.view.starred_button.count + count\n            )\n            self.controller.update_screen()"
+      },
+      {
+        "file": "zulipterminal/ui_tools/buttons.py",
+        "name": "StreamButton.mark_muted",
+        "kind": "function",
+        "symbol": "zulipterminal.ui_tools.buttons.StreamButton.mark_muted",
+        "start": 207,
+        "end": 209,
+        "code": "    def mark_muted(self) -> None:\n        self.update_widget((\"muted\", MUTE_MARKER), \"muted\")\n        self.view.home_button.update_count(self.model.unread_counts[\"all_msg\"])"
+      }
+    ],
+    "unresolved": [
+      "zulipterminal/ui_tools/buttons.py:function: update_widget",
+      "zulipterminal/ui_tools/buttons.py:function: update_widget",
+      "zulipterminal/ui_tools/buttons.py:function: update_count"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 6,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 3,
+    "returned_code_chars": 14543
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 14833,
+    "completion_tokens": 289,
+    "total_tokens": 15122,
+    "seconds": 18.993650197982788,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 30.55793571472168,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,118 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 670,
+  "namespace": "diffprivlib.tools.utils.std",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12743,
+      "input_estimate_after": 12743,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, here are the verified locations containing reusable dependencies for implementing the `std` function:\n\n```\ndiffprivlib/tools/utils.py\nline: 271-301\nfunction: _mean\n\ndiffprivlib/tools/utils.py\nline: 427-459\nfunction: _var\n\ndiffprivlib/tools/utils.py\nline: 584-596\nfunction: _std\n\ndiffprivlib/mechanisms/__init__.py\nline: imports\nfunction: LaplaceBoundedDomain\nfunction: LaplaceTruncated\n\ndiffprivlib/validation.py\nline: imports\nfunction: check_bounds\nfunction: clip_to_bounds\n```",
+  "final_locations": {
+    "files": [
+      "diffprivlib/tools/utils.py",
+      "diffprivlib/mechanisms/__init__.py",
+      "diffprivlib/validation.py"
+    ],
+    "entities": [
+      {
+        "file": "diffprivlib/tools/utils.py",
+        "name": "_mean",
+        "kind": "function",
+        "symbol": "diffprivlib.tools.utils._mean",
+        "start": 271,
+        "end": 301,
+        "code": "def _mean(array, epsilon=1.0, bounds=None, axis=None, dtype=None, keepdims=False, random_state=None,\n          accountant=None, nan=False):\n    random_state = check_random_state(random_state)\n\n    if bounds is None:\n        warnings.warn(\"Bounds have not been specified and will be calculated on the data provided. This will \"\n                      \"result in additional privacy leakage. To ensure differential privacy and no additional \"\n                      \"privacy leakage, specify bounds for each dimension.\", PrivacyLeakWarning)\n        bounds = (np.min(array), np.max(array))\n\n    if axis is not None or keepdims:\n        return _wrap_axis(_mean, array, epsilon=epsilon, bounds=bounds, axis=axis, dtype=dtype, keepdims=keepdims,\n                          random_state=random_state, accountant=accountant, nan=nan)\n\n    lower, upper = check_bounds(bounds, shape=0, dtype=dtype)\n\n    accountant = BudgetAccountant.load_default(accountant)\n    accountant.check(epsilon, 0)\n\n    array = clip_to_bounds(np.ravel(array), bounds)\n\n    _func = np.nanmean if nan else np.mean\n    actual_mean = _func(array, axis=axis, dtype=dtype, keepdims=keepdims)\n\n    mech = LaplaceTruncated(epsilon=epsilon, delta=0, sensitivity=(upper - lower) / array.size, lower=lower,\n                            upper=upper, random_state=random_state)\n    output = mech.randomise(actual_mean)\n\n    accountant.spend(epsilon, 0)\n\n    return output"
+      },
+      {
+        "file": "diffprivlib/tools/utils.py",
+        "name": "_var",
+        "kind": "function",
+        "symbol": "diffprivlib.tools.utils._var",
+        "start": 427,
+        "end": 459,
+        "code": "def _var(array, epsilon=1.0, bounds=None, axis=None, dtype=None, keepdims=False, random_state=None, accountant=None,\n         nan=False):\n    random_state = check_random_state(random_state)\n\n    if bounds is None:\n        warnings.warn(\"Bounds have not been specified and will be calculated on the data provided. This will \"\n                      \"result in additional privacy leakage. To ensure differential privacy and no additional \"\n                      \"privacy leakage, specify bounds for each dimension.\", PrivacyLeakWarning)\n        bounds = (np.min(array), np.max(array))\n\n    if axis is not None or keepdims:\n        return _wrap_axis(_var, array, epsilon=epsilon, bounds=bounds, axis=axis, dtype=dtype, keepdims=keepdims,\n                          random_state=random_state, accountant=accountant, nan=nan)\n\n    lower, upper = check_bounds(bounds, shape=0, dtype=dtype)\n\n    accountant = BudgetAccountant.load_default(accountant)\n    accountant.check(epsilon, 0)\n\n    # Let's ravel array to be single-dimensional\n    array = clip_to_bounds(np.ravel(array), bounds)\n\n    _func = np.nanvar if nan else np.var\n    actual_var = _func(array, axis=axis, dtype=dtype, keepdims=keepdims)\n\n    dp_mech = LaplaceBoundedDomain(epsilon=epsilon, delta=0,\n                                   sensitivity=((upper - lower) / array.size) ** 2 * (array.size - 1), lower=0,\n                                   upper=((upper - lower) ** 2) / 4, random_state=random_state)\n    output = dp_mech.randomise(actual_var)\n\n    accountant.spend(epsilon, 0)\n\n    return output"
+      },
+      {
+        "file": "diffprivlib/tools/utils.py",
+        "name": "_std",
+        "kind": "function",
+        "symbol": "diffprivlib.tools.utils._std",
+        "start": 584,
+        "end": 596,
+        "code": "def _std(array, epsilon=1.0, bounds=None, axis=None, dtype=None, keepdims=False, random_state=None, accountant=None,\n         nan=False):\n    ret = _var(array, epsilon=epsilon, bounds=bounds, axis=axis, dtype=dtype, keepdims=keepdims,\n               random_state=random_state, accountant=accountant, nan=nan)\n\n    if isinstance(ret, mu.ndarray):\n        ret = um.sqrt(ret)\n    elif hasattr(ret, 'dtype'):\n        ret = ret.dtype.type(um.sqrt(ret))\n    else:\n        ret = um.sqrt(ret)\n\n    return ret"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "check_bounds",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.check_bounds",
+        "start": 60,
+        "end": 132,
+        "code": "def check_bounds(bounds, shape=0, min_separation=0.0, dtype=float):\n    \"\"\"Input validation for the ``bounds`` parameter.\n\n    Checks that ``bounds`` is composed of a list of tuples of the form (lower, upper), where lower <= upper and both\n    are numeric.  Also checks that ``bounds`` contains the appropriate number of dimensions, and that there is a\n    ``min_separation`` between the bounds.\n\n    Parameters\n    ----------\n    bounds : tuple\n        Tuple of bounds of the form (min, max). `min` and `max` can either be scalars or 1-dimensional arrays.\n\n    shape : int, default: 0\n        Number of dimensions to be expected in ``bounds``.\n\n    min_separation : float, default: 0.0\n        The minimum separation between `lower` and `upper` of each dimension.  This separation is enforced if not\n        already satisfied.\n\n    dtype : data-type, default: float\n        Data type of the returned bounds.\n\n    Returns\n    -------\n    bounds : tuple\n\n    \"\"\"\n    if not isinstance(bounds, tuple):\n        raise TypeError(f\"Bounds must be specified as a tuple of (min, max), got {type(bounds)}.\")\n    if not isinstance(shape, Integral):\n        raise TypeError(f\"shape parameter must be integer-valued, got {type(shape)}.\")\n\n    lower, upper = bounds\n\n    if np.asarray(lower).size == 1 or np.asarray(upper).size == 1:\n        lower = np.ravel(lower).astype(dtype)\n        upper = np.ravel(upper).astype(dtype)\n    else:\n        lower = np.asarray(lower, dtype=dtype)\n        upper = np.asarray(upper, dtype=dtype)\n\n    if lower.shape != upper.shape:\n        raise ValueError(\"lower and upper bounds must be the same shape array\")\n    if lower.ndim > 1:\n        raise ValueError(\"lower and upper bounds must be scalar or a 1-dimensional array\")\n    if lower.size not in (1, shape):\n        raise ValueError(f\"lower and upper bounds must have {shape or 1} element(s), got {lower.size}.\")\n\n    n_bounds = lower.shape[0]\n\n    for i in range(n_bounds):\n        _lower = lower[i]\n        _upper = upper[i]\n\n        if not isinstance(_lower, Real) or not isinstance(_upper, Real):\n            raise TypeError(f\"Each bound must be numeric, got {_lower} ({type(_lower)}) and {_upper} ({type(_upper)}).\")\n\n        if _lower > _upper:\n            raise ValueError(f\"For each bound, lower bound must be smaller than upper bound, got {lower}, {upper})\")\n\n        if _upper - _lower < min_separation:\n            mid = (_upper + _lower) / 2\n            lower[i] = mid - min_separation / 2\n            upper[i] = mid + min_separation / 2\n\n    if shape == 0:\n        return lower.item(), upper.item()\n\n    if n_bounds == 1:\n        lower = np.ones(shape, dtype=dtype) * lower.item()\n        upper = np.ones(shape, dtype=dtype) * upper.item()\n\n    return lower, upper"
+      },
+      {
+        "file": "diffprivlib/validation.py",
+        "name": "clip_to_bounds",
+        "kind": "function",
+        "symbol": "diffprivlib.validation.clip_to_bounds",
+        "start": 167,
+        "end": 200,
+        "code": "def clip_to_bounds(array, bounds):\n    \"\"\"Clips the examples of a 2-dimensional array to given bounds.\n\n    Parameters\n    ----------\n    array : np.ndarray\n        Array to be clipped.  After clipping, all examples have a 2-norm of at most `clip`.\n\n    bounds : tuple\n        Tuple of bounds of the form (min, max) which the array is to be clipped to. `min` and `max` must be scalar,\n        unless array is 2-dimensional.\n\n    Returns\n    -------\n    array : np.ndarray\n        The clipped array.\n\n    \"\"\"\n    if not isinstance(array, np.ndarray):\n        raise TypeError(f\"Input array must be a numpy array, got {type(array)}.\")\n\n    lower, upper = check_bounds(bounds, np.size(bounds[0]), min_separation=0)\n    clipped_array = array.copy()\n\n    if np.allclose(lower, np.min(lower)) and np.allclose(upper, np.max(upper)):\n        clipped_array = np.clip(clipped_array, np.min(lower), np.max(upper))\n    else:\n        if array.ndim != 2:\n            raise ValueError(f\"For non-scalar bounds, input array must be 2-dimensional. Got {array.ndim} dimensions.\")\n\n        for feature in range(array.shape[1]):\n            clipped_array[:, feature] = np.clip(array[:, feature], lower[feature], upper[feature])\n\n    return clipped_array"
+      }
+    ],
+    "unresolved": [
+      "diffprivlib/mechanisms/__init__.py:function: LaplaceBoundedDomain",
+      "diffprivlib/mechanisms/__init__.py:function: LaplaceTruncated"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "diffprivlib.tools.utils._std"
+    ],
+    "exact_hit_dependencies": [
+      "diffprivlib.tools.utils._std"
+    ],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 7461
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 27454,
+    "completion_tokens": 1076,
+    "total_tokens": 28530,
+    "seconds": 68.05681014060974,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 71.32551717758179,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

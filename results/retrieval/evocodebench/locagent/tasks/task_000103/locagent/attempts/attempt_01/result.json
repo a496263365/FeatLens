@@ -1,0 +1,128 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 103,
+  "namespace": "tanuki.register.Register.load_function_description",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5824,
+      "input_estimate_after": 5824,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `load_function_description` function. These are existing components that would need to be used or referenced:\n\n```\nsrc/tanuki/models/function_description.py\nline: 8\nclass: FunctionDescription\nline: 10-16\nfields: name, docstring, input_type_hints, input_class_definitions, output_type_hint, output_class_definition, type\n\nsrc/tanuki/models/function_type.py\nline: (not visible in evidence but referenced)\nclass: FunctionType\nconstants: SYMBOLIC, EMBEDDABLE\n\nsrc/tanuki/models/embedding.py\nline: 4 (imported in register.py)\nclass: Embedding\n\nsrc/tanuki/utils.py\nline: 7 (imported in register.py)\nfunction: get_source\n\nsrc/tanuki/register.py\nline: 1-2\nimports: inspect, get_type_hints, get_origin, Union\nline: 110-112\nfunction: Register.load_function_description (stub location)\n```",
+  "final_locations": {
+    "files": [
+      "src/tanuki/models/function_description.py",
+      "src/tanuki/models/function_type.py",
+      "src/tanuki/models/embedding.py",
+      "src/tanuki/utils.py",
+      "src/tanuki/register.py"
+    ],
+    "entities": [
+      {
+        "file": "src/tanuki/models/function_description.py",
+        "name": "FunctionDescription",
+        "kind": "class",
+        "symbol": "tanuki.models.function_description.FunctionDescription",
+        "start": 9,
+        "end": 26,
+        "code": "class FunctionDescription:\n    name: str\n    docstring: str\n    input_type_hints: Dict[str, type]\n    input_class_definitions: Dict[str, str]\n    output_type_hint: type\n    output_class_definition: Optional[str]\n    type: FunctionType = FunctionType.SYMBOLIC\n\n    def __hash__(self, purpose: str = \"general\"):\n        if purpose == \"general\": \n            json_encoded = json_dumps(self).encode('utf-8')\n            h = hashlib.md5(json_encoded).hexdigest()\n            return str(h)\n        if purpose == \"finetune\": \n            json_encoded = json_dumps(self).encode('utf-8')\n            h = hashlib.shake_256(json_encoded).hexdigest(8)\n            return str(h)"
+      },
+      {
+        "file": "src/tanuki/models/function_type.py",
+        "name": "FunctionType",
+        "kind": "class",
+        "symbol": "tanuki.models.function_type.FunctionType",
+        "start": 4,
+        "end": 6,
+        "code": "class FunctionType(str, enum.Enum):\n    SYMBOLIC = \"symbolic\"\n    EMBEDDABLE = \"embeddable\""
+      },
+      {
+        "file": "src/tanuki/models/embedding.py",
+        "name": "Embedding",
+        "kind": "class",
+        "symbol": "tanuki.models.embedding.Embedding",
+        "start": 8,
+        "end": 41,
+        "code": "class Embedding(Generic[T]):\n    _data_type = None  # Placeholder for the data type\n\n    def __init__(self, data: List[float]):\n        # Determine the origin of the data type (list, np.ndarray, etc.)\n        data_type_origin = get_origin(self._data_type) or self._data_type\n\n        if data_type_origin is np.ndarray:\n            self._data = np.array(data)\n        elif data_type_origin is list:\n            # Further check for element type if necessary\n            element_type = get_args(self._data_type)[0] if get_args(self._data_type) else None\n            if all(isinstance(item, element_type) for item in data):\n                self._data = data\n            else:\n                raise TypeError(\"Elements of data do not match the expected type\")\n        elif not data_type_origin:\n            self._data = data\n        else:\n            raise TypeError(\"Unsupported data type for embedding\")\n\n    @classmethod\n    def __class_getitem__(cls, item):\n        new_cls = type(cls.__name__, (cls,), {'_data_type': item})\n        return new_cls\n\n    def __getattr__(self, item):\n        return getattr(self._data, item)\n\n    def __repr__(self):\n        return repr(self._data)\n\n    def __str__(self):\n        return str(self._data)"
+      },
+      {
+        "file": "src/tanuki/utils.py",
+        "name": "get_source",
+        "kind": "function",
+        "symbol": "tanuki.utils.get_source",
+        "start": 195,
+        "end": 206,
+        "code": "def get_source(func) -> str:\n    \"\"\"\n    Get the source code of a function\n    Args:\n        func (function): the function to get the source code from\n    Returns:\n        source (str): the source code of the function\n    \"\"\"\n    try:\n        return inspect.getsource(func)\n    except Exception:\n        return _get_source_ipython(func)"
+      },
+      {
+        "file": "src/tanuki/register.py",
+        "name": "Register",
+        "kind": "class",
+        "symbol": "tanuki.register.Register",
+        "start": 13,
+        "end": 112,
+        "code": "class Register:\n\n    def __init__(self):\n        pass\n\n    @staticmethod\n    def get(func_name) -> Tuple[FunctionType, Callable]:\n        if func_name not in alignable_symbolic_functions and func_name not in alignable_embedding_functions:\n            pass\n\n        if func_name in alignable_symbolic_functions:\n            return FunctionType.SYMBOLIC, alignable_symbolic_functions[func_name]\n        elif func_name in alignable_embedding_functions:\n            return FunctionType.EMBEDDABLE, alignable_embedding_functions[func_name]\n\n    @staticmethod\n    def function_names_to_patch(*args, type: Optional[FunctionType] = None):\n        \"\"\"\n        Get the registered function names that should be patched, either globally (if len(args)==0) or as members of\n        an instance\n        :param args: Optional instance to check\n        :return:\n        \"\"\"\n        function_names = []\n        if len(args) == 1:\n            instance = args[0]\n\n            if type == FunctionType.SYMBOLIC:\n                for key in alignable_symbolic_functions.keys():\n                    if hasattr(instance, key):\n                        function_names.append(key)\n                return function_names\n            elif type == FunctionType.EMBEDDABLE:\n                for key in alignable_embedding_functions.keys():\n                    if hasattr(instance, key):\n                        function_names.append(key)\n                return function_names\n            else:\n                for key in alignable_symbolic_functions.keys():\n                    if hasattr(instance, key):\n                        function_names.append(key)\n                for key in alignable_embedding_functions.keys():\n                    if hasattr(instance, key):\n                        function_names.append(key)\n                return function_names\n        else:\n            if type == FunctionType.SYMBOLIC:\n                return list(alignable_symbolic_functions.keys())\n            elif type == FunctionType.EMBEDDABLE:\n                return list(alignable_embedding_functions.keys())\n            else:\n                return list(alignable_symbolic_functions.keys()) + list(alignable_embedding_functions.keys())\n\n    @staticmethod\n    def functions_to_patch(*args, type: Optional[FunctionType] = None) -> Dict[str, Callable]:\n        function_names = Register.function_names_to_patch(*args, type=type)\n        if type == FunctionType.SYMBOLIC:\n            return {key: alignable_symbolic_functions[key] for key in function_names}\n        elif type == FunctionType.EMBEDDABLE:\n            return {key: alignable_embedding_functions[key] for key in function_names}\n        else:\n            return {key: alignable_symbolic_functions[key] for key in function_names} + \\\n                   {key: alignable_embedding_functions[key] for key in function_names}\n\n    @staticmethod\n    def add_function(func, function_description: FunctionDescription):\n        if function_description.type == FunctionType.SYMBOLIC:\n            alignable_symbolic_functions[func.__name__] = func\n        elif function_description.type == FunctionType.EMBEDDABLE:\n            alignable_embedding_functions[func.__name__] = func\n\n    @staticmethod\n    def load_function_description_from_name(*args) -> FunctionDescription:\n        \"\"\"\n        Load a function description from a function name from the global scope.\n        :param func_name:\n        :return:\n        \"\"\"\n        if len(args) == 1:\n            instance = None\n            func_name = args[0]\n        elif len(args) == 2:\n            instance = args[0]\n            func_name = args[1]\n        else:\n            raise ValueError(\"Invalid number of arguments\")\n\n        if not instance:\n            if func_name in alignable_symbolic_functions:\n                func_object = alignable_symbolic_functions[func_name]\n            elif func_name in alignable_embedding_functions:\n                func_object = alignable_embedding_functions[func_name]\n        else:\n            func_object = getattr(instance, func_name)\n\n        return Register.load_function_description(func_object)\n\n    @staticmethod\n    def load_function_description(func_object) -> FunctionDescription:\n        pass"
+      }
+    ],
+    "unresolved": [
+      "src/tanuki/models/function_description.py:line: 8",
+      "src/tanuki/models/embedding.py:line: 4 (imported in register.py)",
+      "src/tanuki/utils.py:line: 7 (imported in register.py)",
+      "src/tanuki/register.py:line: 1-2",
+      "src/tanuki/register.py:line: 1-2",
+      "src/tanuki/register.py:function: Register.load_function_description (stub location)"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6,
+    "exact_entity_dr": 0.6,
+    "dependency_count": 5,
+    "hit_dependencies": [
+      "tanuki.models.embedding.Embedding",
+      "tanuki.models.function_description.FunctionDescription",
+      "tanuki.models.function_type.FunctionType"
+    ],
+    "exact_hit_dependencies": [
+      "tanuki.models.embedding.Embedding",
+      "tanuki.models.function_description.FunctionDescription",
+      "tanuki.models.function_type.FunctionType"
+    ],
+    "returned_entities": 5,
+    "returned_files": 5,
+    "unresolved_locations": 6,
+    "returned_code_chars": 6520
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 22902,
+    "completion_tokens": 610,
+    "total_tokens": 23512,
+    "seconds": 38.422951459884644,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 40.04485201835632,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

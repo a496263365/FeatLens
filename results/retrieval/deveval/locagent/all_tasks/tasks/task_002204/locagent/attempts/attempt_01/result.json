@@ -1,0 +1,150 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2204,
+  "namespace": "mrjob.util.save_sys_std",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 12548,
+      "input_estimate_after": 12548,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `save_sys_std()` function in `mrjob/util.py`. The function needs to be a context manager that saves and restores `sys.stdin`, `sys.stdout`, and `sys.stderr` with flushing before and after switching.\n\n```\nmrjob/util.py\nline: 170\nline: 182\nfunction: save_current_environment\npattern: Context manager pattern with try/finally and restoration\n\nmrjob/util.py\nline: 186\nline: 195\nfunction: save_cwd\npattern: Context manager pattern with try/finally and restoration\n\nmrjob/util.py\nline: 228\nline: 236\nfunction: save_sys_path\npattern: Context manager pattern with try/finally and restoration\n\nmrjob/job.py\nline: 152\nline: 157\nline: 160\nfunction: MRJob.stdin, MRJob.stdout, MRJob.stderr\npattern: Access to sys.stdin, sys.stdout, sys.stderr with buffer handling\n\nmrjob/job.py\nline: 584\nline: 585\nline: 598\nline: 599\nline: 648\nline: 649\nfunction: MRJob.increment_counter, MRJob.set_status, MRJob.run_job\npattern: flush() usage on stderr and stdout streams\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/util.py",
+      "mrjob/job.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/util.py",
+        "name": "save_current_environment",
+        "kind": "function",
+        "symbol": "mrjob.util.save_current_environment",
+        "start": 171,
+        "end": 182,
+        "code": "def save_current_environment():\n    \"\"\" Context manager that saves os.environ and loads\n        it back again after execution\n    \"\"\"\n    original_environ = os.environ.copy()\n\n    try:\n        yield\n\n    finally:\n        os.environ.clear()\n        os.environ.update(original_environ)"
+      },
+      {
+        "file": "mrjob/util.py",
+        "name": "save_cwd",
+        "kind": "function",
+        "symbol": "mrjob.util.save_cwd",
+        "start": 186,
+        "end": 195,
+        "code": "def save_cwd():\n    \"\"\"Context manager that saves the current working directory,\n    and chdir's back to it after execution.\"\"\"\n    original_cwd = os.getcwd()\n\n    try:\n        yield\n\n    finally:\n        os.chdir(original_cwd)"
+      },
+      {
+        "file": "mrjob/util.py",
+        "name": "save_sys_path",
+        "kind": "function",
+        "symbol": "mrjob.util.save_sys_path",
+        "start": 228,
+        "end": 236,
+        "code": "def save_sys_path():\n    \"\"\"Context manager that saves sys.path and restores it after execution.\"\"\"\n    original_sys_path = list(sys.path)\n\n    try:\n        yield\n\n    finally:\n        sys.path = original_sys_path"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.stdin",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.stdin",
+        "start": 152,
+        "end": 153,
+        "code": "    def stdin(self):\n        return self._stdin or getattr(sys.stdin, 'buffer', sys.stdin)"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.stdout",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.stdout",
+        "start": 156,
+        "end": 157,
+        "code": "    def stdout(self):\n        return self._stdout or getattr(sys.stdout, 'buffer', sys.stdout)"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.stderr",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.stderr",
+        "start": 160,
+        "end": 161,
+        "code": "    def stderr(self):\n        return self._stderr or getattr(sys.stderr, 'buffer', sys.stderr)"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.increment_counter",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.increment_counter",
+        "start": 548,
+        "end": 585,
+        "code": "    def increment_counter(self, group, counter, amount=1):\n        \"\"\"Increment a counter in Hadoop streaming by printing to stderr.\n\n        :type group: str\n        :param group: counter group\n        :type counter: str\n        :param counter: description of the counter\n        :type amount: int\n        :param amount: how much to increment the counter by\n\n        Commas in ``counter`` or ``group`` will be automatically replaced\n        with semicolons (commas confuse Hadoop streaming).\n        \"\"\"\n        # don't allow people to pass in floats\n        from mrjob.py2 import integer_types\n        if not isinstance(amount, integer_types):\n            raise TypeError('amount must be an integer, not %r' % (amount,))\n\n        # cast non-strings to strings (if people pass in exceptions, etc)\n        if not isinstance(group, string_types):\n            group = str(group)\n        if not isinstance(counter, string_types):\n            counter = str(counter)\n\n        # Extra commas screw up hadoop and there's no way to escape them. So\n        # replace them with the next best thing: semicolons!\n        #\n        # The relevant Hadoop code is incrCounter(), here:\n        # http://svn.apache.org/viewvc/hadoop/mapreduce/trunk/src/contrib/streaming/src/java/org/apache/hadoop/streaming/PipeMapRed.java?view=markup  # noqa\n        group = group.replace(',', ';')\n        counter = counter.replace(',', ';')\n\n        line = 'reporter:counter:%s,%s,%d\\n' % (group, counter, amount)\n        if not isinstance(line, bytes):\n            line = line.encode('utf_8')\n\n        self.stderr.write(line)\n        self.stderr.flush()"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.set_status",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.set_status",
+        "start": 587,
+        "end": 599,
+        "code": "    def set_status(self, msg):\n        \"\"\"Set the job status in hadoop streaming by printing to stderr.\n\n        This is also a good way of doing a keepalive for a job that goes a\n        long time between outputs; Hadoop streaming usually times out jobs\n        that give no output for longer than 10 minutes.\n        \"\"\"\n        line = 'reporter:status:%s\\n' % (msg,)\n        if not isinstance(line, bytes):\n            line = line.encode('utf_8')\n\n        self.stderr.write(line)\n        self.stderr.flush()"
+      },
+      {
+        "file": "mrjob/job.py",
+        "name": "MRJob.run_job",
+        "kind": "function",
+        "symbol": "mrjob.job.MRJob.run_job",
+        "start": 620,
+        "end": 649,
+        "code": "    def run_job(self):\n        \"\"\"Run the all steps of the job, logging errors (and debugging output\n        if :option:`--verbose` is specified) to STDERR and streaming the\n        output to STDOUT.\n\n        Called from :py:meth:`run`. You'd probably only want to call this\n        directly from automated tests.\n        \"\"\"\n        # self.stderr is strictly binary, need to wrap it so it's possible\n        # to log to it in Python 3\n        from mrjob.step import StepFailedException\n        log_stream = codecs.getwriter('utf_8')(self.stderr)\n\n        self.set_up_logging(quiet=self.options.quiet,\n                            verbose=self.options.verbose,\n                            stream=log_stream)\n\n        with self.make_runner() as runner:\n            try:\n                runner.run()\n            except StepFailedException as e:\n                # no need for a runner stacktrace if step failed; runners will\n                # log more useful information anyway\n                log.error(str(e))\n                sys.exit(1)\n\n            if self._should_cat_output():\n                for chunk in runner.cat_output():\n                    self.stdout.write(chunk)\n                self.stdout.flush()"
+      }
+    ],
+    "unresolved": [
+      "mrjob/util.py:line: 170",
+      "mrjob/job.py:function: MRJob.stdin, MRJob.stdout, MRJob.stderr",
+      "mrjob/job.py:function: MRJob.increment_counter, MRJob.set_status, MRJob.run_job"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 9,
+    "returned_files": 2,
+    "unresolved_locations": 3,
+    "returned_code_chars": 4344
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 32255,
+    "completion_tokens": 681,
+    "total_tokens": 32936,
+    "seconds": 65.66330552101135,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 138.86455583572388,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

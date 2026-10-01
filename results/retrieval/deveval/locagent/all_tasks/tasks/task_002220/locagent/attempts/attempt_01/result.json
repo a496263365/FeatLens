@@ -1,0 +1,133 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2220,
+  "namespace": "mistune.toc.add_toc_hook",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13095,
+      "input_estimate_after": 13095,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `add_toc_hook` function. The function needs to add a hook to save table of contents items into `state.env`. Looking at the codebase patterns, I can identify several key dependencies:\n\n1. **Hook registration system** - How hooks are registered in the Markdown class\n2. **State.env usage patterns** - How other plugins store data in state.env\n3. **Heading parsing** - How headings are parsed and their structure\n4. **Plugin patterns** - How other plugins implement similar functionality\n\nFrom the evidence, I can see:\n\n1. The `Markdown` class has hook systems: `before_parse_hooks`, `before_render_hooks`, and `after_render_hooks` (from `src/mistune/markdown.py:Markdown.parse`)\n2. The `state.env` is a dictionary used by various plugins (footnotes, ruby, etc.) to store data\n3. The `footnotes` plugin shows a pattern of using `state.env` to store and retrieve data\n4. The `task_lists` plugin shows a hook pattern\n\nHere are the key reusable dependencies:\n\n```\nsrc/mistune/markdown.py\nline: 82\nline: 87\nline: 92\nclass: Markdown\nfunction: parse\n\nsrc/mistune/plugins/footnotes.py\nline: 23\nline: 25\nline: 30\nfunction: parse_inline_footnote\n\nsrc/mistune/plugins/footnotes.py\nline: 79\nfunction: md_footnotes_hook\n\nsrc/mistune/plugins/task_lists.py\nline: 9\nfunction: task_lists_hook\n\nsrc/mistune/core.py\nline: 80\nclass: InlineState\nattribute: env\n```",
+  "final_locations": {
+    "files": [
+      "src/mistune/markdown.py",
+      "src/mistune/plugins/footnotes.py",
+      "src/mistune/plugins/task_lists.py",
+      "src/mistune/core.py"
+    ],
+    "entities": [
+      {
+        "file": "src/mistune/markdown.py",
+        "name": "Markdown.parse",
+        "kind": "function",
+        "symbol": "mistune.markdown.Markdown.parse",
+        "start": 63,
+        "end": 94,
+        "code": "    def parse(self, s: str, state: Optional[BlockState]=None):\n        \"\"\"Parse and convert the given markdown string. If renderer is None,\n        the returned **result** will be parsed markdown tokens.\n\n        :param s: markdown string\n        :param state: instance of BlockState\n        :returns: result, state\n        \"\"\"\n        if state is None:\n            state = self.block.state_cls()\n\n        # normalize line separator\n        s = s.replace('\\r\\n', '\\n')\n        s = s.replace('\\r', '\\n')\n        if not s.endswith('\\n'):\n            s += '\\n'\n\n        state.process(s)\n\n        for hook in self.before_parse_hooks:\n            hook(self, state)\n\n        self.block.parse(state)\n\n        for hook in self.before_render_hooks:\n            hook(self, state)\n\n        result = self.render_state(state)\n\n        for hook in self.after_render_hooks:\n            result = hook(self, result, state)\n        return result, state"
+      },
+      {
+        "file": "src/mistune/markdown.py",
+        "name": "Markdown",
+        "kind": "class",
+        "symbol": "mistune.markdown.Markdown",
+        "start": 7,
+        "end": 110,
+        "code": "class Markdown:\n    \"\"\"Markdown instance to convert markdown text into HTML or other formats.\n    Here is an example with the HTMLRenderer::\n\n        from mistune import HTMLRenderer\n\n        md = Markdown(renderer=HTMLRenderer(escape=False))\n        md('hello **world**')\n\n    :param renderer: a renderer to convert parsed tokens\n    :param block: block level syntax parser\n    :param inline: inline level syntax parser\n    :param plugins: mistune plugins to use\n    \"\"\"\n    def __init__(self, renderer=None,\n                 block: Optional[BlockParser]=None,\n                 inline: Optional[InlineParser]=None,\n                 plugins=None):\n        if block is None:\n            block = BlockParser()\n\n        if inline is None:\n            inline = InlineParser()\n\n        self.renderer = renderer\n        self.block: BlockParser = block\n        self.inline: InlineParser = inline\n        self.before_parse_hooks = []\n        self.before_render_hooks = []\n        self.after_render_hooks = []\n\n        if plugins:\n            for plugin in plugins:\n                plugin(self)\n\n    def use(self, plugin):\n        plugin(self)\n\n    def render_state(self, state: BlockState):\n        data = self._iter_render(state.tokens, state)\n        if self.renderer:\n            return self.renderer(data, state)\n        return list(data)\n\n    def _iter_render(self, tokens, state):\n        for tok in tokens:\n            if 'children' in tok:\n                children = self._iter_render(tok['children'], state)\n                tok['children'] = list(children)\n            elif 'text' in tok:\n                text = tok.pop('text')\n                # process inline text\n                # avoid striping emsp or other unicode spaces\n                tok['children'] = self.inline(text.strip(' \\r\\n\\t\\f'), state.env)\n            yield tok\n\n    def parse(self, s: str, state: Optional[BlockState]=None):\n        \"\"\"Parse and convert the given markdown string. If renderer is None,\n        the returned **result** will be parsed markdown tokens.\n\n        :param s: markdown string\n        :param state: instance of BlockState\n        :returns: result, state\n        \"\"\"\n        if state is None:\n            state = self.block.state_cls()\n\n        # normalize line separator\n        s = s.replace('\\r\\n', '\\n')\n        s = s.replace('\\r', '\\n')\n        if not s.endswith('\\n'):\n            s += '\\n'\n\n        state.process(s)\n\n        for hook in self.before_parse_hooks:\n            hook(self, state)\n\n        self.block.parse(state)\n\n        for hook in self.before_render_hooks:\n            hook(self, state)\n\n        result = self.render_state(state)\n\n        for hook in self.after_render_hooks:\n            result = hook(self, result, state)\n        return result, state\n\n    def read(self, filepath, encoding='utf-8', state=None):\n        if state is None:\n            state = self.block.state_cls()\n\n        state.env['__file__'] = filepath\n        with open(filepath, 'rb') as f:\n            s = f.read()\n\n        s = s.decode(encoding)\n        return self.parse(s, state)\n\n    def __call__(self, s: str):\n        if s is None:\n            s = '\\n'\n        return self.parse(s)[0]"
+      },
+      {
+        "file": "src/mistune/plugins/footnotes.py",
+        "name": "parse_inline_footnote",
+        "kind": "function",
+        "symbol": "mistune.plugins.footnotes.parse_inline_footnote",
+        "start": 21,
+        "end": 38,
+        "code": "def parse_inline_footnote(inline, m: re.Match, state):\n    key = unikey(m.group('footnote_key'))\n    ref = state.env.get('ref_footnotes')\n    if ref and key in ref:\n        notes = state.env.get('footnotes')\n        if not notes:\n            notes = []\n        if key not in notes:\n            notes.append(key)\n            state.env['footnotes'] = notes\n        state.append_token({\n          'type': 'footnote_ref',\n          'raw': key,\n          'attrs': {'index': notes.index(key) + 1}\n        })\n    else:\n        state.append_token({'type': 'text', 'raw': m.group(0)})\n    return m.end()"
+      },
+      {
+        "file": "src/mistune/plugins/footnotes.py",
+        "name": "md_footnotes_hook",
+        "kind": "function",
+        "symbol": "mistune.plugins.footnotes.md_footnotes_hook",
+        "start": 79,
+        "end": 91,
+        "code": "def md_footnotes_hook(md, result: str, state: BlockState):\n    notes = state.env.get('footnotes')\n    if not notes:\n        return result\n\n    children = [\n        parse_footnote_item(md.block, k, i + 1, state)\n        for i, k in enumerate(notes)\n    ]\n    state = BlockState()\n    state.tokens = [{'type': 'footnotes', 'children': children}]\n    output = md.render_state(state)\n    return result + output"
+      },
+      {
+        "file": "src/mistune/plugins/task_lists.py",
+        "name": "task_lists_hook",
+        "kind": "function",
+        "symbol": "mistune.plugins.task_lists.task_lists_hook",
+        "start": 9,
+        "end": 10,
+        "code": "def task_lists_hook(md, state):\n    return _rewrite_all_list_items(state.tokens)"
+      },
+      {
+        "file": "src/mistune/core.py",
+        "name": "InlineState.__init__",
+        "kind": "function",
+        "symbol": "mistune.core.InlineState.__init__",
+        "start": 80,
+        "end": 87,
+        "code": "    def __init__(self, env: Dict[str, Any]):\n        self.env = env\n        self.src = ''\n        self.tokens = []\n        self.in_image = False\n        self.in_link = False\n        self.in_emphasis = False\n        self.in_strong = False"
+      },
+      {
+        "file": "src/mistune/core.py",
+        "name": "InlineState",
+        "kind": "class",
+        "symbol": "mistune.core.InlineState",
+        "start": 78,
+        "end": 104,
+        "code": "class InlineState:\n    \"\"\"The state to save inline parser's tokens.\"\"\"\n    def __init__(self, env: Dict[str, Any]):\n        self.env = env\n        self.src = ''\n        self.tokens = []\n        self.in_image = False\n        self.in_link = False\n        self.in_emphasis = False\n        self.in_strong = False\n\n    def prepend_token(self, token: Dict[str, Any]):\n        \"\"\"Insert token before the last token.\"\"\"\n        self.tokens.insert(len(self.tokens) - 1, token)\n\n    def append_token(self, token: Dict[str, Any]):\n        \"\"\"Add token to the end of token list.\"\"\"\n        self.tokens.append(token)\n\n    def copy(self):\n        \"\"\"Create a copy of current state.\"\"\"\n        state = self.__class__(self.env)\n        state.in_image = self.in_image\n        state.in_link = self.in_link\n        state.in_emphasis = self.in_emphasis\n        state.in_strong = self.in_strong\n        return state"
+      }
+    ],
+    "unresolved": [
+      "1. The `Markdown` class has hook systems: `before_parse_hooks`, `before_render_hooks`, and `after_render_hooks` (from `src/mistune/markdown.py:Markdown.parse`)",
+      "src/mistune/markdown.py:function: parse"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 4,
+    "unresolved_locations": 2,
+    "returned_code_chars": 6326
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 39270,
+    "completion_tokens": 820,
+    "total_tokens": 40090,
+    "seconds": 103.75706076622009,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 110.75001168251038,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

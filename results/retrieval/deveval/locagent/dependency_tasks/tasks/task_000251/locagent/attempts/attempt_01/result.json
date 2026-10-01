@@ -1,0 +1,124 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 251,
+  "namespace": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_response",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4566,
+      "input_estimate_after": 4566,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: 298\nfunction: JsonRpcReader.read_next_chunk\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: 334\nfunction: JsonRpcReader.try_read_headers\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: 396\nfunction: JsonRpcReader.try_read_content\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: 413\nfunction: JsonRpcReader.trim_buffer_and_resize\n\nmssqlcli/jsonrpc/jsonrpcclient.py\nline: 261\nclass: JsonRpcReader\nfunction: read_response\n```",
+  "final_locations": {
+    "files": [
+      "mssqlcli/jsonrpc/jsonrpcclient.py"
+    ],
+    "entities": [
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcReader.read_next_chunk",
+        "kind": "function",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_next_chunk",
+        "start": 298,
+        "end": 332,
+        "code": "    def read_next_chunk(self):\n        \"\"\"\n        Read a chunk from the output stream into buffer.\n        Exceptions raised:\n            EOFError\n                Stream was empty or Stream did not contain a valid header or content-body.\n            ValueError\n                Stream was closed externally.\n        \"\"\"\n        # Check if we need to resize.\n        current_buffer_size = len(self.buffer)\n        if ((current_buffer_size - self.buffer_end_offset) /\n                current_buffer_size) < self.BUFFER_RESIZE_TRIGGER:\n            resized_buffer = bytearray(current_buffer_size * 2)\n            # copy current buffer content to new buffer.\n            resized_buffer[0:current_buffer_size] = self.buffer\n            # point to new buffer.\n            self.buffer = resized_buffer\n\n        # Memory view is required in order to read into a subset of a byte\n        # array\n        try:\n            length_read = self.stream.readinto(\n                memoryview(self.buffer)[self.buffer_end_offset:])\n            self.buffer_end_offset += length_read\n\n            if not length_read:\n                logger.debug(u'JSON RPC Reader reached end of stream')\n                raise EOFError(u'End of stream reached, no output.')\n\n            return True\n        except ValueError as ex:\n            logger.debug(u'JSON RPC Reader on read_next_chunk encountered exception: %s', ex)\n            # Stream was closed.\n            raise"
+      },
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcReader.try_read_headers",
+        "kind": "function",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_headers",
+        "start": 334,
+        "end": 394,
+        "code": "    def try_read_headers(self):\n        \"\"\"\n        Try to read the Header information from the internal buffer expecting the last\n        header to contain '\\r\\n\\r\\n'.\n        Exceptions:\n            LookupError\n                The content-length header was not found.\n            ValueError\n                The content-length contained a invalid literal for int.\n        \"\"\"\n        # Scan the buffer up until right before the CRLFCRLF.\n        scan_offset = self.read_offset\n        while (scan_offset + 3 < self.buffer_end_offset and\n               (self.buffer[scan_offset] != self.CR or\n                self.buffer[scan_offset + 1] != self.LF or\n                self.buffer[scan_offset + 2] != self.CR or\n                self.buffer[scan_offset + 3] != self.LF)):\n            scan_offset += 1\n\n        # if we reached the end\n        if scan_offset + 3 >= self.buffer_end_offset:\n            return False\n\n        # Split the headers by new line\n        try:\n            headers_read = self.buffer[self.read_offset:scan_offset].decode(\n                u'ascii')\n            for header in headers_read.split(u'\\n'):\n                colon_index = header.find(u':')\n\n                if colon_index == -1:\n                    logger.debug(\n                        u'JSON RPC Reader encountered missing colons in try_read_headers()')\n                    raise KeyError(\n                        u'Colon missing from Header: {}.'.format(header))\n\n                # Case insensitive.\n                header_key = header[:colon_index].lower()\n                header_value = header[colon_index + 1:]\n\n                self.headers[header_key] = header_value\n\n            # Was content-length header found?\n            if 'content-length' not in self.headers:\n                logger.debug(\n                    u'JSON RPC Reader did not find Content-Length in the headers')\n                raise LookupError(\n                    u'Content-Length was not found in headers received.')\n\n            self.expected_content_length = int(self.headers[u'content-length'])\n\n        except ValueError:\n            # Content-length contained invalid literal for int.\n            self.trim_buffer_and_resize(scan_offset + 4)\n            raise\n\n        # Pushing read pointer past the newline characters.\n        self.read_offset = scan_offset + 4\n        self.read_state = ReadState.Content\n\n        return True"
+      },
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcReader.try_read_content",
+        "kind": "function",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_content",
+        "start": 396,
+        "end": 411,
+        "code": "    def try_read_content(self, content):\n        \"\"\"\n            Try to read content from internal buffer.\n        \"\"\"\n        if (self.buffer_end_offset - self.read_offset <\n                self.expected_content_length):\n            # We buffered less than the expected content length.\n            return False\n\n        content[0] = self.buffer[self.read_offset:self.read_offset +\n                                 self.expected_content_length].decode(self.encoding)\n        self.read_offset += self.expected_content_length\n\n        self.read_state = ReadState.Header\n\n        return True"
+      },
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcReader.trim_buffer_and_resize",
+        "kind": "function",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.trim_buffer_and_resize",
+        "start": 413,
+        "end": 434,
+        "code": "    def trim_buffer_and_resize(self, bytes_to_remove):\n        \"\"\"\n        Trim the buffer by the passed in bytes_to_remove by creating a new buffer\n        that is at a minimum the default max size.\n        \"\"\"\n        current_buffer_size = len(self.buffer)\n        # Create a new buffer with either minumum size or leftover size.\n        new_buffer = bytearray(max(current_buffer_size -\n                                   bytes_to_remove, self.DEFAULT_BUFFER_SIZE))\n\n        # if we have content we did not read, copy that portion to the new\n        # buffer.\n        if bytes_to_remove <= current_buffer_size:\n            new_buffer[:self.buffer_end_offset -\n                       bytes_to_remove] = self.buffer[bytes_to_remove:self.buffer_end_offset]\n\n        # Point to the new buffer.\n        self.buffer = new_buffer\n\n        # reset pointers after the shift.\n        self.read_offset = 0\n        self.buffer_end_offset -= bytes_to_remove"
+      },
+      {
+        "file": "mssqlcli/jsonrpc/jsonrpcclient.py",
+        "name": "JsonRpcReader",
+        "kind": "class",
+        "symbol": "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader",
+        "start": 237,
+        "end": 443,
+        "code": "class JsonRpcReader:    # pylint: disable=too-many-instance-attributes\n    \"\"\"\n        Read JSON RPC message from output stream.\n    \"\"\"\n    # \\r\\n\n    CR = 13\n    LF = 10\n    BUFFER_RESIZE_TRIGGER = 0.25\n    DEFAULT_BUFFER_SIZE = 8192\n\n    def __init__(self, stream, encoding=None):\n        self.encoding = encoding or u'UTF-8'\n\n        self.stream = stream\n        self.buffer = bytearray(self.DEFAULT_BUFFER_SIZE)\n        # Pointer to end of buffer content.\n        self.buffer_end_offset = 0\n        # Pointer to where we have read up to.\n        self.read_offset = 0\n        self.expected_content_length = 0\n        self.headers = {}\n        self.read_state = ReadState.Header\n        self.needs_more_data = True\n\n    def read_response(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def read_next_chunk(self):\n        \"\"\"\n        Read a chunk from the output stream into buffer.\n        Exceptions raised:\n            EOFError\n                Stream was empty or Stream did not contain a valid header or content-body.\n            ValueError\n                Stream was closed externally.\n        \"\"\"\n        # Check if we need to resize.\n        current_buffer_size = len(self.buffer)\n        if ((current_buffer_size - self.buffer_end_offset) /\n                current_buffer_size) < self.BUFFER_RESIZE_TRIGGER:\n            resized_buffer = bytearray(current_buffer_size * 2)\n            # copy current buffer content to new buffer.\n            resized_buffer[0:current_buffer_size] = self.buffer\n            # point to new buffer.\n            self.buffer = resized_buffer\n\n        # Memory view is required in order to read into a subset of a byte\n        # array\n        try:\n            length_read = self.stream.readinto(\n                memoryview(self.buffer)[self.buffer_end_offset:])\n            self.buffer_end_offset += length_read\n\n            if not length_read:\n                logger.debug(u'JSON RPC Reader reached end of stream')\n                raise EOFError(u'End of stream reached, no output.')\n\n            return True\n        except ValueError as ex:\n            logger.debug(u'JSON RPC Reader on read_next_chunk encountered exception: %s', ex)\n            # Stream was closed.\n            raise\n\n    def try_read_headers(self):\n        \"\"\"\n        Try to read the Header information from the internal buffer expecting the last\n        header to contain '\\r\\n\\r\\n'.\n        Exceptions:\n            LookupError\n                The content-length header was not found.\n            ValueError\n                The content-length contained a invalid literal for int.\n        \"\"\"\n        # Scan the buffer up until right before the CRLFCRLF.\n        scan_offset = self.read_offset\n        while (scan_offset + 3 < self.buffer_end_offset and\n               (self.buffer[scan_offset] != self.CR or\n                self.buffer[scan_offset + 1] != self.LF or\n                self.buffer[scan_offset + 2] != self.CR or\n                self.buffer[scan_offset + 3] != self.LF)):\n            scan_offset += 1\n\n        # if we reached the end\n        if scan_offset + 3 >= self.buffer_end_offset:\n            return False\n\n        # Split the headers by new line\n        try:\n            headers_read = self.buffer[self.read_offset:scan_offset].decode(\n                u'ascii')\n            for header in headers_read.split(u'\\n'):\n                colon_index = header.find(u':')\n\n                if colon_index == -1:\n                    logger.debug(\n                        u'JSON RPC Reader encountered missing colons in try_read_headers()')\n                    raise KeyError(\n                        u'Colon missing from Header: {}.'.format(header))\n\n                # Case insensitive.\n                header_key = header[:colon_index].lower()\n                header_value = header[colon_index + 1:]\n\n                self.headers[header_key] = header_value\n\n            # Was content-length header found?\n            if 'content-length' not in self.headers:\n                logger.debug(\n                    u'JSON RPC Reader did not find Content-Length in the headers')\n                raise LookupError(\n                    u'Content-Length was not found in headers received.')\n\n            self.expected_content_length = int(self.headers[u'content-length'])\n\n        except ValueError:\n            # Content-length contained invalid literal for int.\n            self.trim_buffer_and_resize(scan_offset + 4)\n            raise\n\n        # Pushing read pointer past the newline characters.\n        self.read_offset = scan_offset + 4\n        self.read_state = ReadState.Content\n\n        return True\n\n    def try_read_content(self, content):\n        \"\"\"\n            Try to read content from internal buffer.\n        \"\"\"\n        if (self.buffer_end_offset - self.read_offset <\n                self.expected_content_length):\n            # We buffered less than the expected content length.\n            return False\n\n        content[0] = self.buffer[self.read_offset:self.read_offset +\n                                 self.expected_content_length].decode(self.encoding)\n        self.read_offset += self.expected_content_length\n\n        self.read_state = ReadState.Header\n\n        return True\n\n    def trim_buffer_and_resize(self, bytes_to_remove):\n        \"\"\"\n        Trim the buffer by the passed in bytes_to_remove by creating a new buffer\n        that is at a minimum the default max size.\n        \"\"\"\n        current_buffer_size = len(self.buffer)\n        # Create a new buffer with either minumum size or leftover size.\n        new_buffer = bytearray(max(current_buffer_size -\n                                   bytes_to_remove, self.DEFAULT_BUFFER_SIZE))\n\n        # if we have content we did not read, copy that portion to the new\n        # buffer.\n        if bytes_to_remove <= current_buffer_size:\n            new_buffer[:self.buffer_end_offset -\n                       bytes_to_remove] = self.buffer[bytes_to_remove:self.buffer_end_offset]\n\n        # Point to the new buffer.\n        self.buffer = new_buffer\n\n        # reset pointers after the shift.\n        self.read_offset = 0\n        self.buffer_end_offset -= bytes_to_remove\n\n    def close(self):\n        \"\"\"\n            Close the stream.\n        \"\"\"\n        try:\n            self.stream.close()\n        except AttributeError:\n            pass"
+      }
+    ],
+    "unresolved": [
+      "mssqlcli/jsonrpc/jsonrpcclient.py:function: read_response"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6363636363636364,
+    "exact_entity_dr": 0.36363636363636365,
+    "dependency_count": 11,
+    "hit_dependencies": [
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_next_chunk",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_offset",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_state",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.trim_buffer_and_resize",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_content",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_headers",
+      "mssqlcli.jsonrpc.jsonrpcclient.logger"
+    ],
+    "exact_hit_dependencies": [
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.read_next_chunk",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.trim_buffer_and_resize",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_content",
+      "mssqlcli.jsonrpc.jsonrpcclient.JsonRpcReader.try_read_headers"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 11699
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 17699,
+    "completion_tokens": 4788,
+    "total_tokens": 22487,
+    "seconds": 135.5286910533905,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 139.4062855243683,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,124 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 748,
+  "namespace": "zxcvbn.scoring.date_guesses",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 22242,
+      "input_estimate_after": 22242,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Given the requirement to identify reusable dependencies for implementing `date_guesses` in `zxcvbn/scoring.py`, and based on the available evidence, I have localized the following key files, classes, and functions that contain reusable logic, constants, or patterns necessary for the calculation. These locations are ordered by their relevance to the task of calculating date guesses, considering factors like year difference, separator presence, and existing scoring utilities.\n\n```\nzxcvbn/scoring.py\nline: 27\nfunction: nCk\nline: 33\nfunction: log10\n\nzxcvbn/matching.py\nline: 571\nclass: DateMatch\nfunction: __init__\nline: 580\nvariable: separator\n\nzxcvbn/scoring.py\nline: 100\nfunction: bruteforce_guesses\nline: 110\nfunction: dictionary_guesses\n\nzxcvbn/scoring.py\nline: 50\nfunction: factorial\nline: 27\nfunction: nCk\n\nzxcvbn/adjacency_graphs.py\nline: 1\nvariable: adjacency_graphs\nfunction: load_graph\n```\n\n**Note:** The `adjacency_graphs.py` is included because date guessing might indirectly relate to spatial patterns or separators, though its direct relevance is lower. The primary dependencies are within `scoring.py` and `matching.py`, focusing on mathematical helpers (`nCk`, `log10`, `factorial`) and the structure of a date match object (including `separator`).",
+  "final_locations": {
+    "files": [
+      "zxcvbn/scoring.py",
+      "zxcvbn/matching.py",
+      "zxcvbn/adjacency_graphs.py"
+    ],
+    "entities": [
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "nCk",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.nCk",
+        "start": 29,
+        "end": 42,
+        "code": "def nCk(n, k):\n    \"\"\"http://blog.plover.com/math/choose.html\"\"\"\n    if k > n:\n        return 0\n    if k == 0:\n        return 1\n\n    r = 1\n    for d in range(1, k + 1):\n        r *= n\n        r /= d\n        n -= 1\n\n    return r"
+      },
+      {
+        "file": "zxcvbn/matching.py",
+        "name": "date_match.filter_fun",
+        "kind": "function",
+        "symbol": "zxcvbn.matching.date_match.filter_fun",
+        "start": 568,
+        "end": 576,
+        "code": "    def filter_fun(match):\n        is_submatch = False\n        for other in matches:\n            if match == other:\n                continue\n            if other['i'] <= match['i'] and other['j'] >= match['j']:\n                is_submatch = True\n                break\n        return not is_submatch"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "most_guessable_match_sequence",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.most_guessable_match_sequence",
+        "start": 77,
+        "end": 219,
+        "code": "def most_guessable_match_sequence(password, matches, _exclude_additive=False):\n    n = len(password)\n\n    # partition matches into sublists according to ending index j\n    matches_by_j = [[] for _ in range(n)]\n    try:\n        for m in matches:\n            matches_by_j[m['j']].append(m)\n    except TypeError:\n        pass\n    # small detail: for deterministic output, sort each sublist by i.\n    for lst in matches_by_j:\n        lst.sort(key=lambda m1: m1['i'])\n\n    optimal = {\n        # optimal.m[k][l] holds final match in the best length-l match sequence\n        # covering the password prefix up to k, inclusive.\n        # if there is no length-l sequence that scores better (fewer guesses)\n        # than a shorter match sequence spanning the same prefix,\n        # optimal.m[k][l] is undefined.\n        'm': [{} for _ in range(n)],\n\n        # same structure as optimal.m -- holds the product term Prod(m.guesses\n        # for m in sequence). optimal.pi allows for fast (non-looping) updates\n        # to the minimization function.\n        'pi': [{} for _ in range(n)],\n\n        # same structure as optimal.m -- holds the overall metric.\n        'g': [{} for _ in range(n)],\n    }\n\n    # helper: considers whether a length-l sequence ending at match m is better\n    # (fewer guesses) than previously encountered sequences, updating state if\n    # so.\n    def update(m, l):\n        k = m['j']\n        pi = estimate_guesses(m, password)\n        if l > 1:\n            # we're considering a length-l sequence ending with match m:\n            # obtain the product term in the minimization function by\n            # multiplying m's guesses by the product of the length-(l-1)\n            # sequence ending just before m, at m.i - 1.\n            pi = pi * Decimal(optimal['pi'][m['i'] - 1][l - 1])\n        # calculate the minimization func\n        g = factorial(l) * pi\n        if not _exclude_additive:\n            g += MIN_GUESSES_BEFORE_GROWING_SEQUENCE ** (l - 1)\n\n        # update state if new best.\n        # first see if any competing sequences covering this prefix, with l or\n        # fewer matches, fare better than this sequence. if so, skip it and\n        # return.\n        for competing_l, competing_g in optimal['g'][k].items():\n            if competing_l > l:\n                continue\n            if competing_g <= g:\n                return\n\n        # this sequence might be part of the final optimal sequence.\n        optimal['g'][k][l] = g\n        optimal['m'][k][l] = m\n        optimal['pi'][k][l] = pi\n\n    # helper: evaluate bruteforce matches ending at k.\n    def bruteforce_update(k):\n        # see if a single bruteforce match spanning the k-prefix is optimal.\n        m = make_bruteforce_match(0, k)\n        update(m, 1)\n        for i in range(1, k + 1):\n            # generate k bruteforce matches, spanning from (i=1, j=k) up to\n            # (i=k, j=k). see if adding these new matches to any of the\n            # sequences in optimal[i-1] leads to new bests.\n            m = make_bruteforce_match(i, k)\n            for l, last_m in optimal['m'][i - 1].items():\n                l = int(l)\n\n                # corner: an optimal sequence will never have two adjacent\n                # bruteforce matches. it is strictly better to have a single\n                # bruteforce match spanning the same region: same contribution\n                # to the guess product with a lower length.\n                # --> safe to skip those cases.\n                if last_m.get('pattern', False) == 'bruteforce':\n                    continue\n\n                # try adding m to this length-l sequence.\n                update(m, l + 1)\n\n    # helper: make bruteforce match objects spanning i to j, inclusive.\n    def make_bruteforce_match(i, j):\n        return {\n            'pattern': 'bruteforce',\n            'token': password[i:j + 1],\n            'i': i,\n            'j': j,\n        }\n\n    # helper: step backwards through optimal.m starting at the end,\n    # constructing the final optimal match sequence.\n    def unwind(n):\n        optimal_match_sequence = []\n        k = n - 1\n        # find the final best sequence length and score\n        l = None\n        g = float('inf')\n        for candidate_l, candidate_g in optimal['g'][k].items():\n            if candidate_g < g:\n                l = candidate_l\n                g = candidate_g\n\n        while k >= 0:\n            m = optimal['m'][k][l]\n            optimal_match_sequence.insert(0, m)\n            k = m['i'] - 1\n            l -= 1\n\n        return optimal_match_sequence\n\n    for k in range(n):\n        for m in matches_by_j[k]:\n            if m['i'] > 0:\n                for l in optimal['m'][m['i'] - 1]:\n                    l = int(l)\n                    update(m, l + 1)\n            else:\n                update(m, 1)\n        bruteforce_update(k)\n\n    optimal_match_sequence = unwind(n)\n    optimal_l = len(optimal_match_sequence)\n\n    # corner: empty password\n    if len(password) == 0:\n        guesses = 1\n    else:\n        guesses = optimal['g'][n - 1][optimal_l]\n\n    # final result object\n    return {\n        'password': password,\n        'guesses': guesses,\n        'guesses_log10': log(guesses, 10),\n        'sequence': optimal_match_sequence,\n    }"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "bruteforce_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.bruteforce_guesses",
+        "start": 250,
+        "end": 260,
+        "code": "def bruteforce_guesses(match):\n    guesses = BRUTEFORCE_CARDINALITY ** len(match['token'])\n    # small detail: make bruteforce matches at minimum one guess bigger than\n    # smallest allowed submatch guesses, such that non-bruteforce submatches\n    # over the same [i..j] take precedence.\n    if len(match['token']) == 1:\n        min_guesses = MIN_SUBMATCH_GUESSES_SINGLE_CHAR + 1\n    else:\n        min_guesses = MIN_SUBMATCH_GUESSES_MULTI_CHAR + 1\n\n    return max(guesses, min_guesses)"
+      },
+      {
+        "file": "zxcvbn/scoring.py",
+        "name": "dictionary_guesses",
+        "kind": "function",
+        "symbol": "zxcvbn.scoring.dictionary_guesses",
+        "start": 263,
+        "end": 271,
+        "code": "def dictionary_guesses(match):\n    # keep these as properties for display purposes\n    match['base_guesses'] = match['rank']\n    match['uppercase_variations'] = uppercase_variations(match)\n    match['l33t_variations'] = l33t_variations(match)\n    reversed_variations = match.get('reversed', False) and 2 or 1\n\n    return match['base_guesses'] * match['uppercase_variations'] * \\\n        match['l33t_variations'] * reversed_variations"
+      }
+    ],
+    "unresolved": [
+      "zxcvbn/scoring.py:line: 27",
+      "zxcvbn/scoring.py:function: log10",
+      "zxcvbn/matching.py:class: DateMatch",
+      "zxcvbn/matching.py:function: __init__",
+      "zxcvbn/matching.py:line: 580",
+      "zxcvbn/matching.py:variable: separator",
+      "zxcvbn/scoring.py:line: 50",
+      "zxcvbn/scoring.py:function: factorial",
+      "zxcvbn/scoring.py:line: 27",
+      "zxcvbn/adjacency_graphs.py:line: 1",
+      "zxcvbn/adjacency_graphs.py:variable: adjacency_graphs",
+      "zxcvbn/adjacency_graphs.py:function: load_graph"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 12,
+    "returned_code_chars": 6674
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 29149,
+    "completion_tokens": 708,
+    "total_tokens": 29857,
+    "seconds": 53.051133155822754,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 55.380306243896484,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

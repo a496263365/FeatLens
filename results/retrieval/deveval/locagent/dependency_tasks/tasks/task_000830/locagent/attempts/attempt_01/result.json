@@ -1,0 +1,141 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 830,
+  "namespace": "fs.path.join",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2534,
+      "input_estimate_after": 2534,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nfs/path.py\nline: 210\nfunction: join\n\nfs/path.py\nline: 190\nfunction: normpath\n\nfs/path.py\nline: 250\nfunction: splitext\n\nfs/path.py\nline: 310\nfunction: relativefrom\n\nfs/errors.py\nline: 45\nclass: IllegalBackReference\n```",
+  "final_locations": {
+    "files": [
+      "fs/path.py",
+      "fs/errors.py"
+    ],
+    "entities": [
+      {
+        "file": "fs/path.py",
+        "name": "relpath",
+        "kind": "function",
+        "symbol": "fs.path.relpath",
+        "start": 189,
+        "end": 207,
+        "code": "def relpath(path):\n    # type: (Text) -> Text\n    \"\"\"Convert the given path to a relative path.\n\n    This is the inverse of `abspath`, stripping a leading ``'/'`` from\n    the path if it is present.\n\n    Arguments:\n        path (str): A path to adjust.\n\n    Returns:\n        str: A relative path.\n\n    Example:\n        >>> relpath('/a/b')\n        'a/b'\n\n    \"\"\"\n    return path.lstrip(\"/\")"
+      },
+      {
+        "file": "fs/path.py",
+        "name": "normpath",
+        "kind": "function",
+        "symbol": "fs.path.normpath",
+        "start": 50,
+        "end": 92,
+        "code": "def normpath(path):\n    # type: (Text) -> Text\n    \"\"\"Normalize a path.\n\n    This function simplifies a path by collapsing back-references\n    and removing duplicated separators.\n\n    Arguments:\n        path (str): Path to normalize.\n\n    Returns:\n        str: A valid FS path.\n\n    Example:\n        >>> normpath(\"/foo//bar/frob/../baz\")\n        '/foo/bar/baz'\n        >>> normpath(\"foo/../../bar\")\n        Traceback (most recent call last):\n            ...\n        fs.errors.IllegalBackReference: path 'foo/../../bar' contains back-references outside of filesystem\n\n    \"\"\"  # noqa: E501\n    from .errors import IllegalBackReference\n    if path in \"/\":\n        return path\n\n    # An early out if there is no need to normalize this path\n    if not _requires_normalization(path):\n        return path.rstrip(\"/\")\n\n    prefix = \"/\" if path.startswith(\"/\") else \"\"\n    components = []  # type: List[Text]\n    try:\n        for component in path.split(\"/\"):\n            if component in \"..\":  # True for '..', '.', and ''\n                if component == \"..\":\n                    components.pop()\n            else:\n                components.append(component)\n    except IndexError:\n        # FIXME (@althonos): should be raised from the IndexError\n        raise IllegalBackReference(path)\n    return prefix + \"/\".join(components)"
+      },
+      {
+        "file": "fs/path.py",
+        "name": "combine",
+        "kind": "function",
+        "symbol": "fs.path.combine",
+        "start": 244,
+        "end": 266,
+        "code": "def combine(path1, path2):\n    # type: (Text, Text) -> Text\n    \"\"\"Join two paths together.\n\n    This is faster than :func:`~fs.path.join`, but only works when the\n    second path is relative, and there are no back references in either\n    path.\n\n    Arguments:\n        path1 (str): A PyFilesytem path.\n        path2 (str): A PyFilesytem path.\n\n    Returns:\n        str: The joint path.\n\n    Example:\n        >>> combine(\"foo/bar\", \"baz\")\n        'foo/bar/baz'\n\n    \"\"\"\n    if not path1:\n        return path2.lstrip()\n    return \"{}/{}\".format(path1.rstrip(\"/\"), path2.lstrip(\"/\"))"
+      },
+      {
+        "file": "fs/path.py",
+        "name": "splitext",
+        "kind": "function",
+        "symbol": "fs.path.splitext",
+        "start": 321,
+        "end": 347,
+        "code": "def splitext(path):\n    # type: (Text) -> Tuple[Text, Text]\n    \"\"\"Split the extension from the path.\n\n    Arguments:\n        path (str): A path to split.\n\n    Returns:\n        (str, str): A tuple containing the path and the extension.\n\n    Example:\n        >>> splitext('baz.txt')\n        ('baz', '.txt')\n        >>> splitext('foo/bar/baz.txt')\n        ('foo/bar/baz', '.txt')\n        >>> splitext('foo/bar/.foo')\n        ('foo/bar/.foo', '')\n\n    \"\"\"\n    parent_path, pathname = split(path)\n    if pathname.startswith(\".\") and pathname.count(\".\") == 1:\n        return path, \"\"\n    if \".\" not in pathname:\n        return path, \"\"\n    pathname, ext = pathname.rsplit(\".\", 1)\n    path = join(parent_path, pathname)\n    return path, \".\" + ext"
+      },
+      {
+        "file": "fs/path.py",
+        "name": "split",
+        "kind": "function",
+        "symbol": "fs.path.split",
+        "start": 293,
+        "end": 318,
+        "code": "def split(path):\n    # type: (Text) -> Tuple[Text, Text]\n    \"\"\"Split a path into (head, tail) pair.\n\n    This function splits a path into a pair (head, tail) where 'tail' is\n    the last pathname component and 'head' is all preceding components.\n\n    Arguments:\n        path (str): Path to split\n\n    Returns:\n        (str, str): a tuple containing the head and the tail of the path.\n\n    Example:\n        >>> split(\"foo/bar\")\n        ('foo', 'bar')\n        >>> split(\"foo/bar/baz\")\n        ('foo/bar', 'baz')\n        >>> split(\"/foo/bar/baz\")\n        ('/foo/bar', 'baz')\n\n    \"\"\"\n    if \"/\" not in path:\n        return (\"\", path)\n    split = path.rsplit(\"/\", 1)\n    return (split[0] or \"/\", split[1])"
+      },
+      {
+        "file": "fs/path.py",
+        "name": "relativefrom",
+        "kind": "function",
+        "symbol": "fs.path.relativefrom",
+        "start": 543,
+        "end": 569,
+        "code": "def relativefrom(base, path):\n    # type: (Text, Text) -> Text\n    \"\"\"Return a path relative from a given base path.\n\n    Insert backrefs as appropriate to reach the path from the base.\n\n    Arguments:\n        base (str): Path to a directory.\n        path (str): Path to make relative.\n\n    Returns:\n        str: the path to ``base`` from ``path``.\n\n    >>> relativefrom(\"foo/bar\", \"baz/index.html\")\n    '../../baz/index.html'\n\n    \"\"\"\n    base_parts = list(iteratepath(base))\n    path_parts = list(iteratepath(path))\n\n    common = 0\n    for component_a, component_b in zip(base_parts, path_parts):\n        if component_a != component_b:\n            break\n        common += 1\n\n    return \"/\".join([\"..\"] * (len(base_parts) - common) + path_parts[common:])"
+      },
+      {
+        "file": "fs/errors.py",
+        "name": "__all__",
+        "kind": "variable",
+        "symbol": "fs.errors.__all__",
+        "start": 23,
+        "end": 54,
+        "code": "__all__ = [\n    \"BulkCopyFailed\",\n    \"CreateFailed\",\n    \"DestinationExists\",\n    \"DirectoryExists\",\n    \"DirectoryExpected\",\n    \"DirectoryNotEmpty\",\n    \"FileExists\",\n    \"FileExpected\",\n    \"FilesystemClosed\",\n    \"FSError\",\n    \"IllegalBackReference\",\n    \"InsufficientStorage\",\n    \"InvalidCharsInPath\",\n    \"InvalidPath\",\n    \"MissingInfoNamespace\",\n    \"NoSysPath\",\n    \"NoURL\",\n    \"OperationFailed\",\n    \"OperationTimeout\",\n    \"PathError\",\n    \"PermissionDenied\",\n    \"RemoteConnectionError\",\n    \"RemoveRootError\",\n    \"ResourceError\",\n    \"ResourceInvalid\",\n    \"ResourceLocked\",\n    \"ResourceNotFound\",\n    \"ResourceReadOnly\",\n    \"Unsupported\",\n    \"UnsupportedHash\",\n]"
+      },
+      {
+        "file": "fs/errors.py",
+        "name": "IllegalBackReference",
+        "kind": "class",
+        "symbol": "fs.errors.IllegalBackReference",
+        "start": 317,
+        "end": 339,
+        "code": "class IllegalBackReference(ValueError):\n    \"\"\"Too many backrefs exist in a path.\n\n    This error will occur if the back references in a path would be\n    outside of the root. For example, ``\"/foo/../../\"``, contains two back\n    references which would reference a directory above the root.\n\n    Note:\n        This exception is a subclass of `ValueError` as it is not\n        strictly speaking an issue with a filesystem or resource.\n\n    \"\"\"\n\n    def __init__(self, path):  # noqa: D107\n        # type: (Text) -> None\n        self.path = path\n        msg = (\"path '{path}' contains back-references outside of filesystem\").format(\n            path=path\n        )\n        super(IllegalBackReference, self).__init__(msg)\n\n    def __reduce__(self):\n        return type(self), (self.path,)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.5,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "fs.path.normpath"
+    ],
+    "exact_hit_dependencies": [
+      "fs.path.normpath"
+    ],
+    "returned_entities": 8,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 5960
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 13777,
+    "completion_tokens": 1890,
+    "total_tokens": 15667,
+    "seconds": 69.58158230781555,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 76.51932287216187,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,119 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 503,
+  "namespace": "mopidy.config.format_initial",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6598,
+      "input_estimate_after": 6598,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the reusable dependencies needed to implement the `format_initial` function. The function needs to:\n1. Read default configuration files\n2. Get default configuration for each extension\n3. Load raw configuration\n4. Validate configuration against schemas\n5. Create headers with version information\n6. Format the configuration\n\nHere are the key reusable dependencies:\n\n```\nmopidy/config/__init__.py\nline: 102\nfunction: read\n\nmopidy/config/__init__.py\nline: 107\nfunction: load\n\nmopidy/config/__init__.py\nline: 151\nfunction: _load\n\nmopidy/config/__init__.py\nline: 219\nfunction: _validate\n\nmopidy/config/__init__.py\nline: 242\nfunction: _format\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/config/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "read",
+        "kind": "function",
+        "symbol": "mopidy.config.read",
+        "start": 102,
+        "end": 104,
+        "code": "def read(config_file):\n    \"\"\"Helper to load config defaults in same way across core and extensions\"\"\"\n    return pathlib.Path(config_file).read_text(errors=\"surrogateescape\")"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "load",
+        "kind": "function",
+        "symbol": "mopidy.config.load",
+        "start": 107,
+        "end": 116,
+        "code": "def load(files, ext_schemas, ext_defaults, overrides):\n    from mopidy.config import keyring\n    config_dir = pathlib.Path(__file__).parent\n    defaults = [read(config_dir / \"default.conf\")]\n    defaults.extend(ext_defaults)\n    raw_config = _load(files, defaults, keyring.fetch() + (overrides or []))\n\n    schemas = _schemas[:]\n    schemas.extend(ext_schemas)\n    return _validate(raw_config, schemas)"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_load",
+        "kind": "function",
+        "symbol": "mopidy.config._load",
+        "start": 151,
+        "end": 181,
+        "code": "def _load(files, defaults, overrides):\n    from mopidy.internal import path\n    parser = configparser.RawConfigParser(inline_comment_prefixes=(\";\",))\n\n    # TODO: simply return path to config file for defaults so we can load it\n    # all in the same way?\n    logger.info(\"Loading config from builtin defaults\")\n    for default in defaults:\n        if isinstance(default, bytes):\n            default = default.decode()\n        parser.read_string(default)\n\n    # Load config from a series of config files\n    for f in files:\n        f = path.expand_path(f)\n        if f.is_dir():\n            for g in f.iterdir():\n                if g.is_file() and g.suffix == \".conf\":\n                    _load_file(parser, g.resolve())\n        else:\n            _load_file(parser, f.resolve())\n\n    raw_config = {}\n    for section in parser.sections():\n        raw_config[section] = dict(parser.items(section))\n\n    logger.info(\"Loading config from command line options\")\n    for section, key, value in overrides:\n        raw_config.setdefault(section, {})[key] = value\n\n    return raw_config"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_validate",
+        "kind": "function",
+        "symbol": "mopidy.config._validate",
+        "start": 219,
+        "end": 239,
+        "code": "def _validate(raw_config, schemas):\n    # Get validated config\n    config = {}\n    errors = {}\n    sections = set(raw_config)\n    for schema in schemas:\n        sections.discard(schema.name)\n        values = raw_config.get(schema.name, {})\n        result, error = schema.deserialize(values)\n        if error:\n            errors[schema.name] = error\n        if result:\n            config[schema.name] = result\n\n    for section in sections:\n        logger.warning(\n            f\"Ignoring config section {section!r} \"\n            f\"because no matching extension was found\"\n        )\n\n    return config, errors"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_format",
+        "kind": "function",
+        "symbol": "mopidy.config._format",
+        "start": 242,
+        "end": 263,
+        "code": "def _format(config, comments, schemas, display, disable):\n    output = []\n    for schema in schemas:\n        serialized = schema.serialize(\n            config.get(schema.name, {}), display=display\n        )\n        if not serialized:\n            continue\n        output.append(f\"[{schema.name}]\")\n        for key, value in serialized.items():\n            if isinstance(value, DeprecatedValue):\n                continue\n            comment = comments.get(schema.name, {}).get(key, \"\")\n            output.append(f\"{key} =\")\n            if value is not None:\n                output[-1] += \" \" + value\n            if comment:\n                output[-1] += \"  ; \" + comment.capitalize()\n            if disable:\n                output[-1] = re.sub(r\"^\", \"#\", output[-1], flags=re.M)\n        output.append(\"\")\n    return \"\\n\".join(output).strip()"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.36363636363636365,
+    "exact_entity_dr": 0.36363636363636365,
+    "dependency_count": 11,
+    "hit_dependencies": [
+      "mopidy.config._format",
+      "mopidy.config._load",
+      "mopidy.config._validate",
+      "mopidy.config.read"
+    ],
+    "exact_hit_dependencies": [
+      "mopidy.config._format",
+      "mopidy.config._load",
+      "mopidy.config._validate",
+      "mopidy.config.read"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 0,
+    "returned_code_chars": 3098
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 19956,
+    "completion_tokens": 571,
+    "total_tokens": 20527,
+    "seconds": 145.3013141155243,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 156.03039407730103,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

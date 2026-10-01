@@ -1,0 +1,123 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2211,
+  "namespace": "wal_e.log_help.WalELogger._fmt_structured",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 18992,
+      "input_estimate_after": 18992,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the following reusable dependencies for implementing the `_fmt_structured` function in `wal_e/log_help.py`. The function needs to format a dictionary with time and pid first, followed by other key-value pairs sorted lexically, using the time format `%Y-%m-%dT%H:%M:%S.%f-00`.\n\n```\nwal_e/log_help.py\nline: 5\nimport: datetime\nline: -1\nclass: WalELogger\nfunction: fmt_logline\n\nwal_e/exception.py\nline: 1\nimport: logging\nline: 3\nimport: wal_e.log_help.WalELogger\nline: 23\nline: 30\ndocstring: STRUCTURED: time=... pid=...\n\nwal_e/worker/pg/psql_worker.py\nline: 2\nimport: datetime\nline: 13\nclass: UTC\nline: -1\nfunction: run_start_backup (line 125-126)\n\nwal_e/blobstore/file/calling_format.py\nline: 3\nimport: datetime\nline: 27\nfunction: epoch_to_iso8601\n\nwal_e/log_help.py\nline: 18\nclass: IndentFormatter\nfunction: format\n```",
+  "final_locations": {
+    "files": [
+      "wal_e/log_help.py",
+      "wal_e/exception.py",
+      "wal_e/worker/pg/psql_worker.py",
+      "wal_e/blobstore/file/calling_format.py"
+    ],
+    "entities": [
+      {
+        "file": "wal_e/log_help.py",
+        "name": "WalELogger",
+        "kind": "class",
+        "symbol": "wal_e.log_help.WalELogger",
+        "start": 140,
+        "end": 209,
+        "code": "class WalELogger(object):\n    def __init__(self, *args, **kwargs):\n        self._logger = logging.getLogger(*args, **kwargs)\n\n    @staticmethod\n    def _fmt_structured(d):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n    @staticmethod\n    def fmt_logline(msg, detail=None, hint=None, structured=None):\n        msg_parts = ['MSG: ' + msg]\n\n        if detail is not None:\n            msg_parts.append('DETAIL: ' + detail)\n        if hint is not None:\n            msg_parts.append('HINT: ' + hint)\n\n        # Initialize a fresh dictionary if structured is not passed,\n        # because keyword arguments are not re-evaluated when calling\n        # the function and it's okay for callees to mutate their\n        # passed dictionary.\n        if structured is None:\n            structured = {}\n\n        msg_parts.append('STRUCTURED: ' +\n                         WalELogger._fmt_structured(structured))\n\n        return '\\n'.join(msg_parts)\n\n    def log(self, level, msg, *args, **kwargs):\n        detail = kwargs.pop('detail', None)\n        hint = kwargs.pop('hint', None)\n        structured = kwargs.pop('structured', None)\n\n        self._logger.log(\n            level,\n            self.fmt_logline(msg, detail, hint, structured),\n            *args, **kwargs)\n\n    # Boilerplate convenience shims to different logging levels.  One\n    # could abuse dynamism to generate these bindings in a loop, but\n    # one day I hope to run with PyPy and tricks like that tend to\n    # lobotomize an optimizer something fierce.\n\n    def debug(self, *args, **kwargs):\n        self.log(logging.DEBUG, *args, **kwargs)\n\n    def info(self, *args, **kwargs):\n        self.log(logging.INFO, *args, **kwargs)\n\n    def warning(self, *args, **kwargs):\n        self.log(logging.WARNING, *args, **kwargs)\n\n    def error(self, *args, **kwargs):\n        self.log(logging.ERROR, *args, **kwargs)\n\n    def critical(self, *args, **kwargs):\n        self.log(logging.CRITICAL, *args, **kwargs)"
+      },
+      {
+        "file": "wal_e/exception.py",
+        "name": "UserException",
+        "kind": "class",
+        "symbol": "wal_e.exception.UserException",
+        "start": 6,
+        "end": 45,
+        "code": "class UserException(Exception):\n    \"\"\"\n    Superclass intended for user-visible errors\n\n    Instead of stacktraces, these will be prettyprinted.  The\n    suggested error message guidelines are the same as for the\n    PostgreSQL project:\n\n    http://developer.postgresql.org/pgdocs/postgres/error-style-guide.html\n\n    If it is necessary to trap these exceptions, use a subclass.\n\n    >>> raise UserException(msg='foo', detail='bar')\n    Traceback (most recent call last):\n        ...\n    UserException: ERROR: MSG: foo\n    DETAIL: bar\n    STRUCTURED: time=... pid=...\n    >>> raise UserException(msg='foo', detail='bar', hint='hello')\n    Traceback (most recent call last):\n        ...\n    UserException: ERROR: MSG: foo\n    DETAIL: bar\n    HINT: hello\n    STRUCTURED: time=... pid=...\n    \"\"\"\n\n    def __init__(self, msg=None, detail=None, hint=None):\n        # msg uses a keyword argument with a default to make the\n        # multiprocessing module happy, as it seems to set them after\n        # the fact.  Realistically, one should *always* be setting msg\n        # when used in normal code though.\n        self.msg = msg\n        self.detail = detail\n        self.hint = hint\n        self.severity = ERROR\n\n    def __str__(self):\n        return \"{0}: {1}\".format(getLevelName(self.severity),\n                WalELogger.fmt_logline(self.msg, self.detail, self.hint))"
+      },
+      {
+        "file": "wal_e/worker/pg/psql_worker.py",
+        "name": "UTC",
+        "kind": "class",
+        "symbol": "wal_e.worker.pg.psql_worker.UTC",
+        "start": 13,
+        "end": 31,
+        "code": "class UTC(datetime.tzinfo):\n    \"\"\"\n    UTC timezone\n\n    Adapted from a Python example\n\n    \"\"\"\n\n    ZERO = datetime.timedelta(0)\n    HOUR = datetime.timedelta(hours=1)\n\n    def utcoffset(self, dt):\n        return self.ZERO\n\n    def tzname(self, dt):\n        return \"UTC\"\n\n    def dst(self, dt):\n        return self.ZERO"
+      },
+      {
+        "file": "wal_e/blobstore/file/calling_format.py",
+        "name": "epoch_to_iso8601",
+        "kind": "function",
+        "symbol": "wal_e.blobstore.file.calling_format.epoch_to_iso8601",
+        "start": 27,
+        "end": 28,
+        "code": "def epoch_to_iso8601(timestamp):\n    return datetime.utcfromtimestamp(timestamp).isoformat()"
+      },
+      {
+        "file": "wal_e/log_help.py",
+        "name": "IndentFormatter",
+        "kind": "class",
+        "symbol": "wal_e.log_help.IndentFormatter",
+        "start": 18,
+        "end": 29,
+        "code": "class IndentFormatter(logging.Formatter):\n\n    def format(self, record, *args, **kwargs):\n        \"\"\"\n        Format a message in the log\n\n        Act like the normal format, but indent anything that is a\n        newline within the message.\n\n        \"\"\"\n        return logging.Formatter.format(\n            self, record, *args, **kwargs).replace('\\n', '\\n' + ' ' * 8)"
+      }
+    ],
+    "unresolved": [
+      "wal_e/log_help.py:line: 5",
+      "wal_e/log_help.py:line: -1",
+      "wal_e/log_help.py:function: fmt_logline",
+      "wal_e/exception.py:line: 1",
+      "wal_e/exception.py:line: 3",
+      "wal_e/worker/pg/psql_worker.py:line: 2",
+      "wal_e/worker/pg/psql_worker.py:line: -1",
+      "wal_e/worker/pg/psql_worker.py:function: run_start_backup (line 125-126)",
+      "wal_e/blobstore/file/calling_format.py:line: 3",
+      "wal_e/log_help.py:function: format"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 4,
+    "unresolved_locations": 10,
+    "returned_code_chars": 4086
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 47181,
+    "completion_tokens": 726,
+    "total_tokens": 47907,
+    "seconds": 55.41477942466736,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 65.22933006286621,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,102 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2005,
+  "namespace": "chatette.utils.append_to_list_in_dict",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10800,
+      "input_estimate_after": 10800,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I need to identify reusable dependencies for implementing the `append_to_list_in_dict` function in `chatette/utils.py`. The function should append a value to a list in a dictionary, creating the list if it doesn't exist. I can see several relevant patterns and existing functions that provide reusable patterns:\n\n1. **`extend_list_in_dict` function in the same file** - This is the most direct reusable pattern, showing exactly how to handle dictionary-of-lists operations with the same parameter structure.\n2. **Dictionary initialization patterns** - Several examples show how to check if a key exists and initialize it if not.\n3. **List manipulation patterns** - Examples of list operations like `append()` and `extend()`.\n4. **Similar utility function patterns** - Other utility functions in the same module show consistent coding patterns.\n\nHere are the verified locations containing reusable dependencies:\n\n```\nchatette/utils.py\nline: 154\nfunction: extend_list_in_dict\n\nchatette/utils.py\nline: 160\nline: 161\nline: 162\nline: 163\npattern: if key not in dict_of_lists: dict_of_lists[key] = values else: dict_of_lists[key].extend(values)\n\nchatette/units/__init__.py\nline: 70\nfunction: Example.append\npattern: list.append() usage\n\nchatette/utils.py\nline: 72\nline: 77\nfunction: cast_to_unicode\npattern: dict iteration and assignment\n\nchatette/parsing/parser.py\nline: 269\nline: 274\nfunction: Parser._annotation_tokens_to_dict\npattern: if current_key in result: error handling else: result[current_key] = token.text\n```",
+  "final_locations": {
+    "files": [
+      "chatette/utils.py",
+      "chatette/units/__init__.py",
+      "chatette/parsing/parser.py"
+    ],
+    "entities": [
+      {
+        "file": "chatette/utils.py",
+        "name": "extend_list_in_dict",
+        "kind": "function",
+        "symbol": "chatette.utils.extend_list_in_dict",
+        "start": 154,
+        "end": 163,
+        "code": "def extend_list_in_dict(dict_of_lists, key, values):\n    \"\"\"\n    Given the dict of key->lists `dict_of_lists`, extends the list at key `key`\n    with the values `values` if this list exist. Otherwise, puts the list\n    `values` at key `key`.\n    \"\"\"\n    if key not in dict_of_lists:\n        dict_of_lists[key] = values\n    else:\n        dict_of_lists[key].extend(values)"
+      },
+      {
+        "file": "chatette/units/__init__.py",
+        "name": "Example.append",
+        "kind": "function",
+        "symbol": "chatette.units.Example.append",
+        "start": 70,
+        "end": 80,
+        "code": "    def append(self, example_to_append):\n        \"\"\"\n        Appends the text of `example_to_append` to the example text\n        and manages its pointers to entities if needed.\n        @post: don't use `example_to_append` any longer.\n        \"\"\"\n        starting_index = len(self.text)\n        self.text += example_to_append.text\n        for entity in example_to_append.entities:\n            entity._start_index += starting_index\n            self.entities.append(entity)"
+      },
+      {
+        "file": "chatette/utils.py",
+        "name": "cast_to_unicode",
+        "kind": "function",
+        "symbol": "chatette.utils.cast_to_unicode",
+        "start": 60,
+        "end": 84,
+        "code": "def cast_to_unicode(anything):\n    \"\"\"\n    If executed with Python 2.7, cast any string that is in `anything`\n    to unicode.\n    If executed with Python 3, returns `anything`.\n    `anything` can be a string, an array, a dict,...\n    \"\"\"\n    if sys.version_info[0] == 3:\n        return anything\n\n    if isinstance(anything, str):\n        return unicode(anything, \"utf-8\")\n    if isinstance(anything, dict):\n        cast_dict = dict()\n        for key in anything:\n            cast_key = cast_to_unicode(key)\n            cast_value = cast_to_unicode(anything[key])\n            cast_dict[cast_key] = cast_value\n        return cast_dict\n    if isinstance(anything, list):\n        cast_list = []\n        for e in anything:\n            cast_list.append(cast_to_unicode(e))\n        return cast_list\n    return anything"
+      },
+      {
+        "file": "chatette/parsing/parser.py",
+        "name": "Parser._annotation_tokens_to_dict",
+        "kind": "function",
+        "symbol": "chatette.parsing.parser.Parser._annotation_tokens_to_dict",
+        "start": 246,
+        "end": 276,
+        "code": "    def _annotation_tokens_to_dict(self, tokens):\n        \"\"\"\n        Transforms the tokens `tokens` that contain an annotation into a dictionary\n        that contains the same information.\n        @pre: `tokens` really contains an annotation (starting at the beginning of\n            the list).\n        @raises: - `ValueError` if the precondition is not met.\n                - `SyntaxError` if the annotation contains the same key twice.\n        \"\"\"\n        if len(tokens) == 0 or tokens[0].type != TerminalType.annotation_start:\n            raise ValueError(\n                \"Tried to parse tokens as if they were an annotation while \" + \\\n                \"they weren't\"\n            )\n\n        result = dict()\n        current_key = None\n        for token in tokens:\n            if token.type == TerminalType.annotation_end:\n                break\n            elif token.type == TerminalType.key:\n                current_key = token.text\n            elif token.type == TerminalType.value:\n                if current_key in result:\n                    self.input_file_manager.syntax_error(\n                        \"Annotation contained the key '\" + current_key + \\\n                        \"' twice.\"\n                    )\n                result[current_key] = token.text\n\n        return result"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 0,
+    "returned_code_chars": 2943
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 28094,
+    "completion_tokens": 757,
+    "total_tokens": 28851,
+    "seconds": 117.18531823158264,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 130.62132954597473,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

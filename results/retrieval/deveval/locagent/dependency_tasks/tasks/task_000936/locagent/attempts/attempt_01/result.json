@@ -1,0 +1,111 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 936,
+  "namespace": "prometheus_client.multiprocess.MultiProcessCollector.merge",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4510,
+      "input_estimate_after": 4510,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `merge` function:\n\n```\nprometheus_client/mmap_dict.py\nline: 50\nclass: MmapedDict\nfunction: read_all_values_from_file\n\nprometheus_client/mmap_dict.py\nline: -1\nfunction: _read_all_values\n\nprometheus_client/multiprocess.py\nline: -1\nclass: MultiProcessCollector\nfunction: _read_metrics\n\nprometheus_client/multiprocess.py\nline: -1\nclass: MultiProcessCollector\nfunction: _accumulate_metrics\n\nprometheus_client/metrics.py\nline: -1\nclass: Histogram\nfunction: _sum\n```\n\n**Note:** The exact line numbers for some functions are not available in the evidence, but the key reusable dependencies are:\n1. `MmapedDict.read_all_values_from_file` - for reading mmap files\n2. `_read_all_values` - internal function for parsing mmap data\n3. `MultiProcessCollector._read_metrics` - for reading metrics from files\n4. `MultiProcessCollector._accumulate_metrics` - for handling accumulation logic\n5. `Histogram._sum` - for histogram-specific accumulation behavior\n\nThese locations provide the necessary infrastructure for reading mmap files, parsing metric data, and handling accumulation logic required to implement the `merge` function.",
+  "final_locations": {
+    "files": [
+      "prometheus_client/mmap_dict.py",
+      "prometheus_client/multiprocess.py",
+      "prometheus_client/metrics.py"
+    ],
+    "entities": [
+      {
+        "file": "prometheus_client/mmap_dict.py",
+        "name": "MmapedDict",
+        "kind": "class",
+        "symbol": "prometheus_client.mmap_dict.MmapedDict",
+        "start": 50,
+        "end": 138,
+        "code": "class MmapedDict:\n    \"\"\"A dict of doubles, backed by an mmapped file.\n\n    The file starts with a 4 byte int, indicating how much of it is used.\n    Then 4 bytes of padding.\n    There's then a number of entries, consisting of a 4 byte int which is the\n    size of the next field, a utf-8 encoded string key, padding to a 8 byte\n    alignment, and then a 8 byte float which is the value and a 8 byte float\n    which is a UNIX timestamp in seconds.\n\n    Not thread safe.\n    \"\"\"\n\n    def __init__(self, filename, read_mode=False):\n        self._f = open(filename, 'rb' if read_mode else 'a+b')\n        self._fname = filename\n        capacity = os.fstat(self._f.fileno()).st_size\n        if capacity == 0:\n            self._f.truncate(_INITIAL_MMAP_SIZE)\n            capacity = _INITIAL_MMAP_SIZE\n        self._capacity = capacity\n        self._m = mmap.mmap(self._f.fileno(), self._capacity,\n                            access=mmap.ACCESS_READ if read_mode else mmap.ACCESS_WRITE)\n\n        self._positions = {}\n        self._used = _unpack_integer(self._m, 0)[0]\n        if self._used == 0:\n            self._used = 8\n            _pack_integer(self._m, 0, self._used)\n        else:\n            if not read_mode:\n                for key, _, _, pos in self._read_all_values():\n                    self._positions[key] = pos\n\n    @staticmethod\n    def read_all_values_from_file(filename):\n        with open(filename, 'rb') as infp:\n            # Read the first block of data, including the first 4 bytes which tell us\n            # how much of the file (which is preallocated to _INITIAL_MMAP_SIZE bytes) is occupied.\n            data = infp.read(mmap.PAGESIZE)\n            used = _unpack_integer(data, 0)[0]\n            if used > len(data):  # Then read in the rest, if needed.\n                data += infp.read(used - len(data))\n        return _read_all_values(data, used)\n\n    def _init_value(self, key):\n        \"\"\"Initialize a value. Lock must be held by caller.\"\"\"\n        encoded = key.encode('utf-8')\n        # Pad to be 8-byte aligned.\n        padded = encoded + (b' ' * (8 - (len(encoded) + 4) % 8))\n        value = struct.pack(f'i{len(padded)}sdd'.encode(), len(encoded), padded, 0.0, 0.0)\n        while self._used + len(value) > self._capacity:\n            self._capacity *= 2\n            self._f.truncate(self._capacity)\n            self._m = mmap.mmap(self._f.fileno(), self._capacity)\n        self._m[self._used:self._used + len(value)] = value\n\n        # Update how much space we've used.\n        self._used += len(value)\n        _pack_integer(self._m, 0, self._used)\n        self._positions[key] = self._used - 16\n\n    def _read_all_values(self):\n        \"\"\"Yield (key, value, pos). No locking is performed.\"\"\"\n        return _read_all_values(data=self._m, used=self._used)\n\n    def read_all_values(self):\n        \"\"\"Yield (key, value, timestamp). No locking is performed.\"\"\"\n        for k, v, ts, _ in self._read_all_values():\n            yield k, v, ts\n\n    def read_value(self, key):\n        if key not in self._positions:\n            self._init_value(key)\n        pos = self._positions[key]\n        return _unpack_two_doubles(self._m, pos)\n\n    def write_value(self, key, value, timestamp):\n        if key not in self._positions:\n            self._init_value(key)\n        pos = self._positions[key]\n        _pack_two_doubles(self._m, pos, value, timestamp)\n\n    def close(self):\n        if self._f:\n            self._m.close()\n            self._m = None\n            self._f.close()\n            self._f = None"
+      },
+      {
+        "file": "prometheus_client/mmap_dict.py",
+        "name": "_read_all_values",
+        "kind": "function",
+        "symbol": "prometheus_client.mmap_dict._read_all_values",
+        "start": 27,
+        "end": 47,
+        "code": "def _read_all_values(data, used=0):\n    \"\"\"Yield (key, value, timestamp, pos). No locking is performed.\"\"\"\n\n    if used <= 0:\n        # If not valid `used` value is passed in, read it from the file.\n        used = _unpack_integer(data, 0)[0]\n\n    pos = 8\n\n    while pos < used:\n        encoded_len = _unpack_integer(data, pos)[0]\n        # check we are not reading beyond bounds\n        if encoded_len + pos > used:\n            raise RuntimeError('Read beyond file size detected, file is corrupted.')\n        pos += 4\n        encoded_key = data[pos:pos + encoded_len]\n        padded_len = encoded_len + (8 - (encoded_len + 4) % 8)\n        pos += padded_len\n        value, timestamp = _unpack_two_doubles(data, pos)\n        yield encoded_key.decode('utf-8'), value, timestamp, pos\n        pos += 16"
+      },
+      {
+        "file": "prometheus_client/multiprocess.py",
+        "name": "MultiProcessCollector",
+        "kind": "class",
+        "symbol": "prometheus_client.multiprocess.MultiProcessCollector",
+        "start": 19,
+        "end": 158,
+        "code": "class MultiProcessCollector:\n    \"\"\"Collector for files for multi-process mode.\"\"\"\n\n    def __init__(self, registry, path=None):\n        if path is None:\n            # This deprecation warning can go away in a few releases when removing the compatibility\n            if 'prometheus_multiproc_dir' in os.environ and 'PROMETHEUS_MULTIPROC_DIR' not in os.environ:\n                os.environ['PROMETHEUS_MULTIPROC_DIR'] = os.environ['prometheus_multiproc_dir']\n                warnings.warn(\"prometheus_multiproc_dir variable has been deprecated in favor of the upper case naming PROMETHEUS_MULTIPROC_DIR\", DeprecationWarning)\n            path = os.environ.get('PROMETHEUS_MULTIPROC_DIR')\n        if not path or not os.path.isdir(path):\n            raise ValueError('env PROMETHEUS_MULTIPROC_DIR is not set or not a directory')\n        self._path = path\n        if registry:\n            registry.register(self)\n\n    @staticmethod\n    def merge(files, accumulate=True):\n        pass\n\n\n\n\n\n\n\n\n    @staticmethod\n    def _read_metrics(files):\n        metrics = {}\n        key_cache = {}\n\n        def _parse_key(key):\n            val = key_cache.get(key)\n            if not val:\n                metric_name, name, labels, help_text = json.loads(key)\n                labels_key = tuple(sorted(labels.items()))\n                val = key_cache[key] = (metric_name, name, labels, labels_key, help_text)\n            return val\n\n        for f in files:\n            parts = os.path.basename(f).split('_')\n            typ = parts[0]\n            try:\n                file_values = MmapedDict.read_all_values_from_file(f)\n            except FileNotFoundError:\n                if typ == 'gauge' and parts[1].startswith('live'):\n                    # Files for 'live*' gauges can be deleted between the glob of collect\n                    # and now (via a mark_process_dead call) so don't fail if\n                    # the file is missing\n                    continue\n                raise\n            for key, value, timestamp, _ in file_values:\n                metric_name, name, labels, labels_key, help_text = _parse_key(key)\n\n                metric = metrics.get(metric_name)\n                if metric is None:\n                    metric = Metric(metric_name, help_text, typ)\n                    metrics[metric_name] = metric\n\n                if typ == 'gauge':\n                    pid = parts[2][:-3]\n                    metric._multiprocess_mode = parts[1]\n                    metric.add_sample(name, labels_key + (('pid', pid),), value, timestamp)\n                else:\n                    # The duplicates and labels are fixed in the next for.\n                    metric.add_sample(name, labels_key, value)\n        return metrics\n\n    @staticmethod\n    def _accumulate_metrics(metrics, accumulate):\n        for metric in metrics.values():\n            samples = defaultdict(float)\n            sample_timestamps = defaultdict(float)\n            buckets = defaultdict(lambda: defaultdict(float))\n            samples_setdefault = samples.setdefault\n            for s in metric.samples:\n                name, labels, value, timestamp, exemplar = s\n                if metric.type == 'gauge':\n                    without_pid_key = (name, tuple(l for l in labels if l[0] != 'pid'))\n                    if metric._multiprocess_mode in ('min', 'livemin'):\n                        current = samples_setdefault(without_pid_key, value)\n                        if value < current:\n                            samples[without_pid_key] = value\n                    elif metric._multiprocess_mode in ('max', 'livemax'):\n                        current = samples_setdefault(without_pid_key, value)\n                        if value > current:\n                            samples[without_pid_key] = value\n                    elif metric._multiprocess_mode in ('sum', 'livesum'):\n                        samples[without_pid_key] += value\n                    elif metric._multiprocess_mode in ('mostrecent', 'livemostrecent'):\n                        current_timestamp = sample_timestamps[without_pid_key]\n                        timestamp = float(timestamp or 0)\n                        if current_timestamp < timestamp:\n                            samples[without_pid_key] = value\n                            sample_timestamps[without_pid_key] = timestamp\n                    else:  # all/liveall\n                        samples[(name, labels)] = value\n\n                elif metric.type == 'histogram':\n                    # A for loop with early exit is faster than a genexpr\n                    # or a listcomp that ends up building unnecessary things\n                    for l in labels:\n                        if l[0] == 'le':\n                            bucket_value = float(l[1])\n                            # _bucket\n                            without_le = tuple(l for l in labels if l[0] != 'le')\n                            buckets[without_le][bucket_value] += value\n                            break\n                    else:  # did not find the `le` key\n                        # _sum/_count\n                        samples[(name, labels)] += value\n                else:\n                    # Counter and Summary.\n                    samples[(name, labels)] += value\n\n            # Accumulate bucket values.\n            if metric.type == 'histogram':\n                for labels, values in buckets.items():\n                    acc = 0.0\n                    for bucket, value in sorted(values.items()):\n                        sample_key = (\n                            metric.name + '_bucket',\n                            labels + (('le', floatToGoString(bucket)),),\n                        )\n                        if accumulate:\n                            acc += value\n                            samples[sample_key] = acc\n                        else:\n                            samples[sample_key] = value\n                    if accumulate:\n                        samples[(metric.name + '_count', labels)] = acc\n\n            # Convert to correct sample format.\n            metric.samples = [Sample(name_, dict(labels), value) for (name_, labels), value in samples.items()]\n        return metrics.values()\n\n    def collect(self):\n        files = glob.glob(os.path.join(self._path, '*.db'))\n        return self.merge(files, accumulate=True)"
+      },
+      {
+        "file": "prometheus_client/metrics.py",
+        "name": "Histogram",
+        "kind": "class",
+        "symbol": "prometheus_client.metrics.Histogram",
+        "start": 528,
+        "end": 656,
+        "code": "class Histogram(MetricWrapperBase):\n    \"\"\"A Histogram tracks the size and number of events in buckets.\n\n    You can use Histograms for aggregatable calculation of quantiles.\n\n    Example use cases:\n    - Response latency\n    - Request size\n\n    Example for a Histogram:\n\n        from prometheus_client import Histogram\n\n        h = Histogram('request_size_bytes', 'Request size (bytes)')\n        h.observe(512)  # Observe 512 (bytes)\n\n    Example for a Histogram using time:\n\n        from prometheus_client import Histogram\n\n        REQUEST_TIME = Histogram('response_latency_seconds', 'Response latency (seconds)')\n\n        @REQUEST_TIME.time()\n        def create_response(request):\n          '''A dummy function'''\n          time.sleep(1)\n\n    Example of using the same Histogram object as a context manager:\n\n        with REQUEST_TIME.time():\n            pass  # Logic to be timed\n\n    The default buckets are intended to cover a typical web/rpc request from milliseconds to seconds.\n    They can be overridden by passing `buckets` keyword argument to `Histogram`.\n    \"\"\"\n    _type = 'histogram'\n    _reserved_labelnames = ['le']\n    DEFAULT_BUCKETS = (.005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0, 7.5, 10.0, INF)\n\n    def __init__(self,\n                 name: str,\n                 documentation: str,\n                 labelnames: Iterable[str] = (),\n                 namespace: str = '',\n                 subsystem: str = '',\n                 unit: str = '',\n                 registry: Optional[CollectorRegistry] = REGISTRY,\n                 _labelvalues: Optional[Sequence[str]] = None,\n                 buckets: Sequence[Union[float, str]] = DEFAULT_BUCKETS,\n                 ):\n        self._prepare_buckets(buckets)\n        super().__init__(\n            name=name,\n            documentation=documentation,\n            labelnames=labelnames,\n            namespace=namespace,\n            subsystem=subsystem,\n            unit=unit,\n            registry=registry,\n            _labelvalues=_labelvalues,\n        )\n        self._kwargs['buckets'] = buckets\n\n    def _prepare_buckets(self, source_buckets: Sequence[Union[float, str]]) -> None:\n        buckets = [float(b) for b in source_buckets]\n        if buckets != sorted(buckets):\n            # This is probably an error on the part of the user,\n            # so raise rather than sorting for them.\n            raise ValueError('Buckets not in sorted order')\n        if buckets and buckets[-1] != INF:\n            buckets.append(INF)\n        if len(buckets) < 2:\n            raise ValueError('Must have at least two buckets')\n        self._upper_bounds = buckets\n\n    def _metric_init(self) -> None:\n        self._buckets: List[values.ValueClass] = []\n        self._created = time.time()\n        bucket_labelnames = self._labelnames + ('le',)\n        self._sum = values.ValueClass(self._type, self._name, self._name + '_sum', self._labelnames, self._labelvalues, self._documentation)\n        for b in self._upper_bounds:\n            self._buckets.append(values.ValueClass(\n                self._type,\n                self._name,\n                self._name + '_bucket',\n                bucket_labelnames,\n                self._labelvalues + (floatToGoString(b),),\n                self._documentation)\n            )\n\n    def observe(self, amount: float, exemplar: Optional[Dict[str, str]] = None) -> None:\n        \"\"\"Observe the given amount.\n\n        The amount is usually positive or zero. Negative values are\n        accepted but prevent current versions of Prometheus from\n        properly detecting counter resets in the sum of\n        observations. See\n        https://prometheus.io/docs/practices/histograms/#count-and-sum-of-observations\n        for details.\n        \"\"\"\n        self._raise_if_not_observable()\n        self._sum.inc(amount)\n        for i, bound in enumerate(self._upper_bounds):\n            if amount <= bound:\n                self._buckets[i].inc(1)\n                if exemplar:\n                    _validate_exemplar(exemplar)\n                    self._buckets[i].set_exemplar(Exemplar(exemplar, amount, time.time()))\n                break\n\n    def time(self) -> Timer:\n        \"\"\"Time a block of code or function, and observe the duration in seconds.\n\n        Can be used as a function decorator or context manager.\n        \"\"\"\n        return Timer(self, 'observe')\n\n    def _child_samples(self) -> Iterable[Sample]:\n        samples = []\n        acc = 0.0\n        for i, bound in enumerate(self._upper_bounds):\n            acc += self._buckets[i].get()\n            samples.append(Sample('_bucket', {'le': floatToGoString(bound)}, acc, None, self._buckets[i].get_exemplar()))\n        samples.append(Sample('_count', {}, acc, None, None))\n        if self._upper_bounds[0] >= 0:\n            samples.append(Sample('_sum', {}, self._sum.get(), None, None))\n        if _use_created:\n            samples.append(Sample('_created', {}, self._created, None, None))\n        return tuple(samples)"
+      }
+    ],
+    "unresolved": [
+      "prometheus_client/mmap_dict.py:function: read_all_values_from_file",
+      "prometheus_client/mmap_dict.py:line: -1",
+      "prometheus_client/multiprocess.py:line: -1",
+      "prometheus_client/multiprocess.py:function: _read_metrics",
+      "prometheus_client/multiprocess.py:line: -1",
+      "prometheus_client/multiprocess.py:function: _accumulate_metrics",
+      "prometheus_client/metrics.py:line: -1",
+      "prometheus_client/metrics.py:function: _sum"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 8,
+    "returned_code_chars": 15633
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 15357,
+    "completion_tokens": 2368,
+    "total_tokens": 17725,
+    "seconds": 77.39816117286682,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 84.74135899543762,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

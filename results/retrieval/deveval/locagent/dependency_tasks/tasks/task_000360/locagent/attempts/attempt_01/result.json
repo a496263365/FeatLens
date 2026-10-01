@@ -1,0 +1,118 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 360,
+  "namespace": "boto.glacier.job.Job.download_to_fileobj",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6669,
+      "input_estimate_after": 6669,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `download_to_fileobj` method in `boto/glacier/job.py`:\n\n```\nboto/glacier/job.py\nline: 100\nfunction: Job._calc_num_chunks\n\nboto/glacier/job.py\nline: 147\nfunction: Job._download_to_fileob\n\nboto/glacier/job.py\nline: 162\nfunction: Job._download_byte_range\n\nboto/glacier/job.py\nline: 33\nvariable: Job.DefaultPartSize\n\nboto/glacier/utils.py\nfunction: tree_hash_from_str\n```",
+  "final_locations": {
+    "files": [
+      "boto/glacier/job.py",
+      "boto/glacier/utils.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/glacier/job.py",
+        "name": "Job._calc_num_chunks",
+        "kind": "function",
+        "symbol": "boto.glacier.job.Job._calc_num_chunks",
+        "start": 100,
+        "end": 101,
+        "code": "    def _calc_num_chunks(self, chunk_size):\n        return int(math.ceil(self.archive_size / float(chunk_size)))"
+      },
+      {
+        "file": "boto/glacier/job.py",
+        "name": "Job._download_to_fileob",
+        "kind": "function",
+        "symbol": "boto.glacier.job.Job._download_to_fileob",
+        "start": 147,
+        "end": 160,
+        "code": "    def _download_to_fileob(self, fileobj, num_chunks, chunk_size, verify_hashes,\n                            retry_exceptions):\n        for i in range(num_chunks):\n            byte_range = ((i * chunk_size), ((i + 1) * chunk_size) - 1)\n            data, expected_tree_hash = self._download_byte_range(\n                byte_range, retry_exceptions)\n            if verify_hashes:\n                actual_tree_hash = tree_hash_from_str(data)\n                if expected_tree_hash != actual_tree_hash:\n                    raise TreeHashDoesNotMatchError(\n                        \"The calculated tree hash %s does not match the \"\n                        \"expected tree hash %s for the byte range %s\" % (\n                            actual_tree_hash, expected_tree_hash, byte_range))\n            fileobj.write(data)"
+      },
+      {
+        "file": "boto/glacier/job.py",
+        "name": "Job._download_byte_range",
+        "kind": "function",
+        "symbol": "boto.glacier.job.Job._download_byte_range",
+        "start": 162,
+        "end": 177,
+        "code": "    def _download_byte_range(self, byte_range, retry_exceptions):\n        # You can occasionally get socket.errors when downloading\n        # chunks from Glacier, so each chunk can be retried up\n        # to 5 times.\n        for _ in range(5):\n            try:\n                response = self.get_output(byte_range)\n                data = response.read()\n                expected_tree_hash = response['TreeHash']\n                return data, expected_tree_hash\n            except retry_exceptions as e:\n                continue\n        else:\n            raise DownloadArchiveError(\"There was an error downloading\"\n                                       \"byte range %s: %s\" % (byte_range,\n                                                              e))"
+      },
+      {
+        "file": "boto/glacier/job.py",
+        "name": "Job",
+        "kind": "class",
+        "symbol": "boto.glacier.job.Job",
+        "start": 31,
+        "end": 177,
+        "code": "class Job(object):\n\n    DefaultPartSize = 4 * 1024 * 1024\n\n    ResponseDataElements = (('Action', 'action', None),\n                            ('ArchiveId', 'archive_id', None),\n                            ('ArchiveSizeInBytes', 'archive_size', 0),\n                            ('Completed', 'completed', False),\n                            ('CompletionDate', 'completion_date', None),\n                            ('CreationDate', 'creation_date', None),\n                            ('InventorySizeInBytes', 'inventory_size', 0),\n                            ('JobDescription', 'description', None),\n                            ('JobId', 'id', None),\n                            ('SHA256TreeHash', 'sha256_treehash', None),\n                            ('SNSTopic', 'sns_topic', None),\n                            ('StatusCode', 'status_code', None),\n                            ('StatusMessage', 'status_message', None),\n                            ('VaultARN', 'arn', None))\n\n    def __init__(self, vault, response_data=None):\n        self.vault = vault\n        if response_data:\n            for response_name, attr_name, default in self.ResponseDataElements:\n                setattr(self, attr_name, response_data[response_name])\n        else:\n            for response_name, attr_name, default in self.ResponseDataElements:\n                setattr(self, attr_name, default)\n\n    def __repr__(self):\n        return 'Job(%s)' % self.arn\n\n    def get_output(self, byte_range=None, validate_checksum=False):\n        \"\"\"\n        This operation downloads the output of the job.  Depending on\n        the job type you specified when you initiated the job, the\n        output will be either the content of an archive or a vault\n        inventory.\n\n        You can download all the job output or download a portion of\n        the output by specifying a byte range. In the case of an\n        archive retrieval job, depending on the byte range you\n        specify, Amazon Glacier returns the checksum for the portion\n        of the data. You can compute the checksum on the client and\n        verify that the values match to ensure the portion you\n        downloaded is the correct data.\n\n        :type byte_range: tuple\n        :param range: A tuple of integer specifying the slice (in bytes)\n            of the archive you want to receive\n\n        :type validate_checksum: bool\n        :param validate_checksum: Specify whether or not to validate\n            the associate tree hash.  If the response does not contain\n            a TreeHash, then no checksum will be verified.\n\n        \"\"\"\n        response = self.vault.layer1.get_job_output(self.vault.name,\n                                                    self.id,\n                                                    byte_range)\n        if validate_checksum and 'TreeHash' in response:\n            data = response.read()\n            actual_tree_hash = tree_hash_from_str(data)\n            if response['TreeHash'] != actual_tree_hash:\n                raise TreeHashDoesNotMatchError(\n                    \"The calculated tree hash %s does not match the \"\n                    \"expected tree hash %s for the byte range %s\" % (\n                        actual_tree_hash, response['TreeHash'], byte_range))\n        return response\n\n    def _calc_num_chunks(self, chunk_size):\n        return int(math.ceil(self.archive_size / float(chunk_size)))\n\n    def download_to_file(self, filename, chunk_size=DefaultPartSize,\n                         verify_hashes=True, retry_exceptions=(socket.error,)):\n        \"\"\"Download an archive to a file by name.\n\n        :type filename: str\n        :param filename: The name of the file where the archive\n            contents will be saved.\n\n        :type chunk_size: int\n        :param chunk_size: The chunk size to use when downloading\n            the archive.\n\n        :type verify_hashes: bool\n        :param verify_hashes: Indicates whether or not to verify\n            the tree hashes for each downloaded chunk.\n\n        \"\"\"\n        num_chunks = self._calc_num_chunks(chunk_size)\n        with open(filename, 'wb') as output_file:\n            self._download_to_fileob(output_file, num_chunks, chunk_size,\n                                     verify_hashes, retry_exceptions)\n\n    def download_to_fileobj(self, output_file, chunk_size=DefaultPartSize,\n                            verify_hashes=True,\n                            retry_exceptions=(socket.error,)):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def _download_to_fileob(self, fileobj, num_chunks, chunk_size, verify_hashes,\n                            retry_exceptions):\n        for i in range(num_chunks):\n            byte_range = ((i * chunk_size), ((i + 1) * chunk_size) - 1)\n            data, expected_tree_hash = self._download_byte_range(\n                byte_range, retry_exceptions)\n            if verify_hashes:\n                actual_tree_hash = tree_hash_from_str(data)\n                if expected_tree_hash != actual_tree_hash:\n                    raise TreeHashDoesNotMatchError(\n                        \"The calculated tree hash %s does not match the \"\n                        \"expected tree hash %s for the byte range %s\" % (\n                            actual_tree_hash, expected_tree_hash, byte_range))\n            fileobj.write(data)\n\n    def _download_byte_range(self, byte_range, retry_exceptions):\n        # You can occasionally get socket.errors when downloading\n        # chunks from Glacier, so each chunk can be retried up\n        # to 5 times.\n        for _ in range(5):\n            try:\n                response = self.get_output(byte_range)\n                data = response.read()\n                expected_tree_hash = response['TreeHash']\n                return data, expected_tree_hash\n            except retry_exceptions as e:\n                continue\n        else:\n            raise DownloadArchiveError(\"There was an error downloading\"\n                                       \"byte range %s: %s\" % (byte_range,\n                                                              e))"
+      },
+      {
+        "file": "boto/glacier/utils.py",
+        "name": "tree_hash_from_str",
+        "kind": "function",
+        "symbol": "boto.glacier.utils.tree_hash_from_str",
+        "start": 152,
+        "end": 162,
+        "code": "def tree_hash_from_str(str_as_bytes):\n    \"\"\"\n\n    :type str_as_bytes: str\n    :param str_as_bytes: The string for which to compute the tree hash.\n\n    :rtype: str\n    :return: The computed tree hash, returned as hex.\n\n    \"\"\"\n    return bytes_to_hex(tree_hash(chunk_hashes(str_as_bytes)))"
+      }
+    ],
+    "unresolved": [
+      "boto/glacier/job.py:variable: Job.DefaultPartSize"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6666666666666666,
+    "exact_entity_dr": 0.6666666666666666,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "boto.glacier.job.Job._calc_num_chunks",
+      "boto.glacier.job.Job._download_to_fileob"
+    ],
+    "exact_hit_dependencies": [
+      "boto.glacier.job.Job._calc_num_chunks",
+      "boto.glacier.job.Job._download_to_fileob"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 7997
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 25867,
+    "completion_tokens": 621,
+    "total_tokens": 26488,
+    "seconds": 77.53956723213196,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 137.1504144668579,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

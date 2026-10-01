@@ -1,0 +1,83 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 38,
+  "namespace": "litdata.utilities.shuffle._intra_node_chunk_shuffle",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3573,
+      "input_estimate_after": 3573,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Given the task to identify reusable dependencies for implementing `_intra_node_chunk_shuffle`, I have analyzed the available evidence from the repository exploration. The function's purpose is to shuffle chunk indexes per node in a distributed setting, using a seed and epoch for reproducibility. Key dependencies likely involve distributed environment handling, random number generation with seeding, and list shuffling operations.\n\nFrom the repository structure, I have identified the following relevant files and symbols that should be inspected or reused:\n\n1. **`litdata/utilities/distributed.py`** - Contains `_DistributedEnv` class, which is a direct argument type. This is essential for understanding the distributed environment structure.\n2. **`litdata/utilities/shuffle.py`** - The target file itself, but other functions within it (e.g., `_get_chunks_per_ranks`, `_shuffle_chunks`) may provide patterns for shuffling logic and random seed usage.\n3. **`litdata/optimizations/shuffle.py`** - May contain optimized shuffling utilities or related functions that could be adapted.\n4. **`litdata/streaming/dataloader.py`** - Often includes distributed data loading logic and may reference shuffling mechanisms, providing context for how chunk shuffling integrates.\n5. **`litdata/streaming/item_loader.py`** - Could have chunk indexing and distribution logic relevant to understanding chunk assignments.\n\nThese locations are ordered by their direct relevance to the function's arguments and the shuffling operation. They should be examined to understand existing patterns for distributed chunk handling, random seeding, and list manipulations.\n\n```\nlitdata/utilities/distributed.py\nclass: _DistributedEnv\nfunction: __init__\n\nlitdata/utilities/shuffle.py\nfunction: _get_chunks_per_ranks\nfunction: _shuffle_chunks\n\nlitdata/optimizations/shuffle.py\nfunction: _shuffle\nclass: _Shuffle\n\nlitdata/streaming/dataloader.py\nclass: StreamingDataLoader\nfunction: _distributed_chunk_shuffle\n\nlitdata/streaming/item_loader.py\nclass: _ItemLoader\nfunction: _load_chunk\n```",
+  "final_locations": {
+    "files": [
+      "litdata/utilities/shuffle.py",
+      "litdata/streaming/dataloader.py",
+      "litdata/streaming/item_loader.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/dataloader.py",
+        "name": "StreamingDataLoader",
+        "kind": "class",
+        "symbol": "litdata.streaming.dataloader.StreamingDataLoader",
+        "start": 481,
+        "end": 683,
+        "code": "class StreamingDataLoader(DataLoader):\n    r\"\"\"The StreamingDataLoader combines a dataset and a sampler, and provides an iterable over the given dataset.\n\n    The :class:`~litdata.streaming.dataloader.StreamingDataLoader` supports either a\n    StreamingDataset and CombinedStreamingDataset datasets with single- or multi-process loading,\n    customizing\n    loading order and optional automatic batching (collation) and memory pinning.\n\n    See :py:mod:`torch.utils.data` documentation page for more details.\n\n    Args:\n        dataset (Dataset): dataset from which to load the data.\n        batch_size (int, optional): how many samples per batch to load\n            (default: ``1``).\n        shuffle (bool, optional): set to ``True`` to have the data reshuffled\n            at every epoch (default: ``False``).\n        num_workers (int, optional): how many subprocesses to use for data\n            loading. ``0`` means that the data will be loaded in the main process.\n            (default: ``0``)\n        collate_fn (Callable, optional): merges a list of samples to form a\n            mini-batch of Tensor(s).  Used when using batched loading from a\n            map-style dataset.\n        pin_memory (bool, optional): If ``True``, the data loader will copy Tensors\n            into device/CUDA pinned memory before returning them.  If your data elements\n            are a custom type, or your :attr:`collate_fn` returns a batch that is a custom type,\n            see the example below.\n        timeout (numeric, optional): if positive, the timeout value for collecting a batch\n            from workers. Should always be non-negative. (default: ``0``)\n        worker_init_fn (Callable, optional): If not ``None``, this will be called on each\n            worker subprocess with the worker id (an int in ``[0, num_workers - 1]``) as\n            input, after seeding and before data loading. (default: ``None``)\n        multiprocessing_context (str or multiprocessing.context.BaseContext, optional): If\n            ``None``, the default `multiprocessing context`_ of your operating system will\n            be used. (default: ``None``)\n        generator (torch.Generator, optional): If not ``None``, this RNG will be used\n            by RandomSampler to generate random indexes and multiprocessing to generate\n            ``base_seed`` for workers. (default: ``None``)\n        prefetch_factor (int, optional, keyword-only arg): Number of batches loaded\n            in advance by each worker. ``2`` means there will be a total of\n            2 * num_workers batches prefetched across all workers. (default value depends\n            on the set value for num_workers. If value of num_workers=0 default is ``None``.\n            Otherwise, if value of ``num_workers > 0`` default is ``2``).\n        persistent_workers (bool, optional): If ``True``, the data loader will not shut down\n            the worker processes after a dataset has been consumed once. This allows to\n            maintain the workers `Dataset` instances alive. (default: ``False``)\n        pin_memory_device (str, optional): the device to :attr:`pin_memory` to if ``pin_memory`` is\n            ``True``.\n        profile_batches (int, bool, optional): Whether to record data loading profile and generate a result.json file.\n        profile_dir (int, bool,  optional): Where to store the recorded trace when profile_batches is enabled.\n\n    \"\"\"\n\n    __doc__ = DataLoader.__doc__\n\n    def __init__(\n        self,\n        dataset: Union[StreamingDataset, CombinedStreamingDataset],\n        *args: Any,\n        batch_size: int = 1,\n        num_workers: int = 0,\n        profile_batches: Union[bool, int] = False,\n        profile_dir: Optional[str] = None,\n        prefetch_factor: Optional[int] = None,\n        shuffle: Optional[bool] = None,\n        **kwargs: Any,\n    ) -> None:  # pyright: ignore\n        if not isinstance(dataset, (StreamingDataset, CombinedStreamingDataset)):\n            raise RuntimeError(\n                \"The provided dataset should be either an instance of StreamingDataset or CombinedStreamingDataset.\"\n                f\" Found {dataset}.\"\n            )\n\n        if shuffle is not None:\n            dataset.set_shuffle(shuffle)\n\n        shuffle = None\n\n        if profile_batches and not _VIZ_TRACKER_AVAILABLE:\n            raise ModuleNotFoundError(\"To use profile_batches, viztracer is required. Run `pip install viztracer`\")\n\n        if profile_batches and num_workers == 0:\n            raise ValueError(\"Profiling is supported only with num_workers >= 1.\")\n\n        self.current_epoch = 0\n        self.batch_size = batch_size\n        self.num_workers = num_workers\n        self._profile_batches = profile_batches\n        self._profile_dir = profile_dir\n        self._num_samples_yielded_streaming = 0\n        self._num_samples_yielded_combined: Dict[int, List[Any]] = {}\n        self.rng_state: Optional[Any] = None\n        self._worker_idx = cycle(list(range(self.num_workers if self.num_workers > 0 else 1)))\n        self._worker_idx_iter: Optional[Any] = None\n        self._latest_worker_idx = 0\n        self.restore = False\n        super().__init__(\n            dataset,\n            *args,\n            batch_size=batch_size,\n            num_workers=num_workers,\n            prefetch_factor=(10 if num_workers > 0 else None) if prefetch_factor is None else prefetch_factor,\n            **kwargs,\n        )  # type: ignore\n\n    def __iter__(self) -> Any:\n        if not self.restore:\n            self._latest_worker_idx = 0\n            self._worker_idx = cycle(list(range(self.num_workers if self.num_workers > 0 else 1)))\n            self._worker_idx_iter = iter(self._worker_idx)\n            self.current_epoch += 1\n            self._num_samples_yielded_combined = {}\n            self._num_samples_yielded_streaming = 0\n\n        self.dataset.set_epoch(self.current_epoch)\n\n        if isinstance(self.dataset, StreamingDataset):\n            assert self.batch_size\n            for batch in super().__iter__():\n                self._latest_worker_idx = next(self._worker_idx_iter)  # type: ignore\n                self._num_samples_yielded_streaming += self.batch_size\n                yield batch\n        else:\n            self.dataset._set_use_streaming_dataloader(True)\n            assert self.batch_size\n            # TODO: Inject a custom collate function to avoid collating the __NUM_SAMPLES_YIELDED__ key\n            for batch in super().__iter__():\n                self._latest_worker_idx = next(self._worker_idx_iter)  # type: ignore\n                if isinstance(batch, dict) and __NUM_SAMPLES_YIELDED_KEY__ in batch:\n                    self._num_samples_yielded_combined[self._latest_worker_idx] = [\n                        sample[-1].item() if self.batch_size > 1 else sample.item()\n                        for sample in batch[__NUM_SAMPLES_YIELDED_KEY__]\n                    ]\n\n                    yield batch[__SAMPLES_KEY__]\n                else:\n                    yield batch\n\n        self.restore = False\n\n    def state_dict(self) -> Dict[str, Any]:\n        if isinstance(self.dataset, StreamingDataset):\n            assert self.batch_size\n            return {\n                \"dataset\": self.dataset.state_dict(\n                    self._num_samples_yielded_streaming, self.num_workers, self.batch_size\n                ),\n                \"current_epoch\": self.current_epoch,\n                \"num_samples_yielded\": self._num_samples_yielded_streaming,\n                \"latest_worker_idx\": self._latest_worker_idx,\n            }\n\n        num_samples_yieled = [0 for _ in range(len(list(self._num_samples_yielded_combined.values())[0]))]\n        for worker_idx in self._num_samples_yielded_combined:\n            for dataset_idx, samples_yieled in enumerate(self._num_samples_yielded_combined[worker_idx]):\n                num_samples_yieled[dataset_idx] += samples_yieled\n\n        return {\n            \"dataset\": self.dataset.state_dict(self.num_workers, self.batch_size, num_samples_yieled),\n            \"current_epoch\": self.current_epoch if self.restore else self.current_epoch - 1,\n            \"latest_worker_idx\": self._latest_worker_idx,\n            \"num_samples_yielded\": deepcopy(self._num_samples_yielded_combined),\n        }\n\n    def load_state_dict(self, obj: Dict[str, Any]) -> None:\n        \"\"\"Load a dict containing training state (called from non-worker process).\n\n        This is called on each copy of the dataset when resuming.\n\n        Args:\n            obj (Any): The state.\n\n        \"\"\"\n        self.current_epoch = obj[\"current_epoch\"]\n\n        if isinstance(self.dataset, StreamingDataset):\n            self._num_samples_yielded_streaming = obj[\"num_samples_yielded\"]\n        else:\n            self._num_samples_yielded_combined = obj[\"num_samples_yielded\"]\n\n        # Used to restart on the next DataLoader worker from the previous run.\n        self._latest_worker_idx = obj[\"latest_worker_idx\"] + 1\n        self._worker_idx_iter = iter(self._worker_idx)\n        for _ in range(self._latest_worker_idx):\n            next(self._worker_idx_iter)\n\n        # Inform we are resuming and disable resetting the StreamingDataLoader state.\n        # This is toggle back to False when the `__iter__` method of the StreamingDataLoader completes.\n        self.restore = True\n\n        if isinstance(self.dataset, CombinedStreamingDataset):\n            self.dataset._set_use_streaming_dataloader(True)\n            self.dataset.load_state_dict(obj)\n        elif isinstance(self.dataset, StreamingDataset):\n            self.dataset.load_state_dict(obj[\"dataset\"])\n        else:\n            raise RuntimeError(\"The provided dataset should be a `StreamingDataset` or a `CombinedStreamingDataset`.\")\n\n    def _get_iterator(self) -> \"_BaseDataLoaderIter\":\n        \"\"\"Overriden to ensure the `Cache.done()` method is triggered on iteration done.\"\"\"\n        if self.num_workers == 0:\n            return _SingleProcessDataLoaderIter(self)\n        self.check_worker_number_rationality()\n        return _StreamingMultiProcessingDataLoaderIter(self)"
+      }
+    ],
+    "unresolved": [
+      "litdata/utilities/distributed.py",
+      "litdata/utilities/shuffle.py:function: _get_chunks_per_ranks",
+      "litdata/utilities/shuffle.py:function: _shuffle_chunks",
+      "litdata/optimizations/shuffle.py",
+      "litdata/streaming/dataloader.py:function: _distributed_chunk_shuffle",
+      "litdata/streaming/item_loader.py:class: _ItemLoader",
+      "litdata/streaming/item_loader.py:function: _load_chunk"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 1,
+    "returned_files": 3,
+    "unresolved_locations": 7,
+    "returned_code_chars": 10054
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 14466,
+    "completion_tokens": 841,
+    "total_tokens": 15307,
+    "seconds": 48.56570625305176,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 145.48282957077026,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

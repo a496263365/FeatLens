@@ -1,0 +1,226 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 504,
+  "namespace": "mopidy.config.load",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3190,
+      "input_estimate_after": 3190,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `mopidy.config.load` function. The target function needs to load configuration files, combine defaults, handle overrides, and validate against schemas. Here are the key existing components that should be reused:\n\n```\nmopidy/config/__init__.py\nline: 107\nfunction: _load\nline: 110\nfunction: _load_file\nline: 113\nfunction: _validate\n\nmopidy/config/schemas.py\nline: 1\nclass: ConfigSchema\nclass: MapConfigSchema\n\nmopidy/config/types.py\nline: 1\nclass: ConfigValue\nclass: String\nclass: Integer\nclass: Boolean\nclass: Path\nclass: Secret\n\nmopidy/internal/path.py\nline: 1\nfunction: expand_path\nfunction: get_or_create_config_dir\n\nmopidy/config/validators.py\nline: 1\nfunction: validate_required\nfunction: validate_choice\nfunction: validate_minimum\nfunction: validate_maximum\n```",
+  "final_locations": {
+    "files": [
+      "mopidy/config/__init__.py",
+      "mopidy/config/schemas.py",
+      "mopidy/config/types.py",
+      "mopidy/internal/path.py",
+      "mopidy/config/validators.py"
+    ],
+    "entities": [
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_load",
+        "kind": "function",
+        "symbol": "mopidy.config._load",
+        "start": 151,
+        "end": 181,
+        "code": "def _load(files, defaults, overrides):\n    from mopidy.internal import path\n    parser = configparser.RawConfigParser(inline_comment_prefixes=(\";\",))\n\n    # TODO: simply return path to config file for defaults so we can load it\n    # all in the same way?\n    logger.info(\"Loading config from builtin defaults\")\n    for default in defaults:\n        if isinstance(default, bytes):\n            default = default.decode()\n        parser.read_string(default)\n\n    # Load config from a series of config files\n    for f in files:\n        f = path.expand_path(f)\n        if f.is_dir():\n            for g in f.iterdir():\n                if g.is_file() and g.suffix == \".conf\":\n                    _load_file(parser, g.resolve())\n        else:\n            _load_file(parser, f.resolve())\n\n    raw_config = {}\n    for section in parser.sections():\n        raw_config[section] = dict(parser.items(section))\n\n    logger.info(\"Loading config from command line options\")\n    for section, key, value in overrides:\n        raw_config.setdefault(section, {})[key] = value\n\n    return raw_config"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_load_file",
+        "kind": "function",
+        "symbol": "mopidy.config._load_file",
+        "start": 184,
+        "end": 216,
+        "code": "def _load_file(parser, file_path):\n    if not file_path.exists():\n        logger.debug(\n            f\"Loading config from {file_path.as_uri()} failed; \"\n            f\"it does not exist\"\n        )\n        return\n    if not os.access(str(file_path), os.R_OK):\n        logger.warning(\n            f\"Loading config from {file_path.as_uri()} failed; \"\n            f\"read permission missing\"\n        )\n        return\n\n    try:\n        logger.info(f\"Loading config from {file_path.as_uri()}\")\n        with file_path.open(\"r\") as fh:\n            parser.read_file(fh)\n    except configparser.MissingSectionHeaderError:\n        logger.warning(\n            f\"Loading config from {file_path.as_uri()} failed; \"\n            f\"it does not have a config section\"\n        )\n    except configparser.ParsingError as e:\n        linenos = \", \".join(str(lineno) for lineno, line in e.errors)\n        logger.warning(\n            f\"Config file {file_path.as_uri()} has errors; \"\n            f\"line {linenos} has been ignored\"\n        )\n    except OSError:\n        # TODO: if this is the initial load of logging config we might not\n        # have a logger at this point, we might want to handle this better.\n        logger.debug(f\"Config file {file_path.as_uri()} not found; skipping\")"
+      },
+      {
+        "file": "mopidy/config/__init__.py",
+        "name": "_validate",
+        "kind": "function",
+        "symbol": "mopidy.config._validate",
+        "start": 219,
+        "end": 239,
+        "code": "def _validate(raw_config, schemas):\n    # Get validated config\n    config = {}\n    errors = {}\n    sections = set(raw_config)\n    for schema in schemas:\n        sections.discard(schema.name)\n        values = raw_config.get(schema.name, {})\n        result, error = schema.deserialize(values)\n        if error:\n            errors[schema.name] = error\n        if result:\n            config[schema.name] = result\n\n    for section in sections:\n        logger.warning(\n            f\"Ignoring config section {section!r} \"\n            f\"because no matching extension was found\"\n        )\n\n    return config, errors"
+      },
+      {
+        "file": "mopidy/config/schemas.py",
+        "name": "ConfigSchema",
+        "kind": "class",
+        "symbol": "mopidy.config.schemas.ConfigSchema",
+        "start": 38,
+        "end": 95,
+        "code": "class ConfigSchema(collections.OrderedDict):\n\n    \"\"\"Logical group of config values that correspond to a config section.\n\n    Schemas are set up by assigning config keys with config values to\n    instances. Once setup :meth:`deserialize` can be called with a dict of\n    values to process. For convienience we also support :meth:`format` method\n    that can used for converting the values to a dict that can be printed and\n    :meth:`serialize` for converting the values to a form suitable for\n    persistence.\n    \"\"\"\n\n    def __init__(self, name):\n        super().__init__()\n        self.name = name\n\n    def deserialize(self, values):\n        \"\"\"Validates the given ``values`` using the config schema.\n\n        Returns a tuple with cleaned values and errors.\n        \"\"\"\n        from mopidy.config import types\n        errors = {}\n        result = {}\n\n        for key, value in values.items():\n            try:\n                result[key] = self[key].deserialize(value)\n            except KeyError:  # not in our schema\n                errors[key] = \"unknown config key.\"\n                suggestion = _did_you_mean(key, self.keys())\n                if suggestion:\n                    errors[key] += f\" Did you mean {suggestion!r}?\"\n            except ValueError as e:  # deserialization failed\n                result[key] = None\n                errors[key] = str(e)\n\n        for key in self.keys():\n            if isinstance(self[key], types.Deprecated):\n                result.pop(key, None)\n            elif key not in result and key not in errors:\n                result[key] = None\n                errors[key] = \"config key not found.\"\n\n        return result, errors\n\n    def serialize(self, values, display=False):\n        \"\"\"Converts the given ``values`` to a format suitable for persistence.\n\n        If ``display`` is :class:`True` secret config values, like passwords,\n        will be masked out.\n\n        Returns a dict of config keys and values.\"\"\"\n        result = collections.OrderedDict()\n        for key in self.keys():\n            if key in values:\n                result[key] = self[key].serialize(values[key], display)\n        return result"
+      },
+      {
+        "file": "mopidy/config/schemas.py",
+        "name": "MapConfigSchema",
+        "kind": "class",
+        "symbol": "mopidy.config.schemas.MapConfigSchema",
+        "start": 98,
+        "end": 126,
+        "code": "class MapConfigSchema:\n\n    \"\"\"Schema for handling multiple unknown keys with the same type.\n\n    Does not sub-class :class:`ConfigSchema`, but implements the same\n    serialize/deserialize interface.\n    \"\"\"\n\n    def __init__(self, name, value_type):\n        self.name = name\n        self._value_type = value_type\n\n    def deserialize(self, values):\n        errors = {}\n        result = {}\n\n        for key, value in values.items():\n            try:\n                result[key] = self._value_type.deserialize(value)\n            except ValueError as e:  # deserialization failed\n                result[key] = None\n                errors[key] = str(e)\n        return result, errors\n\n    def serialize(self, values, display=False):\n        result = collections.OrderedDict()\n        for key in sorted(values.keys()):\n            result[key] = self._value_type.serialize(values[key], display)\n        return result"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "ConfigValue",
+        "kind": "class",
+        "symbol": "mopidy.config.types.ConfigValue",
+        "start": 45,
+        "end": 70,
+        "code": "class ConfigValue:\n    \"\"\"Represents a config key's value and how to handle it.\n\n    Normally you will only be interacting with sub-classes for config values\n    that encode either deserialization behavior and/or validation.\n\n    Each config value should be used for the following actions:\n\n    1. Deserializing from a raw string and validating, raising ValueError on\n       failure.\n    2. Serializing a value back to a string that can be stored in a config.\n    3. Formatting a value to a printable form (useful for masking secrets).\n\n    :class:`None` values should not be deserialized, serialized or formatted,\n    the code interacting with the config should simply skip None config values.\n    \"\"\"\n\n    def deserialize(self, value):\n        \"\"\"Cast raw string to appropriate type.\"\"\"\n        return decode(value)\n\n    def serialize(self, value, display=False):\n        \"\"\"Convert value back to string for saving.\"\"\"\n        if value is None:\n            return \"\"\n        return str(value)"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "String",
+        "kind": "class",
+        "symbol": "mopidy.config.types.String",
+        "start": 87,
+        "end": 119,
+        "code": "class String(ConfigValue):\n    \"\"\"String value.\n\n    Is decoded as utf-8 and \\\\n \\\\t escapes should work and be preserved.\n    \"\"\"\n\n    def __init__(self, optional=False, choices=None, transformer=None):\n        self._required = not optional\n        self._choices = choices\n        self._transformer = transformer\n\n    def deserialize(self, value):\n        value = decode(value).strip()\n        validators.validate_required(value, self._required)\n        if not value:\n            return None\n\n        # This is necessary for backwards-compatibility, in case subclasses\n        # aren't calling their parent constructor.\n        transformer = getattr(self, \"_transformer\", None)\n        if transformer:\n            transformed_value = transformer(value)\n            value = _TransformedValue(value, transformed_value)\n\n        validators.validate_choice(value, self._choices)\n        return value\n\n    def serialize(self, value, display=False):\n        if value is None:\n            return \"\"\n        if isinstance(value, _TransformedValue):\n            value = value.original\n        return encode(value)"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "Integer",
+        "kind": "class",
+        "symbol": "mopidy.config.types.Integer",
+        "start": 144,
+        "end": 164,
+        "code": "class Integer(ConfigValue):\n    \"\"\"Integer value.\"\"\"\n\n    def __init__(\n        self, minimum=None, maximum=None, choices=None, optional=False\n    ):\n        self._required = not optional\n        self._minimum = minimum\n        self._maximum = maximum\n        self._choices = choices\n\n    def deserialize(self, value):\n        value = decode(value)\n        validators.validate_required(value, self._required)\n        if not value:\n            return None\n        value = int(value)\n        validators.validate_choice(value, self._choices)\n        validators.validate_minimum(value, self._minimum)\n        validators.validate_maximum(value, self._maximum)\n        return value"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "Boolean",
+        "kind": "class",
+        "symbol": "mopidy.config.types.Boolean",
+        "start": 186,
+        "end": 219,
+        "code": "class Boolean(ConfigValue):\n    \"\"\"Boolean value.\n\n    Accepts ``1``, ``yes``, ``true``, and ``on`` with any casing as\n    :class:`True`.\n\n    Accepts ``0``, ``no``, ``false``, and ``off`` with any casing as\n    :class:`False`.\n    \"\"\"\n\n    true_values = (\"1\", \"yes\", \"true\", \"on\")\n    false_values = (\"0\", \"no\", \"false\", \"off\")\n\n    def __init__(self, optional=False):\n        self._required = not optional\n\n    def deserialize(self, value):\n        value = decode(value)\n        validators.validate_required(value, self._required)\n        if not value:\n            return None\n        if value.lower() in self.true_values:\n            return True\n        elif value.lower() in self.false_values:\n            return False\n        raise ValueError(f\"invalid value for boolean: {value!r}\")\n\n    def serialize(self, value, display=False):\n        if value is True:\n            return \"true\"\n        elif value in (False, None):\n            return \"false\"\n        else:\n            raise ValueError(f\"{value!r} is not a boolean\")"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "Path",
+        "kind": "class",
+        "symbol": "mopidy.config.types.Path",
+        "start": 422,
+        "end": 453,
+        "code": "class Path(ConfigValue):\n    \"\"\"File system path.\n\n    The following expansions of the path will be done:\n\n    - ``~`` to the current user's home directory\n    - ``$XDG_CACHE_DIR`` according to the XDG spec\n    - ``$XDG_CONFIG_DIR`` according to the XDG spec\n    - ``$XDG_DATA_DIR`` according to the XDG spec\n    - ``$XDG_MUSIC_DIR`` according to the XDG spec\n    \"\"\"\n\n    def __init__(self, optional=False):\n        self._required = not optional\n\n    def deserialize(self, value):\n        value = decode(value).strip()\n        expanded = path.expand_path(value)\n        validators.validate_required(value, self._required)\n        validators.validate_required(expanded, self._required)\n        if not value or expanded is None:\n            return None\n        return _ExpandedPath(value, expanded)\n\n    def serialize(self, value, display=False):\n        if value is None:\n            return \"\"\n        if isinstance(value, _ExpandedPath):\n            value = value.original\n        if isinstance(value, bytes):\n            value = value.decode(errors=\"surrogateescape\")\n        return value"
+      },
+      {
+        "file": "mopidy/config/types.py",
+        "name": "Secret",
+        "kind": "class",
+        "symbol": "mopidy.config.types.Secret",
+        "start": 122,
+        "end": 141,
+        "code": "class Secret(String):\n    \"\"\"Secret string value.\n\n    Is decoded as utf-8 and \\\\n \\\\t escapes should work and be preserved.\n\n    Should be used for passwords, auth tokens etc. Will mask value when being\n    displayed.\n    \"\"\"\n\n    def __init__(self, optional=False, choices=None, transformer=None):\n        super().__init__(\n            optional=optional,\n            choices=None,  # Choices doesn't make sense for secrets\n            transformer=transformer,\n        )\n\n    def serialize(self, value, display=False):\n        if value is not None and display:\n            return \"********\"\n        return super().serialize(value, display)"
+      },
+      {
+        "file": "mopidy/internal/path.py",
+        "name": "expand_path",
+        "kind": "function",
+        "symbol": "mopidy.internal.path.expand_path",
+        "start": 70,
+        "end": 80,
+        "code": "def expand_path(path):\n    if isinstance(path, bytes):\n        path = path.decode(errors=\"surrogateescape\")\n    path = str(pathlib.Path(path))\n\n    for xdg_var, xdg_dir in XDG_DIRS.items():\n        path = path.replace(\"$\" + xdg_var, str(xdg_dir))\n    if \"$\" in path:\n        return None\n\n    return pathlib.Path(path).expanduser().resolve()"
+      },
+      {
+        "file": "mopidy/config/validators.py",
+        "name": "validate_required",
+        "kind": "function",
+        "symbol": "mopidy.config.validators.validate_required",
+        "start": 4,
+        "end": 11,
+        "code": "def validate_required(value, required):\n    \"\"\"Validate that ``value`` is set if ``required``\n\n    Normally called in :meth:`~mopidy.config.types.ConfigValue.deserialize` on\n    the raw string, _not_ the converted value.\n    \"\"\"\n    if required and not value:\n        raise ValueError(\"must be set.\")"
+      },
+      {
+        "file": "mopidy/config/validators.py",
+        "name": "validate_choice",
+        "kind": "function",
+        "symbol": "mopidy.config.validators.validate_choice",
+        "start": 14,
+        "end": 21,
+        "code": "def validate_choice(value, choices):\n    \"\"\"Validate that ``value`` is one of the ``choices``\n\n    Normally called in :meth:`~mopidy.config.types.ConfigValue.deserialize`.\n    \"\"\"\n    if choices is not None and value not in choices:\n        names = \", \".join(repr(c) for c in choices)\n        raise ValueError(f\"must be one of {names}, not {value}.\")"
+      },
+      {
+        "file": "mopidy/config/validators.py",
+        "name": "validate_minimum",
+        "kind": "function",
+        "symbol": "mopidy.config.validators.validate_minimum",
+        "start": 24,
+        "end": 30,
+        "code": "def validate_minimum(value, minimum):\n    \"\"\"Validate that ``value`` is at least ``minimum``\n\n    Normally called in :meth:`~mopidy.config.types.ConfigValue.deserialize`.\n    \"\"\"\n    if minimum is not None and value < minimum:\n        raise ValueError(f\"{value!r} must be larger than {minimum!r}.\")"
+      },
+      {
+        "file": "mopidy/config/validators.py",
+        "name": "validate_maximum",
+        "kind": "function",
+        "symbol": "mopidy.config.validators.validate_maximum",
+        "start": 33,
+        "end": 39,
+        "code": "def validate_maximum(value, maximum):\n    \"\"\"Validate that ``value`` is at most ``maximum``\n\n    Normally called in :meth:`~mopidy.config.types.ConfigValue.deserialize`.\n    \"\"\"\n    if maximum is not None and value > maximum:\n        raise ValueError(f\"{value!r} must be smaller than {maximum!r}.\")"
+      }
+    ],
+    "unresolved": [
+      "mopidy/config/__init__.py:line: 110",
+      "mopidy/config/__init__.py:line: 113",
+      "mopidy/config/schemas.py:line: 1",
+      "mopidy/config/types.py:line: 1",
+      "mopidy/internal/path.py:line: 1",
+      "mopidy/internal/path.py:function: get_or_create_config_dir",
+      "mopidy/config/validators.py:line: 1"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.3333333333333333,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 6,
+    "hit_dependencies": [
+      "mopidy.config._load",
+      "mopidy.config._validate"
+    ],
+    "exact_hit_dependencies": [
+      "mopidy.config._load",
+      "mopidy.config._validate"
+    ],
+    "returned_entities": 16,
+    "returned_files": 5,
+    "unresolved_locations": 7,
+    "returned_code_chars": 13131
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 14848,
+    "completion_tokens": 534,
+    "total_tokens": 15382,
+    "seconds": 66.13155698776245,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 76.19195175170898,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

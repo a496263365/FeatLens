@@ -1,0 +1,131 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1104,
+  "namespace": "praw.models.util.BoundedSet.add",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5114,
+      "input_estimate_after": 5114,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the key reusable dependencies related to the `BoundedSet.add` functionality. The target is `praw/models/util.py:BoundedSet.add`, but I need to identify existing repository functions, classes, APIs or variables that should be reused or inspected to implement the missing target.\n\nFrom the exploration, I can see that `BoundedSet` is used in several places for tracking recent activity. The key reusable dependencies are:\n\n1. **`BoundedSet._access` method** - This is likely used internally by `BoundedSet.add` to handle access ordering\n2. **`BoundedSet.__contains__` method** - This would be used to check if an item already exists in the set\n3. **`stream_generator` function** - This uses `BoundedSet` for tracking seen items in streams\n4. **Various stream methods** that rely on `BoundedSet` for deduplication\n\nHere are the verified locations containing reusable dependencies:\n\n```\npraw/models/util.py\nline: 5\nclass: BoundedSet\nfunction: BoundedSet._access\n\npraw/models/util.py\nline: 10\nclass: BoundedSet\nfunction: BoundedSet.__contains__\n\npraw/models/util.py\nline: 45\nfunction: stream_generator\n\npraw/models/redditors.py\nline: 45\nfunction: Redditors._track_recent\n\npraw/models/inbox.py\nline: 32\nfunction: Inbox._recent_messages\n```",
+  "final_locations": {
+    "files": [
+      "praw/models/util.py",
+      "praw/models/redditors.py",
+      "praw/models/inbox.py"
+    ],
+    "entities": [
+      {
+        "file": "praw/models/util.py",
+        "name": "BoundedSet",
+        "kind": "class",
+        "symbol": "praw.models.util.BoundedSet",
+        "start": 164,
+        "end": 186,
+        "code": "class BoundedSet:\n    \"\"\"A set with a maximum size that evicts the oldest items when necessary.\n\n    This class does not implement the complete set interface.\n\n    \"\"\"\n\n    def __contains__(self, item: Any) -> bool:\n        \"\"\"Test if the :class:`.BoundedSet` contains item.\"\"\"\n        self._access(item)\n        return item in self._set\n\n    def __init__(self, max_items: int):\n        \"\"\"Initialize a :class:`.BoundedSet` instance.\"\"\"\n        self.max_items = max_items\n        self._set = OrderedDict()\n\n    def _access(self, item: Any):\n        if item in self._set:\n            self._set.move_to_end(item)\n\n    def add(self, item: Any):\n        pass"
+      },
+      {
+        "file": "praw/models/util.py",
+        "name": "BoundedSet._access",
+        "kind": "function",
+        "symbol": "praw.models.util.BoundedSet._access",
+        "start": 181,
+        "end": 183,
+        "code": "    def _access(self, item: Any):\n        if item in self._set:\n            self._set.move_to_end(item)"
+      },
+      {
+        "file": "praw/models/util.py",
+        "name": "BoundedSet.__contains__",
+        "kind": "function",
+        "symbol": "praw.models.util.BoundedSet.__contains__",
+        "start": 171,
+        "end": 174,
+        "code": "    def __contains__(self, item: Any) -> bool:\n        \"\"\"Test if the :class:`.BoundedSet` contains item.\"\"\"\n        self._access(item)\n        return item in self._set"
+      },
+      {
+        "file": "praw/models/util.py",
+        "name": "stream_generator",
+        "kind": "function",
+        "symbol": "praw.models.util.stream_generator",
+        "start": 38,
+        "end": 161,
+        "code": "def stream_generator(\n    function: Callable,\n    *,\n    attribute_name: str = \"fullname\",\n    exclude_before: bool = False,\n    pause_after: Optional[int] = None,\n    skip_existing: bool = False,\n    **function_kwargs: Any,\n) -> Generator[Any, None, None]:\n    \"\"\"Yield new items from ``function`` as they become available.\n\n    :param function: A callable that returns a :class:`.ListingGenerator`, e.g.,\n        :meth:`.Subreddit.comments` or :meth:`.Subreddit.new`.\n    :param attribute_name: The field to use as an ID (default: ``\"fullname\"``).\n    :param exclude_before: When ``True`` does not pass ``params`` to ``function``\n        (default: ``False``).\n    :param pause_after: An integer representing the number of requests that result in no\n        new items before this function yields ``None``, effectively introducing a pause\n        into the stream. A negative value yields ``None`` after items from a single\n        response have been yielded, regardless of number of new items obtained in that\n        response. A value of ``0`` yields ``None`` after every response resulting in no\n        new items, and a value of ``None`` never introduces a pause (default: ``None``).\n    :param skip_existing: When ``True``, this does not yield any results from the first\n        request thereby skipping any items that existed in the stream prior to starting\n        the stream (default: ``False``).\n\n    Additional keyword arguments will be passed to ``function``.\n\n    .. note::\n\n        This function internally uses an exponential delay with jitter between\n        subsequent responses that contain no new results, up to a maximum delay of just\n        over 16 seconds. In practice, that means that the time before pause for\n        ``pause_after=N+1`` is approximately twice the time before pause for\n        ``pause_after=N``.\n\n    For example, to create a stream of comment replies, try:\n\n    .. code-block:: python\n\n        reply_function = reddit.inbox.comment_replies\n        for reply in praw.models.util.stream_generator(reply_function):\n            print(reply)\n\n    To pause a comment stream after six responses with no new comments, try:\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        for comment in subreddit.stream.comments(pause_after=6):\n            if comment is None:\n                break\n            print(comment)\n\n    To resume fetching comments after a pause, try:\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        comment_stream = subreddit.stream.comments(pause_after=5)\n\n        for comment in comment_stream:\n            if comment is None:\n                break\n            print(comment)\n        # Do any other processing, then try to fetch more data\n        for comment in comment_stream:\n            if comment is None:\n                break\n            print(comment)\n\n    To bypass the internal exponential backoff, try the following. This approach is\n    useful if you are monitoring a subreddit with infrequent activity, and you want to\n    consistently learn about new items from the stream as soon as possible, rather than\n    up to a delay of just over sixteen seconds.\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        for comment in subreddit.stream.comments(pause_after=0):\n            if comment is None:\n                continue\n            print(comment)\n\n    \"\"\"\n    before_attribute = None\n    exponential_counter = ExponentialCounter(max_counter=16)\n    seen_attributes = BoundedSet(301)\n    without_before_counter = 0\n    responses_without_new = 0\n    valid_pause_after = pause_after is not None\n    while True:\n        found = False\n        newest_attribute = None\n        limit = 100\n        if before_attribute is None:\n            limit -= without_before_counter\n            without_before_counter = (without_before_counter + 1) % 30\n        if not exclude_before:\n            function_kwargs[\"params\"] = {\"before\": before_attribute}\n        for item in reversed(list(function(limit=limit, **function_kwargs))):\n            attribute = getattr(item, attribute_name)\n            if attribute in seen_attributes:\n                continue\n            found = True\n            seen_attributes.add(attribute)\n            newest_attribute = attribute\n            if not skip_existing:\n                yield item\n        before_attribute = newest_attribute\n        skip_existing = False\n        if valid_pause_after and pause_after < 0:\n            yield None\n        elif found:\n            exponential_counter.reset()\n            responses_without_new = 0\n        else:\n            responses_without_new += 1\n            if valid_pause_after and responses_without_new > pause_after:\n                exponential_counter.reset()\n                responses_without_new = 0\n                yield None\n            else:\n                time.sleep(exponential_counter.counter())"
+      },
+      {
+        "file": "praw/models/redditors.py",
+        "name": "Redditors.partial_redditors",
+        "kind": "function",
+        "symbol": "praw.models.redditors.Redditors.partial_redditors",
+        "start": 37,
+        "end": 63,
+        "code": "    def partial_redditors(self, ids: Iterable[str]) -> Iterator[PartialRedditor]:\n        \"\"\"Get user summary data by redditor IDs.\n\n        :param ids: An iterable of redditor fullname IDs.\n\n        :returns: A iterator producing :class:`.PartialRedditor` objects.\n\n        Each ID must be prefixed with ``t2_``.\n\n        Invalid IDs are ignored by the server.\n\n        \"\"\"\n        iterable = iter(ids)\n        while True:\n            chunk = list(islice(iterable, 100))\n            if not chunk:\n                break\n\n            params = {\"ids\": \",\".join(chunk)}\n            try:\n                results = self._reddit.get(API_PATH[\"user_by_fullname\"], params=params)\n            except prawcore.exceptions.NotFound:\n                # None of the given IDs matched any Redditor.\n                continue\n\n            for fullname, user_data in results.items():\n                yield PartialRedditor(fullname=fullname, **user_data)"
+      },
+      {
+        "file": "praw/models/inbox.py",
+        "name": "Inbox.all",
+        "kind": "function",
+        "symbol": "praw.models.inbox.Inbox.all",
+        "start": 17,
+        "end": 33,
+        "code": "    def all(\n        self, **generator_kwargs: Union[str, int, Dict[str, str]]\n    ) -> Iterator[Union[\"praw.models.Message\", \"praw.models.Comment\"]]:\n        \"\"\"Return a :class:`.ListingGenerator` for all inbox comments and messages.\n\n        Additional keyword arguments are passed in the initialization of\n        :class:`.ListingGenerator`.\n\n        To output the type and ID of all items available via this listing do:\n\n        .. code-block:: python\n\n            for item in reddit.inbox.all(limit=None):\n                print(repr(item))\n\n        \"\"\"\n        return ListingGenerator(self._reddit, API_PATH[\"inbox\"], **generator_kwargs)"
+      }
+    ],
+    "unresolved": [
+      "Based on the available evidence, I can identify the key reusable dependencies related to the `BoundedSet.add` functionality. The target is `praw/models/util.py:BoundedSet.add`, but I need to identify existing repository functions, classes, APIs or variables that should be reused or inspected to implement the missing target.",
+      "praw/models/util.py:line: 5",
+      "praw/models/util.py:line: 10",
+      "praw/models/redditors.py:function: Redditors._track_recent",
+      "praw/models/inbox.py:function: Inbox._recent_messages"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6666666666666666,
+    "exact_entity_dr": 0.3333333333333333,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "praw.models.util.BoundedSet._access",
+      "praw.models.util.BoundedSet._set"
+    ],
+    "exact_hit_dependencies": [
+      "praw.models.util.BoundedSet._access"
+    ],
+    "returned_entities": 6,
+    "returned_files": 3,
+    "unresolved_locations": 5,
+    "returned_code_chars": 7425
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21300,
+    "completion_tokens": 1310,
+    "total_tokens": 22610,
+    "seconds": 109.47312307357788,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 124.18783617019653,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

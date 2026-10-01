@@ -1,0 +1,112 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 275,
+  "namespace": "jinja2.idtracking.Symbols.dump_stores",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 29699,
+      "input_estimate_after": 27584,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 110,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 24215,
+          "retained_content_tokens": 22179
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `dump_stores` function in the `Symbols` class. The function needs to dump all symbols stored in the instance and its parent nodes, returning a `Dict[str, str]`.\n\nFrom the code analysis, I can see:\n\n1. The `Symbols` class has:\n   - `self.stores: t.Set[str]` - stores the names of stored symbols\n   - `self.parent` - reference to parent Symbols instance\n   - `self.refs: t.Dict[str, str]` - maps names to identifiers\n   - `self.loads: t.Dict[str, t.Any]` - maps identifiers to load instructions\n\n2. The function needs to traverse the parent chain and collect all stored symbols.\n\n3. Looking at the existing `dump_param_targets()` method (lines 160-171), I can see a pattern for traversing parent nodes and collecting data.\n\nKey reusable dependencies and patterns:\n\n```\nsrc/jinja2/idtracking.py\nline: 30\nclass: Symbols\nline: 160\nfunction: Symbols.dump_param_targets\n\nsrc/jinja2/idtracking.py\nline: -1\nline: 44\nvariable: self.stores\n\nsrc/jinja2/idtracking.py\nline: 41\nvariable: self.parent\n\nsrc/jinja2/idtracking.py\nline: 42\nvariable: self.refs\n\nsrc/jinja2/idtracking.py\nline: 43\nvariable: self.loads\n```",
+  "final_locations": {
+    "files": [
+      "src/jinja2/idtracking.py"
+    ],
+    "entities": [
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols",
+        "kind": "class",
+        "symbol": "jinja2.idtracking.Symbols",
+        "start": 30,
+        "end": 171,
+        "code": "class Symbols:\n    def __init__(\n        self, parent: t.Optional[\"Symbols\"] = None, level: t.Optional[int] = None\n    ) -> None:\n        if level is None:\n            if parent is None:\n                level = 0\n            else:\n                level = parent.level + 1\n\n        self.level: int = level\n        self.parent = parent\n        self.refs: t.Dict[str, str] = {}\n        self.loads: t.Dict[str, t.Any] = {}\n        self.stores: t.Set[str] = set()\n\n    def analyze_node(self, node: nodes.Node, **kwargs: t.Any) -> None:\n        visitor = RootVisitor(self)\n        visitor.visit(node, **kwargs)\n\n    def _define_ref(\n        self, name: str, load: t.Optional[t.Tuple[str, t.Optional[str]]] = None\n    ) -> str:\n        ident = f\"l_{self.level}_{name}\"\n        self.refs[name] = ident\n        if load is not None:\n            self.loads[ident] = load\n        return ident\n\n    def find_load(self, target: str) -> t.Optional[t.Any]:\n        if target in self.loads:\n            return self.loads[target]\n\n        if self.parent is not None:\n            return self.parent.find_load(target)\n\n        return None\n\n    def find_ref(self, name: str) -> t.Optional[str]:\n        if name in self.refs:\n            return self.refs[name]\n\n        if self.parent is not None:\n            return self.parent.find_ref(name)\n\n        return None\n\n    def ref(self, name: str) -> str:\n        rv = self.find_ref(name)\n        if rv is None:\n            raise AssertionError(\n                \"Tried to resolve a name to a reference that was\"\n                f\" unknown to the frame ({name!r})\"\n            )\n        return rv\n\n    def copy(self) -> \"Symbols\":\n        rv = object.__new__(self.__class__)\n        rv.__dict__.update(self.__dict__)\n        rv.refs = self.refs.copy()\n        rv.loads = self.loads.copy()\n        rv.stores = self.stores.copy()\n        return rv\n\n    def store(self, name: str) -> None:\n        self.stores.add(name)\n\n        # If we have not see the name referenced yet, we need to figure\n        # out what to set it to.\n        if name not in self.refs:\n            # If there is a parent scope we check if the name has a\n            # reference there.  If it does it means we might have to alias\n            # to a variable there.\n            if self.parent is not None:\n                outer_ref = self.parent.find_ref(name)\n                if outer_ref is not None:\n                    self._define_ref(name, load=(VAR_LOAD_ALIAS, outer_ref))\n                    return\n\n            # Otherwise we can just set it to undefined.\n            self._define_ref(name, load=(VAR_LOAD_UNDEFINED, None))\n\n    def declare_parameter(self, name: str) -> str:\n        self.stores.add(name)\n        return self._define_ref(name, load=(VAR_LOAD_PARAMETER, None))\n\n    def load(self, name: str) -> None:\n        if self.find_ref(name) is None:\n            self._define_ref(name, load=(VAR_LOAD_RESOLVE, name))\n\n    def branch_update(self, branch_symbols: t.Sequence[\"Symbols\"]) -> None:\n        stores: t.Dict[str, int] = {}\n        for branch in branch_symbols:\n            for target in branch.stores:\n                if target in self.stores:\n                    continue\n                stores[target] = stores.get(target, 0) + 1\n\n        for sym in branch_symbols:\n            self.refs.update(sym.refs)\n            self.loads.update(sym.loads)\n            self.stores.update(sym.stores)\n\n        for name, branch_count in stores.items():\n            if branch_count == len(branch_symbols):\n                continue\n\n            target = self.find_ref(name)  # type: ignore\n            assert target is not None, \"should not happen\"\n\n            if self.parent is not None:\n                outer_target = self.parent.find_ref(name)\n                if outer_target is not None:\n                    self.loads[target] = (VAR_LOAD_ALIAS, outer_target)\n                    continue\n            self.loads[target] = (VAR_LOAD_RESOLVE, name)\n\n    def dump_stores(self) -> t.Dict[str, str]:\n        pass\n\n\n\n\n\n\n\n\n\n\n\n    def dump_param_targets(self) -> t.Set[str]:\n        rv = set()\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for target, (instr, _) in self.loads.items():\n                if instr == VAR_LOAD_PARAMETER:\n                    rv.add(target)\n\n            node = node.parent\n\n        return rv"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols.dump_param_targets",
+        "kind": "function",
+        "symbol": "jinja2.idtracking.Symbols.dump_param_targets",
+        "start": 160,
+        "end": 171,
+        "code": "    def dump_param_targets(self) -> t.Set[str]:\n        rv = set()\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for target, (instr, _) in self.loads.items():\n                if instr == VAR_LOAD_PARAMETER:\n                    rv.add(target)\n\n            node = node.parent\n\n        return rv"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols.__init__",
+        "kind": "function",
+        "symbol": "jinja2.idtracking.Symbols.__init__",
+        "start": 31,
+        "end": 44,
+        "code": "    def __init__(\n        self, parent: t.Optional[\"Symbols\"] = None, level: t.Optional[int] = None\n    ) -> None:\n        if level is None:\n            if parent is None:\n                level = 0\n            else:\n                level = parent.level + 1\n\n        self.level: int = level\n        self.parent = parent\n        self.refs: t.Dict[str, str] = {}\n        self.loads: t.Dict[str, t.Any] = {}\n        self.stores: t.Set[str] = set()"
+      }
+    ],
+    "unresolved": [
+      "src/jinja2/idtracking.py:line: -1",
+      "src/jinja2/idtracking.py:variable: self.stores",
+      "src/jinja2/idtracking.py:variable: self.parent",
+      "src/jinja2/idtracking.py:variable: self.refs",
+      "src/jinja2/idtracking.py:variable: self.loads"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "jinja2.idtracking.Symbols.stores"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 5139
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 66992,
+    "completion_tokens": 627,
+    "total_tokens": 67619,
+    "seconds": 74.63069987297058,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 85.38229465484619,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

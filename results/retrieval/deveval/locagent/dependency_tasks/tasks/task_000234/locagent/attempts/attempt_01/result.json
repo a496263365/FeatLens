@@ -1,0 +1,122 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 234,
+  "namespace": "datasette.utils.escape_fts",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 14542,
+      "input_estimate_after": 14542,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, I can identify the following reusable dependencies for implementing the `escape_fts` function in `datasette/utils/__init__.py`. The function needs to escape full-text search queries by adding double quotes around individual terms and handle unbalanced quotes. Here are the key locations containing reusable code patterns, utilities, and dependencies:\n\n```\ndatasette/filters.py\nline: 44\nfunction: search_filters\nline: 76\nline: 84-86\nline: 104\n\ndatasette/utils/__init__.py\nline: 345\nfunction: escape_sqlite\nline: 338\nfunction: escape_css_string\n\ndatasette/utils/__init__.py\nline: 690\nfunction: is_url\nline: 696-698\n\ndatasette/views/table.py\nline: 892\nline: 896\nline: 956-957\nfunction: display_columns_and_rows\n\ndatasette/filters.py\nline: 6\nimport: escape_sqlite\nline: 52-58\nline: 65-72\n```",
+  "final_locations": {
+    "files": [
+      "datasette/filters.py",
+      "datasette/utils/__init__.py",
+      "datasette/views/table.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/filters.py",
+        "name": "search_filters",
+        "kind": "function",
+        "symbol": "datasette.filters.search_filters",
+        "start": 44,
+        "end": 115,
+        "code": "def search_filters(request, database, table, datasette):\n    # ?_search= and _search_colname=\n    async def inner():\n        where_clauses = []\n        params = {}\n        human_descriptions = []\n        extra_context = {}\n\n        # Figure out which fts_table to use\n        table_metadata = datasette.table_metadata(database, table)\n        db = datasette.get_database(database)\n        fts_table = request.args.get(\"_fts_table\")\n        fts_table = fts_table or table_metadata.get(\"fts_table\")\n        fts_table = fts_table or await db.fts_table(table)\n        fts_pk = request.args.get(\"_fts_pk\", table_metadata.get(\"fts_pk\", \"rowid\"))\n        search_args = {\n            key: request.args[key]\n            for key in request.args\n            if key.startswith(\"_search\") and key != \"_searchmode\"\n        }\n        search = \"\"\n        search_mode_raw = table_metadata.get(\"searchmode\") == \"raw\"\n        # Or set search mode from the querystring\n        qs_searchmode = request.args.get(\"_searchmode\")\n        if qs_searchmode == \"escaped\":\n            search_mode_raw = False\n        if qs_searchmode == \"raw\":\n            search_mode_raw = True\n\n        extra_context[\"supports_search\"] = bool(fts_table)\n\n        if fts_table and search_args:\n            if \"_search\" in search_args:\n                # Simple ?_search=xxx\n                search = search_args[\"_search\"]\n                where_clauses.append(\n                    \"{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})\".format(\n                        fts_table=escape_sqlite(fts_table),\n                        fts_pk=escape_sqlite(fts_pk),\n                        match_clause=\":search\"\n                        if search_mode_raw\n                        else \"escape_fts(:search)\",\n                    )\n                )\n                human_descriptions.append(f'search matches \"{search}\"')\n                params[\"search\"] = search\n                extra_context[\"search\"] = search\n            else:\n                # More complex: search against specific columns\n                for i, (key, search_text) in enumerate(search_args.items()):\n                    search_col = key.split(\"_search_\", 1)[1]\n                    if search_col not in await db.table_columns(fts_table):\n                        raise BadRequest(\"Cannot search by that column\")\n\n                    where_clauses.append(\n                        \"rowid in (select rowid from {fts_table} where {search_col} match {match_clause})\".format(\n                            fts_table=escape_sqlite(fts_table),\n                            search_col=escape_sqlite(search_col),\n                            match_clause=\":search_{}\".format(i)\n                            if search_mode_raw\n                            else \"escape_fts(:search_{})\".format(i),\n                        )\n                    )\n                    human_descriptions.append(\n                        f'search column \"{search_col}\" matches \"{search_text}\"'\n                    )\n                    params[f\"search_{i}\"] = search_text\n                    extra_context[\"search\"] = search_text\n\n        return FilterArguments(where_clauses, params, human_descriptions, extra_context)\n\n    return inner"
+      },
+      {
+        "file": "datasette/filters.py",
+        "name": "search_filters.inner",
+        "kind": "function",
+        "symbol": "datasette.filters.search_filters.inner",
+        "start": 46,
+        "end": 113,
+        "code": "    async def inner():\n        where_clauses = []\n        params = {}\n        human_descriptions = []\n        extra_context = {}\n\n        # Figure out which fts_table to use\n        table_metadata = datasette.table_metadata(database, table)\n        db = datasette.get_database(database)\n        fts_table = request.args.get(\"_fts_table\")\n        fts_table = fts_table or table_metadata.get(\"fts_table\")\n        fts_table = fts_table or await db.fts_table(table)\n        fts_pk = request.args.get(\"_fts_pk\", table_metadata.get(\"fts_pk\", \"rowid\"))\n        search_args = {\n            key: request.args[key]\n            for key in request.args\n            if key.startswith(\"_search\") and key != \"_searchmode\"\n        }\n        search = \"\"\n        search_mode_raw = table_metadata.get(\"searchmode\") == \"raw\"\n        # Or set search mode from the querystring\n        qs_searchmode = request.args.get(\"_searchmode\")\n        if qs_searchmode == \"escaped\":\n            search_mode_raw = False\n        if qs_searchmode == \"raw\":\n            search_mode_raw = True\n\n        extra_context[\"supports_search\"] = bool(fts_table)\n\n        if fts_table and search_args:\n            if \"_search\" in search_args:\n                # Simple ?_search=xxx\n                search = search_args[\"_search\"]\n                where_clauses.append(\n                    \"{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})\".format(\n                        fts_table=escape_sqlite(fts_table),\n                        fts_pk=escape_sqlite(fts_pk),\n                        match_clause=\":search\"\n                        if search_mode_raw\n                        else \"escape_fts(:search)\",\n                    )\n                )\n                human_descriptions.append(f'search matches \"{search}\"')\n                params[\"search\"] = search\n                extra_context[\"search\"] = search\n            else:\n                # More complex: search against specific columns\n                for i, (key, search_text) in enumerate(search_args.items()):\n                    search_col = key.split(\"_search_\", 1)[1]\n                    if search_col not in await db.table_columns(fts_table):\n                        raise BadRequest(\"Cannot search by that column\")\n\n                    where_clauses.append(\n                        \"rowid in (select rowid from {fts_table} where {search_col} match {match_clause})\".format(\n                            fts_table=escape_sqlite(fts_table),\n                            search_col=escape_sqlite(search_col),\n                            match_clause=\":search_{}\".format(i)\n                            if search_mode_raw\n                            else \"escape_fts(:search_{})\".format(i),\n                        )\n                    )\n                    human_descriptions.append(\n                        f'search column \"{search_col}\" matches \"{search_text}\"'\n                    )\n                    params[f\"search_{i}\"] = search_text\n                    extra_context[\"search\"] = search_text\n\n        return FilterArguments(where_clauses, params, human_descriptions, extra_context)"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "escape_sqlite",
+        "kind": "function",
+        "symbol": "datasette.utils.escape_sqlite",
+        "start": 345,
+        "end": 349,
+        "code": "def escape_sqlite(s):\n    if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):\n        return s\n    else:\n        return f\"[{s}]\""
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "escape_css_string",
+        "kind": "function",
+        "symbol": "datasette.utils.escape_css_string",
+        "start": 338,
+        "end": 342,
+        "code": "def escape_css_string(s):\n    return _css_re.sub(\n        lambda m: \"\\\\\" + (f\"{ord(m.group()):X}\".zfill(6)),\n        s.replace(\"\\r\\n\", \"\\n\"),\n    )"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "is_url",
+        "kind": "function",
+        "symbol": "datasette.utils.is_url",
+        "start": 690,
+        "end": 699,
+        "code": "def is_url(value):\n    \"\"\"Must start with http:// or https:// and contain JUST a URL\"\"\"\n    if not isinstance(value, str):\n        return False\n    if not value.startswith(\"http://\") and not value.startswith(\"https://\"):\n        return False\n    # Any whitespace at all is invalid\n    if whitespace_re.search(value):\n        return False\n    return True"
+      },
+      {
+        "file": "datasette/views/table.py",
+        "name": "display_columns_and_rows",
+        "kind": "function",
+        "symbol": "datasette.views.table.display_columns_and_rows",
+        "start": 829,
+        "end": 1019,
+        "code": "async def display_columns_and_rows(\n    datasette,\n    database_name,\n    table_name,\n    description,\n    rows,\n    link_column=False,\n    truncate_cells=0,\n    sortable_columns=None,\n):\n    \"\"\"Returns columns, rows for specified table - including fancy foreign key treatment\"\"\"\n    sortable_columns = sortable_columns or set()\n    db = datasette.databases[database_name]\n    table_metadata = datasette.table_metadata(database_name, table_name)\n    column_descriptions = table_metadata.get(\"columns\") or {}\n    column_details = {\n        col.name: col for col in await db.table_column_details(table_name)\n    }\n    pks = await db.primary_keys(table_name)\n    pks_for_display = pks\n    if not pks_for_display:\n        pks_for_display = [\"rowid\"]\n\n    columns = []\n    for r in description:\n        if r[0] == \"rowid\" and \"rowid\" not in column_details:\n            type_ = \"integer\"\n            notnull = 0\n        else:\n            type_ = column_details[r[0]].type\n            notnull = column_details[r[0]].notnull\n        columns.append(\n            {\n                \"name\": r[0],\n                \"sortable\": r[0] in sortable_columns,\n                \"is_pk\": r[0] in pks_for_display,\n                \"type\": type_,\n                \"notnull\": notnull,\n                \"description\": column_descriptions.get(r[0]),\n            }\n        )\n\n    column_to_foreign_key_table = {\n        fk[\"column\"]: fk[\"other_table\"]\n        for fk in await db.foreign_keys_for_table(table_name)\n    }\n\n    cell_rows = []\n    base_url = datasette.setting(\"base_url\")\n    for row in rows:\n        cells = []\n        # Unless we are a view, the first column is a link - either to the rowid\n        # or to the simple or compound primary key\n        if link_column:\n            is_special_link_column = len(pks) != 1\n            pk_path = path_from_row_pks(row, pks, not pks, False)\n            cells.append(\n                {\n                    \"column\": pks[0] if len(pks) == 1 else \"Link\",\n                    \"value_type\": \"pk\",\n                    \"is_special_link_column\": is_special_link_column,\n                    \"raw\": pk_path,\n                    \"value\": markupsafe.Markup(\n                        '<a href=\"{table_path}/{flat_pks_quoted}\">{flat_pks}</a>'.format(\n                            base_url=base_url,\n                            table_path=datasette.urls.table(database_name, table_name),\n                            flat_pks=str(markupsafe.escape(pk_path)),\n                            flat_pks_quoted=path_from_row_pks(row, pks, not pks),\n                        )\n                    ),\n                }\n            )\n\n        for value, column_dict in zip(row, columns):\n            column = column_dict[\"name\"]\n            if link_column and len(pks) == 1 and column == pks[0]:\n                # If there's a simple primary key, don't repeat the value as it's\n                # already shown in the link column.\n                continue\n\n            # First let the plugins have a go\n            # pylint: disable=no-member\n            plugin_display_value = None\n            for candidate in pm.hook.render_cell(\n                row=row,\n                value=value,\n                column=column,\n                table=table_name,\n                database=database_name,\n                datasette=datasette,\n            ):\n                candidate = await await_me_maybe(candidate)\n                if candidate is not None:\n                    plugin_display_value = candidate\n                    break\n            if plugin_display_value:\n                display_value = plugin_display_value\n            elif isinstance(value, bytes):\n                formatted = format_bytes(len(value))\n                display_value = markupsafe.Markup(\n                    '<a class=\"blob-download\" href=\"{}\"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(\n                        datasette.urls.row_blob(\n                            database_name,\n                            table_name,\n                            path_from_row_pks(row, pks, not pks),\n                            column,\n                        ),\n                        ' title=\"{}\"'.format(formatted)\n                        if \"bytes\" not in formatted\n                        else \"\",\n                        len(value),\n                        \"\" if len(value) == 1 else \"s\",\n                    )\n                )\n            elif isinstance(value, dict):\n                # It's an expanded foreign key - display link to other row\n                label = value[\"label\"]\n                value = value[\"value\"]\n                # The table we link to depends on the column\n                other_table = column_to_foreign_key_table[column]\n                link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE\n                display_value = markupsafe.Markup(\n                    link_template.format(\n                        database=database_name,\n                        base_url=base_url,\n                        table=tilde_encode(other_table),\n                        link_id=tilde_encode(str(value)),\n                        id=str(markupsafe.escape(value)),\n                        label=str(markupsafe.escape(label)) or \"-\",\n                    )\n                )\n            elif value in (\"\", None):\n                display_value = markupsafe.Markup(\"&nbsp;\")\n            elif is_url(str(value).strip()):\n                display_value = markupsafe.Markup(\n                    '<a href=\"{url}\">{truncated_url}</a>'.format(\n                        url=markupsafe.escape(value.strip()),\n                        truncated_url=markupsafe.escape(\n                            truncate_url(value.strip(), truncate_cells)\n                        ),\n                    )\n                )\n            elif column in table_metadata.get(\"units\", {}) and value != \"\":\n                # Interpret units using pint\n                value = value * ureg(table_metadata[\"units\"][column])\n                # Pint uses floating point which sometimes introduces errors in the compact\n                # representation, which we have to round off to avoid ugliness. In the vast\n                # majority of cases this rounding will be inconsequential. I hope.\n                value = round(value.to_compact(), 6)\n                display_value = markupsafe.Markup(f\"{value:~P}\".replace(\" \", \"&nbsp;\"))\n            else:\n                display_value = str(value)\n                if truncate_cells and len(display_value) > truncate_cells:\n                    display_value = display_value[:truncate_cells] + \"\\u2026\"\n\n            cells.append(\n                {\n                    \"column\": column,\n                    \"value\": display_value,\n                    \"raw\": value,\n                    \"value_type\": \"none\"\n                    if value is None\n                    else str(type(value).__name__),\n                }\n            )\n        cell_rows.append(Row(cells))\n\n    if link_column:\n        # Add the link column header.\n        # If it's a simple primary key, we have to remove and re-add that column name at\n        # the beginning of the header row.\n        first_column = None\n        if len(pks) == 1:\n            columns = [col for col in columns if col[\"name\"] != pks[0]]\n            first_column = {\n                \"name\": pks[0],\n                \"sortable\": len(pks) == 1,\n                \"is_pk\": True,\n                \"type\": column_details[pks[0]].type,\n                \"notnull\": column_details[pks[0]].notnull,\n            }\n        else:\n            first_column = {\n                \"name\": \"Link\",\n                \"sortable\": False,\n                \"is_pk\": False,\n                \"type\": \"\",\n                \"notnull\": 0,\n            }\n        columns = [first_column] + columns\n    return columns, cell_rows"
+      }
+    ],
+    "unresolved": [
+      "datasette/filters.py:line: 6"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 6,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 14845
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30451,
+    "completion_tokens": 618,
+    "total_tokens": 31069,
+    "seconds": 39.4601149559021,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 52.53978085517883,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

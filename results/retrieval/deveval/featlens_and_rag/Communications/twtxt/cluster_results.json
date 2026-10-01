@@ -1,0 +1,1195 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "get_local_tweets",
+                    "func_desc": "Get local tweets from a source file .",
+                    "func_file": "twfile",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_local_tweets(source, limit):\n    try:\n        with open(source.file, \"r\") as fh:\n            input_lines = fh.readlines()\n    except (FileNotFoundError, PermissionError) as e:\n        logger.debug(e)\n        return []\n    local_tweets = parse_tweets(input_lines, source)\n    return sorted(local_tweets, reverse=True)[:limit]",
+                    "func_fullName": "twtxt.twfile.get_local_tweets(source, limit)"
+                },
+                {
+                    "func_id": 1,
+                    "func_name": "add_local_tweet",
+                    "func_desc": "Add a tweet to a local file .",
+                    "func_file": "twfile",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def add_local_tweet(tweet, file):\n    try:\n        with open(file, \"a\") as fh:\n            fh.write(\"{0}\\n\".format(str(tweet)))\n    except (FileNotFoundError, PermissionError) as e:\n        logger.debug(e)\n        return False\n    return True",
+                    "func_fullName": "twtxt.twfile.add_local_tweet(tweet, file)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "parse_tweets",
+                    "func_desc": "Parses a list of raw tweet lines from a twtxt file containing a list of Tweets and returns a list of parsed Tweets .",
+                    "func_file": "parser",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_tweets(raw_tweets, source, now=None):\n    \"\"\"\n        Parses a list of raw tweet lines from a twtxt file\n        and returns a list of :class:`Tweet` objects.\n\n        :param list raw_tweets: list of raw tweet lines\n        :param Source source: the source of the given tweets\n        :param Datetime now: the current datetime\n\n        :returns: a list of parsed tweets :class:`Tweet` objects\n        :rtype: list\n    \"\"\"\n    if now is None:\n        now = datetime.now(timezone.utc)\n\n    tweets = []\n    for line in raw_tweets:\n        try:\n            tweet = parse_tweet(line, source, now)\n        except (ValueError, OverflowError) as e:\n            logger.debug(\"{0} - {1}\".format(source.url, e))\n        else:\n            tweets.append(tweet)\n\n    return tweets",
+                    "func_fullName": "twtxt.parser.parse_tweets(raw_tweets, source, now)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "parse_tweet",
+                    "func_desc": "Parses a single raw tweet line from a twtxt file\n        and returns a Tweet object .",
+                    "func_file": "parser",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_tweet(raw_tweet, source, now=None):\n    \"\"\"\n        Parses a single raw tweet line from a twtxt file\n        and returns a :class:`Tweet` object.\n\n        :param str raw_tweet: a single raw tweet line\n        :param Source source: the source of the given tweet\n        :param Datetime now: the current datetime\n\n        :returns: the parsed tweet\n        :rtype: Tweet\n    \"\"\"\n    from twtxt.models import Tweet\n    if now is None:\n        now = datetime.now(timezone.utc)\n\n    raw_created_at, text = raw_tweet.split(\"\\t\", 1)\n    created_at = parse_iso8601(raw_created_at)\n\n    if created_at > now:\n        raise ValueError(\"Tweet is from the future\")\n\n    return Tweet(click.unstyle(text.strip()), created_at, source)",
+                    "func_fullName": "twtxt.parser.parse_tweet(raw_tweet, source, now)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "pre_tweet_hook",
+                    "func_desc": "Hook to be called before the tweet is processed .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def pre_tweet_hook(self):\n        return self.cfg.get(\"twtxt\", \"pre_tweet_hook\", fallback=None)",
+                    "func_fullName": "twtxt.config.Config.pre_tweet_hook(self)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "post_tweet_hook",
+                    "func_desc": "Hook to be called when a tweet is posted .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def post_tweet_hook(self):\n        return self.cfg.get(\"twtxt\", \"post_tweet_hook\", fallback=None)",
+                    "func_fullName": "twtxt.config.Config.post_tweet_hook(self)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "tweet",
+                    "func_desc": "Append a new tweet to your twtxt file .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def tweet(ctx, created_at, twtfile, text):\n    \"\"\"Append a new tweet to your twtxt file.\"\"\"\n    text = expand_mentions(text)\n    tweet = Tweet(text, created_at) if created_at else Tweet(text)\n\n    pre_tweet_hook = ctx.obj[\"conf\"].pre_tweet_hook\n    if pre_tweet_hook:\n        run_pre_tweet_hook(pre_tweet_hook, ctx.obj[\"conf\"].options)\n\n    if not add_local_tweet(tweet, twtfile):\n        click.echo(\"✗ Couldn’t write to file.\")\n    else:\n        post_tweet_hook = ctx.obj[\"conf\"].post_tweet_hook\n        if post_tweet_hook:\n            run_post_tweet_hook(post_tweet_hook, ctx.obj[\"conf\"].options)",
+                    "func_fullName": "twtxt.cli.tweet(ctx, created_at, twtfile, text)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "run_pre_tweet_hook",
+                    "func_desc": "Runs a pre - tweet hook .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def run_pre_tweet_hook(hook, options):\n    try:\n        command = shlex.split(hook.format(**options))\n    except KeyError:\n        click.echo(\"✗ Invalid variables in pre_tweet_hook.\")\n        raise click.Abort\n    try:\n        subprocess.check_output(command, shell=True, universal_newlines=True, stderr=subprocess.STDOUT)\n    except subprocess.CalledProcessError as e:\n        click.echo(\"✗ pre_tweet_hook returned {}.\".format(e.returncode))\n        if e.output:\n            click.echo(e.output)\n        raise click.Abort",
+                    "func_fullName": "twtxt.helper.run_pre_tweet_hook(hook, options)"
+                },
+                {
+                    "func_id": 77,
+                    "func_name": "run_post_tweet_hook",
+                    "func_desc": "Runs post_tweet_hook .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def run_post_tweet_hook(hook, options):\n    try:\n        command = shlex.split(hook.format(**options))\n    except KeyError:\n        click.echo(\"✗ Invalid variables in post_tweet_hook.\")\n        return\n    try:\n        subprocess.check_output(command, shell=True, universal_newlines=True, stderr=subprocess.STDOUT)\n    except subprocess.CalledProcessError as e:\n        click.echo(\"✗ post_tweet_hook returned {}.\".format(e.returncode))\n        if e.output:\n            click.echo(e.output)",
+                    "func_fullName": "twtxt.helper.run_post_tweet_hook(hook, options)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "sort_and_truncate_tweets",
+                    "func_desc": "Sort and truncate the list of Tweets .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def sort_and_truncate_tweets(tweets, direction, limit):\n    if direction == \"descending\":\n        return sorted(tweets, reverse=True)[:limit]\n    elif direction == \"ascending\":\n        if limit < len(tweets):\n            return sorted(tweets)[len(tweets) - limit:]\n        else:\n            return sorted(tweets)\n    else:\n        return []",
+                    "func_fullName": "twtxt.helper.sort_and_truncate_tweets(tweets, direction, limit)"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "expand_mentions",
+                    "func_desc": "Searches the given text for mentions and expands them .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def expand_mentions(text, embed_names=True):\n    \"\"\"Searches the given text for mentions and expands them.\n\n    For example:\n    \"@source.nick\" will be expanded to \"@<source.nick source.url>\".\n    \"\"\"\n    if embed_names:\n        mention_format = \"@<{name} {url}>\"\n    else:\n        mention_format = \"@<{url}>\"\n\n    def handle_mention(match):\n        source = get_source_by_name(match.group(1))\n        if source is None:\n            return \"@{0}\".format(match.group(1))\n        return mention_format.format(\n            name=source.nick,\n            url=source.url)\n\n    return short_mention_re.sub(handle_mention, text)",
+                    "func_fullName": "twtxt.mentions.expand_mentions(text, embed_names)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "make_aware",
+                    "func_desc": "Appends tzinfo and assumes UTC if datetime object has no tzinfo already .",
+                    "func_file": "parser",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def make_aware(dt):\n    \"\"\"Appends tzinfo and assumes UTC, if datetime object has no tzinfo already.\"\"\"\n    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)",
+                    "func_fullName": "twtxt.parser.make_aware(dt)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "parse_iso8601",
+                    "func_desc": "Parse string using dateutil . parser .",
+                    "func_file": "parser",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def parse_iso8601(string):\n    \"\"\"Parse string using dateutil.parser.\"\"\"\n    return make_aware(dateutil.parser.parse(string))",
+                    "func_fullName": "twtxt.parser.parse_iso8601(string)"
+                },
+                {
+                    "func_id": 73,
+                    "func_name": "validate_created_at",
+                    "func_desc": "Validate the created_at parameter .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_created_at(ctx, param, value):\n    if value:\n        try:\n            return parse_iso8601(value)\n        except (ValueError, OverflowError) as e:\n            raise click.BadParameter(\"{0}.\".format(e))",
+                    "func_fullName": "twtxt.helper.validate_created_at(ctx, param, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 6,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the grammar .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, config_file, cfg):\n        self.config_file = config_file\n        self.cfg = cfg",
+                    "func_fullName": "twtxt.config.Config.__init__(self, config_file, cfg)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new Header object .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, text, created_at=None, source=None):\n        if text:\n            self.text = text\n        else:\n            raise ValueError(\"empty text\")\n\n        if created_at is None:\n            created_at = datetime.now(tzlocal())\n\n        try:\n            self.created_at = created_at.replace(microsecond=0)\n        except AttributeError:\n            raise TypeError(\"created_at is of invalid type\")\n\n        self.source = source",
+                    "func_fullName": "twtxt.models.Tweet.__init__(self, text, created_at, source)"
+                },
+                {
+                    "func_id": 57,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, nick, url=None, file=None):\n        self.nick = nick.lower()\n        self.url = url\n        self.file = file",
+                    "func_fullName": "twtxt.models.Source.__init__(self, nick, url, file)"
+                },
+                {
+                    "func_id": 87,
+                    "func_name": "__init__",
+                    "func_desc": "Initializes a new cache object .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, cache_file, cache, update_interval=0):\n        \"\"\"Initializes new :class:`Cache` object.\n\n        :param str cache_file: full path to the loaded cache file.\n        :param ~shelve.Shelve cache: a Shelve object, with cache loaded.\n        :param int update_interval: number of seconds the cache is considered to be\n                                    up-to-date without calling any external resources.\n        \"\"\"\n        self.cache_file = cache_file\n        self.cache = cache\n        self.update_interval = update_interval",
+                    "func_fullName": "twtxt.cache.Cache.__init__(self, cache_file, cache, update_interval)"
+                },
+                {
+                    "func_id": 88,
+                    "func_name": "__enter__",
+                    "func_desc": "This method is called by the interpreter when the interpreter is entering a new language .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __enter__(self):\n        return self",
+                    "func_fullName": "twtxt.cache.Cache.__enter__(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 7,
+                    "func_name": "from_file",
+                    "func_desc": "Try loading given config file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def from_file(cls, file):\n        \"\"\"Try loading given config file.\n\n        :param str file: full path to the config file to load\n        \"\"\"\n        if not os.path.exists(file):\n            raise ValueError(\"Config file not found.\")\n\n        try:\n            config_parser = configparser.ConfigParser()\n            config_parser.read(file)\n\n            configuration = cls(file, config_parser)\n            if not configuration.check_config_sanity():\n                raise ValueError(\"Error in config file.\")\n            else:\n                return configuration\n        except configparser.Error:\n            raise ValueError(\"Config file is invalid.\")",
+                    "func_fullName": "twtxt.config.Config.from_file(cls, file)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "discover",
+                    "func_desc": "Make a guess about the config file location an try loading it .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def discover(cls):\n        \"\"\"Make a guess about the config file location an try loading it.\"\"\"\n        file = os.path.join(Config.config_dir, Config.config_name)\n        return cls.from_file(file)",
+                    "func_fullName": "twtxt.config.Config.discover(cls)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "check_config_sanity",
+                    "func_desc": "Checks if the given values in the config file are sane .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def check_config_sanity(self):\n        \"\"\"Checks if the given values in the config file are sane.\"\"\"\n        is_sane = True\n\n        # This extracts some properties which cannot be checked like \"nick\",\n        # but it is definitely better than writing the property names as a\n        # string literal.\n        properties = [property_name for property_name, obj\n                      in self.__class__.__dict__.items()\n                      if isinstance(obj, property)]\n\n        for property_name in properties:\n            try:\n                getattr(self, property_name)\n            except ValueError as e:\n                click.echo(\"✗ Config error on {0} - {1}\".format(property_name, e))\n                is_sane = False\n\n        return is_sane",
+                    "func_fullName": "twtxt.config.Config.check_config_sanity(self)"
+                },
+                {
+                    "func_id": 58,
+                    "func_name": "cli",
+                    "func_desc": "Command line interface for the nail - izn quickstart command .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def cli(ctx, config, verbose):\n    \"\"\"Decentralised, minimalist microblogging service for hackers.\"\"\"\n    init_logging(debug=verbose)\n\n    if ctx.invoked_subcommand == \"quickstart\":\n        return  # Skip initializing config file\n\n    try:\n        if config:\n            conf = Config.from_file(config)\n        else:\n            conf = Config.discover()\n    except ValueError as e:\n        if \"Error in config file.\" in str(e):\n            click.echo(\"✗ Please correct the errors mentioned above an run twtxt again.\")\n        else:\n            click.echo(\"✗ Config file not found or not readable. You may want to run twtxt quickstart.\")\n        sys.exit()\n\n    ctx.default_map = conf.build_default_map()\n    ctx.obj = {'conf': conf}",
+                    "func_fullName": "twtxt.cli.cli(ctx, config, verbose)"
+                },
+                {
+                    "func_id": 68,
+                    "func_name": "init_logging",
+                    "func_desc": "Initialize logging .",
+                    "func_file": "log",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def init_logging(debug=False):\n    logger = logging.getLogger()\n\n    formatter = logging.Formatter(\"%(asctime)s %(name)-12s %(levelname)-8s %(message)s\")\n\n    ch = logging.StreamHandler()\n    ch.setLevel(logging.DEBUG)\n    ch.setFormatter(formatter)\n    logger.addHandler(ch)\n\n    if debug:\n        logger.setLevel(logging.DEBUG)\n    else:\n        logger.setLevel(logging.CRITICAL)",
+                    "func_fullName": "twtxt.log.init_logging(debug)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 9,
+                    "func_name": "create_config",
+                    "func_desc": "Create a new config file at the default location .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def create_config(cls, cfgfile, nick, twtfile, twturl, disclose_identity, add_news):\n        \"\"\"Create a new config file at the default location.\n\n        :param str cfgfile: path to the config file\n        :param str nick: nickname to use for own tweets\n        :param str twtfile: path to the local twtxt file\n        :param str twturl: URL to the remote twtxt file\n        :param bool disclose_identity: if true the users id will be disclosed\n        :param bool add_news: if true follow twtxt news feed\n        \"\"\"\n        cfgfile_dir = os.path.dirname(cfgfile)\n        if not os.path.exists(cfgfile_dir):\n            os.makedirs(cfgfile_dir)\n\n        cfg = configparser.ConfigParser()\n\n        cfg.add_section(\"twtxt\")\n        cfg.set(\"twtxt\", \"nick\", nick)\n        cfg.set(\"twtxt\", \"twtfile\", twtfile)\n        cfg.set(\"twtxt\", \"twturl\", twturl)\n        cfg.set(\"twtxt\", \"disclose_identity\", str(disclose_identity))\n        cfg.set(\"twtxt\", \"character_limit\", \"140\")\n        cfg.set(\"twtxt\", \"character_warning\", \"140\")\n\n        cfg.add_section(\"following\")\n        if add_news:\n            cfg.set(\"following\", \"twtxt\", \"https://buckket.org/twtxt_news.txt\")\n\n        conf = cls(cfgfile, cfg)\n        conf.write_config()\n        return conf",
+                    "func_fullName": "twtxt.config.Config.create_config(cls, cfgfile, nick, twtfile, twturl, disclose_identity, add_news)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "write_config",
+                    "func_desc": "Writes the configuration file to self . cfg .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def write_config(self):\n        \"\"\"Writes `self.cfg` to `self.config_file`.\"\"\"\n        with open(self.config_file, \"w\") as config_file:\n            self.cfg.write(config_file)",
+                    "func_fullName": "twtxt.config.Config.write_config(self)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "options",
+                    "func_desc": "A dict of all config options .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def options(self):\n        \"\"\"A :class:`dict` of all config options.\"\"\"\n        try:\n            return dict(self.cfg.items(\"twtxt\"))\n        except configparser.NoSectionError as e:\n            logger.debug(e)\n            return {}",
+                    "func_fullName": "twtxt.config.Config.options(self)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "add_source",
+                    "func_desc": "Adds a new Source to the config .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_source(self, source):\n        \"\"\"Adds a new :class:`Source` to the config’s following section.\"\"\"\n        if not self.cfg.has_section(\"following\"):\n            self.cfg.add_section(\"following\")\n\n        self.cfg.set(\"following\", source.nick, source.url)\n        self.write_config()",
+                    "func_fullName": "twtxt.config.Config.add_source(self, source)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "remove_source_by_nick",
+                    "func_desc": "Removes a Source form the config s following section .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def remove_source_by_nick(self, nick):\n        \"\"\"Removes a :class:`Source` form the config’s following section.\n\n        :param str nick: nickname for which will be searched in the config\n        \"\"\"\n        if not self.cfg.has_section(\"following\"):\n            return False\n\n        ret_val = self.cfg.remove_option(\"following\", nick)\n        self.write_config()\n        return ret_val",
+                    "func_fullName": "twtxt.config.Config.remove_source_by_nick(self, nick)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new license header .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, status_code, content_length, last_modified):\n        self.status_code = status_code\n        self.content_length = content_length\n        self.last_modified = last_modified",
+                    "func_fullName": "twtxt.twhttp.SourceResponse.__init__(self, status_code, content_length, last_modified)"
+                },
+                {
+                    "func_id": 66,
+                    "func_name": "config",
+                    "func_desc": "Get or set config item .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def config(ctx, key, value, remove, edit):\n    \"\"\"Get or set config item.\"\"\"\n    conf = ctx.obj[\"conf\"]\n\n    if not edit and not key:\n        raise click.BadArgumentUsage(\"You have to specify either a key or use --edit.\")\n\n    if edit:\n        return click.edit(filename=conf.config_file)\n\n    if remove:\n        try:\n            conf.cfg.remove_option(key[0], key[1])\n        except Exception as e:\n            logger.debug(e)\n        else:\n            conf.write_config()\n        return\n\n    if not value:\n        try:\n            click.echo(conf.cfg.get(key[0], key[1]))\n        except Exception as e:\n            logger.debug(e)\n        return\n\n    if not conf.cfg.has_section(key[0]):\n        conf.cfg.add_section(key[0])\n\n    conf.cfg.set(key[0], key[1], value)\n    conf.write_config()",
+                    "func_fullName": "twtxt.cli.config(ctx, key, value, remove, edit)"
+                },
+                {
+                    "func_id": 75,
+                    "func_name": "validate_config_key",
+                    "func_desc": "Validate a configuration key according to section . item .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_config_key(ctx, param, value):\n    \"\"\"Validate a configuration key according to `section.item`.\"\"\"\n    if not value:\n        return value\n\n    try:\n        section, item = value.split(\".\", 1)\n    except ValueError:\n        raise click.BadArgumentUsage(\"Given key does not contain a section name.\")\n    else:\n        return section, item",
+                    "func_fullName": "twtxt.helper.validate_config_key(ctx, param, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 11,
+                    "func_name": "following",
+                    "func_desc": "A list of all Source objects following the current language .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def following(self):\n        \"\"\"A :class:`list` of all :class:`Source` objects.\"\"\"\n        following = []\n        try:\n            for (nick, url) in self.cfg.items(\"following\"):\n                source = Source(nick, url)\n                following.append(source)\n        except configparser.NoSectionError as e:\n            logger.debug(e)\n\n        return following",
+                    "func_fullName": "twtxt.config.Config.following(self)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "nick",
+                    "func_desc": "Returns the twtxt nickname .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def nick(self):\n        return self.cfg.get(\"twtxt\", \"nick\", fallback=os.environ.get(\"USER\", \"\").lower())",
+                    "func_fullName": "twtxt.config.Config.nick(self)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "twturl",
+                    "func_desc": "URL to the TWT file for the current language .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def twturl(self):\n        return self.cfg.get(\"twtxt\", \"twturl\", fallback=None)",
+                    "func_fullName": "twtxt.config.Config.twturl(self)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "source",
+                    "func_desc": "Returns a Source object for this site .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def source(self):\n        return Source(self.nick, self.twturl)",
+                    "func_fullName": "twtxt.config.Config.source(self)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "following",
+                    "func_desc": "Return the list of sources you re following .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def following(ctx, check, timeout, porcelain):\n    \"\"\"Return the list of sources you’re following.\"\"\"\n    sources = ctx.obj['conf'].following\n\n    if check:\n        sources = get_remote_status(sources, timeout)\n        for (source, status) in sources:\n            click.echo(style_source_with_status(source, status, porcelain))\n    else:\n        sources = sorted(sources, key=lambda source: source.nick)\n        for source in sources:\n            click.echo(style_source(source, porcelain))",
+                    "func_fullName": "twtxt.cli.following(ctx, check, timeout, porcelain)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "follow",
+                    "func_desc": "Add a new source to your followings .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def follow(ctx, nick, url, force):\n    \"\"\"Add a new source to your followings.\"\"\"\n    source = Source(nick, url)\n    sources = ctx.obj['conf'].following\n\n    if not force:\n        if source.nick in (source.nick for source in sources):\n            click.confirm(\"➤ You’re already following {0}. Overwrite?\".format(\n                click.style(source.nick, bold=True)), default=False, abort=True)\n\n        _, status = (get_remote_status([source]))[0]\n        if not status or status.status_code != 200:\n            click.confirm(\"➤ The feed of {0} at {1} is not available. Follow anyway?\".format(\n                click.style(source.nick, bold=True),\n                click.style(source.url, bold=True)), default=False, abort=True)\n\n    ctx.obj['conf'].add_source(source)\n    click.echo(\"✓ You’re now following {0}.\".format(\n        click.style(source.nick, bold=True)))",
+                    "func_fullName": "twtxt.cli.follow(ctx, nick, url, force)"
+                },
+                {
+                    "func_id": 71,
+                    "func_name": "style_source",
+                    "func_desc": "Style a source .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def style_source(source, porcelain=False):\n    if porcelain:\n        return \"{nick}\\t{url}\".format(\n            nick=source.nick,\n            url=source.url)\n    else:\n        return \"➤ {nick} @ {url}\".format(\n            nick=click.style(source.nick, bold=True),\n            url=source.url)",
+                    "func_fullName": "twtxt.helper.style_source(source, porcelain)"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "get_source_by_url",
+                    "func_desc": "Get a source by URL .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_source_by_url(url):\n    conf = click.get_current_context().obj[\"conf\"]\n    if url == conf.twturl:\n        return conf.source\n    return next((source for source in conf.following if url == source.url), None)",
+                    "func_fullName": "twtxt.mentions.get_source_by_url(url)"
+                },
+                {
+                    "func_id": 81,
+                    "func_name": "get_source_by_name",
+                    "func_desc": "Get a source by name .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_source_by_name(nick):\n    nick = nick.lower()\n    conf = click.get_current_context().obj[\"conf\"]\n    if nick == conf.nick and conf.twturl:\n        return conf.source\n    return next((source for source in conf.following if nick == source.nick), None)",
+                    "func_fullName": "twtxt.mentions.get_source_by_name(nick)"
+                },
+                {
+                    "func_id": 83,
+                    "func_name": "format_mention",
+                    "func_desc": "Format mentions for a tag .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def format_mention(name, url):\n    source = get_source_by_url(url)\n    if source:\n        if source.nick == click.get_current_context().obj[\"conf\"].nick:\n            return click.style(\"@{0}\".format(source.nick), fg=\"magenta\", bold=True)\n        else:\n            return click.style(\"@{0}\".format(source.nick), bold=True)\n    elif name:\n        return \"@{0}\".format(name)\n    else:\n        return \"@<{0}>\".format(url)",
+                    "func_fullName": "twtxt.mentions.format_mention(name, url)"
+                },
+                {
+                    "func_id": 85,
+                    "func_name": "handle_mention",
+                    "func_desc": "Return a string with the mention of a given tag .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_mention(match):\n        source = get_source_by_name(match.group(1))\n        if source is None:\n            return \"@{0}\".format(match.group(1))\n        return mention_format.format(\n            name=source.nick,\n            url=source.url)",
+                    "func_fullName": "twtxt.mentions.expand_mentions.handle_mention(match)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 14,
+                    "func_name": "twtfile",
+                    "func_desc": "The path to the TWT file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def twtfile(self):\n        return os.path.expanduser(self.cfg.get(\"twtxt\", \"twtfile\", fallback=\"twtxt.txt\"))",
+                    "func_fullName": "twtxt.config.Config.twtfile(self)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "check_following",
+                    "func_desc": "Check if the twtxt file is following the current file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def check_following(self):\n        return self.cfg.getboolean(\"twtxt\", \"check_following\", fallback=True)",
+                    "func_fullName": "twtxt.config.Config.check_following(self)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "use_pager",
+                    "func_desc": "Whether to use the pager for the twtxt file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def use_pager(self):\n        return self.cfg.getboolean(\"twtxt\", \"use_pager\", fallback=False)",
+                    "func_fullName": "twtxt.config.Config.use_pager(self)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "use_cache",
+                    "func_desc": "Returns True if the twtxt cache is enabled .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def use_cache(self):\n        return self.cfg.getboolean(\"twtxt\", \"use_cache\", fallback=True)",
+                    "func_fullName": "twtxt.config.Config.use_cache(self)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "porcelain",
+                    "func_desc": "Returns True if the twtxt file is porcelain .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def porcelain(self):\n        return self.cfg.getboolean(\"twtxt\", \"porcelain\", fallback=False)",
+                    "func_fullName": "twtxt.config.Config.porcelain(self)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "limit_timeline",
+                    "func_desc": "Limit the number of times the twtxt file is being read .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def limit_timeline(self):\n        return self.cfg.getint(\"twtxt\", \"limit_timeline\", fallback=20)",
+                    "func_fullName": "twtxt.config.Config.limit_timeline(self)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "timeout",
+                    "func_desc": "The time interval in seconds for the twtxt command .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def timeout(self):\n        return self.cfg.getfloat(\"twtxt\", \"timeout\", fallback=5.0)",
+                    "func_fullName": "twtxt.config.Config.timeout(self)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "sorting",
+                    "func_desc": "Returns the sorting order for the TWS .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sorting(self):\n        return self.cfg.get(\"twtxt\", \"sorting\", fallback=\"descending\")",
+                    "func_fullName": "twtxt.config.Config.sorting(self)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "build_default_map",
+                    "func_desc": "Builds a dictionary mapping config options to the default values used by click .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def build_default_map(self):\n        \"\"\"Maps config options to the default values used by click, returns :class:`dict`.\"\"\"\n        default_map = {\n            \"following\": {\n                \"check\": self.check_following,\n                \"timeout\": self.timeout,\n                \"porcelain\": self.porcelain,\n            },\n            \"tweet\": {\n                \"twtfile\": self.twtfile,\n            },\n            \"timeline\": {\n                \"pager\": self.use_pager,\n                \"cache\": self.use_cache,\n                \"limit\": self.limit_timeline,\n                \"timeout\": self.timeout,\n                \"sorting\": self.sorting,\n                \"porcelain\": self.porcelain,\n                \"twtfile\": self.twtfile,\n                \"update_interval\": self.timeline_update_interval,\n            },\n            \"view\": {\n                \"pager\": self.use_pager,\n                \"cache\": self.use_cache,\n                \"limit\": self.limit_timeline,\n                \"timeout\": self.timeout,\n                \"sorting\": self.sorting,\n                \"porcelain\": self.porcelain,\n                \"update_interval\": self.timeline_update_interval,\n            }\n        }\n        return default_map",
+                    "func_fullName": "twtxt.config.Config.build_default_map(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 20,
+                    "func_name": "disclose_identity",
+                    "func_desc": "Returns True if identity is disclosed .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def disclose_identity(self):\n        return self.cfg.getboolean(\"twtxt\", \"disclose_identity\", fallback=False)",
+                    "func_fullName": "twtxt.config.Config.disclose_identity(self)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "generate_user_agent",
+                    "func_desc": "Generates a user agent for the twtxt header .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def generate_user_agent():\n    try:\n        version = pkg_resources.require(\"twtxt\")[0].version\n    except pkg_resources.DistributionNotFound:\n        version = \"unknown\"\n\n    conf = click.get_current_context().obj[\"conf\"]\n    if conf.disclose_identity and conf.nick and conf.twturl:\n        user_agent = \"twtxt/{version} (+{url}; @{nick})\".format(\n            version=version, url=conf.twturl, nick=conf.nick)\n    else:\n        user_agent = \"twtxt/{version}\".format(version=version)\n\n    return {\"User-Agent\": user_agent}",
+                    "func_fullName": "twtxt.helper.generate_user_agent()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "character_limit",
+                    "func_desc": "The maximum number of characters allowed in the language .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def character_limit(self):\n        return self.cfg.getint(\"twtxt\", \"character_limit\", fallback=None)",
+                    "func_fullName": "twtxt.config.Config.character_limit(self)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "use_abs_time",
+                    "func_desc": "Returns True if the twtxt file should be used as an absolute time .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def use_abs_time(self):\n        return self.cfg.getboolean(\"twtxt\", \"use_abs_time\", fallback=False)",
+                    "func_fullName": "twtxt.config.Config.use_abs_time(self)"
+                },
+                {
+                    "func_id": 55,
+                    "func_name": "relative_datetime",
+                    "func_desc": "Return human - readable relative time string .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def relative_datetime(self):\n        \"\"\"Return human-readable relative time string.\"\"\"\n        now = datetime.now(timezone.utc)\n        created_at = self.created_at.astimezone(timezone.utc)\n\n        delta = humanize.naturaldelta(abs(created_at - now))\n        tense = \"from now\" if now < created_at else \"ago\"\n\n        return f\"{delta} {tense}\"",
+                    "func_fullName": "twtxt.models.Tweet.relative_datetime(self)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "absolute_datetime",
+                    "func_desc": "Return human - readable absolute time string .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def absolute_datetime(self):\n        \"\"\"Return human-readable absolute time string.\"\"\"\n        return self.created_at.strftime(\"%a, %d %b %Y %H:%M:%S\")",
+                    "func_fullName": "twtxt.models.Tweet.absolute_datetime(self)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "style_timeline",
+                    "func_desc": "Return a string with the style of each tweet in tweets .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def style_timeline(tweets, porcelain=False):\n    if porcelain:\n        return \"\\n\".join(style_tweet(tweet, porcelain) for tweet in tweets)\n    else:\n        return \"\\n{0}\\n\".format(\"\\n\\n\".join(filter(None, (style_tweet(tweet, porcelain) for tweet in tweets))))",
+                    "func_fullName": "twtxt.helper.style_timeline(tweets, porcelain)"
+                },
+                {
+                    "func_id": 70,
+                    "func_name": "style_tweet",
+                    "func_desc": "Style a tweet .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def style_tweet(tweet, porcelain=False):\n    conf = click.get_current_context().obj[\"conf\"]\n    limit = conf.character_limit\n\n    if porcelain:\n        return \"{nick}\\t{url}\\t{tweet}\".format(\n            nick=tweet.source.nick,\n            url=tweet.source.url,\n            tweet=str(tweet))\n    else:\n        if sys.stdout.isatty() and not tweet.text.isprintable():\n            return None\n        styled_text = format_mentions(tweet.text)\n        len_styling = len(styled_text) - len(click.unstyle(styled_text))\n        final_text = textwrap.shorten(styled_text, limit + len_styling) if limit else styled_text\n        timestamp = tweet.absolute_datetime if conf.use_abs_time else tweet.relative_datetime\n        return \"➤ {nick} ({time}):\\n{tweet}\".format(\n            nick=click.style(tweet.source.nick, bold=True),\n            tweet=final_text,\n            time=click.style(timestamp, dim=True))",
+                    "func_fullName": "twtxt.helper.style_tweet(tweet, porcelain)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 22,
+                    "func_name": "character_warning",
+                    "func_desc": "Returns the number of times a character has been warningd .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def character_warning(self):\n        return self.cfg.getint(\"twtxt\", \"character_warning\", fallback=None)",
+                    "func_fullName": "twtxt.config.Config.character_warning(self)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "_is_valid_operand",
+                    "func_desc": "Checks if the given object is a valid operation .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _is_valid_operand(other):\n        return (hasattr(other, \"text\") and\n                hasattr(other, \"created_at\"))",
+                    "func_fullName": "twtxt.models.Tweet._is_valid_operand(other)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "__lt__",
+                    "func_desc": "Checks if a record is less than another record .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __lt__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at < other.created_at",
+                    "func_fullName": "twtxt.models.Tweet.__lt__(self, other)"
+                },
+                {
+                    "func_id": 50,
+                    "func_name": "__le__",
+                    "func_desc": "Checks if a record is less than another record .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __le__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at < other.created_at or (self.created_at == other.created_at and self.text == other.text)",
+                    "func_fullName": "twtxt.models.Tweet.__le__(self, other)"
+                },
+                {
+                    "func_id": 51,
+                    "func_name": "__gt__",
+                    "func_desc": "Checks if a record is greater than another record .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __gt__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at > other.created_at",
+                    "func_fullName": "twtxt.models.Tweet.__gt__(self, other)"
+                },
+                {
+                    "func_id": 52,
+                    "func_name": "__ge__",
+                    "func_desc": "Checks if a record is greater than another record .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __ge__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at > other.created_at or (self.created_at == other.created_at and self.text == other.text)",
+                    "func_fullName": "twtxt.models.Tweet.__ge__(self, other)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "__eq__",
+                    "func_desc": "Checks if two terms are equal .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __eq__(self, other):\n        if not self._is_valid_operand(other):\n            return NotImplemented\n        return self.created_at == other.created_at and self.text == other.text",
+                    "func_fullName": "twtxt.models.Tweet.__eq__(self, other)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "validate_text",
+                    "func_desc": "Validate the text .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def validate_text(ctx, param, value):\n    conf = click.get_current_context().obj[\"conf\"]\n    if isinstance(value, tuple):\n        value = \" \".join(value)\n\n    if not value and not sys.stdin.isatty():\n        value = click.get_text_stream(\"stdin\").read()\n\n    if value:\n        value = value.strip()\n        if conf.character_warning and len(value) > conf.character_warning:\n            click.confirm(\"✂ Warning: Tweet is longer than {0} characters. Are you sure?\".format(\n                conf.character_warning), abort=True)\n        return value\n    else:\n        raise click.BadArgumentUsage(\"Text can’t be empty.\")",
+                    "func_fullName": "twtxt.helper.validate_text(ctx, param, value)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 24,
+                    "func_name": "timeline_update_interval",
+                    "func_desc": "The number of seconds between the last update of the timeline .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def timeline_update_interval(self):\n        return self.cfg.getint(\"twtxt\", \"timeline_update_interval\", fallback=10)",
+                    "func_fullName": "twtxt.config.Config.timeline_update_interval(self)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "get_source_by_nick",
+                    "func_desc": "Returns a Source object for the given nickname .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_source_by_nick(self, nick):\n        \"\"\"Returns the :class:`Source` of the given nick.\n\n        :param str nick: nickname for which will be searched in the config\n        \"\"\"\n        url = self.cfg.get(\"following\", nick, fallback=None)\n        return Source(nick, url) if url else None",
+                    "func_fullName": "twtxt.config.Config.get_source_by_nick(self, nick)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "timeline",
+                    "func_desc": "Retrieve your personal timeline .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def timeline(ctx, pager, limit, twtfile, sorting, timeout, porcelain, source, cache, force_update):\n    \"\"\"Retrieve your personal timeline.\"\"\"\n    if source:\n        source_obj = ctx.obj[\"conf\"].get_source_by_nick(source)\n        if not source_obj:\n            logger.debug(\"Not following {0}, trying as URL\".format(source))\n            source_obj = Source(source, source)\n        sources = [source_obj]\n    else:\n        sources = ctx.obj[\"conf\"].following\n\n    tweets = []\n\n    if cache:\n        try:\n            with Cache.discover(update_interval=ctx.obj[\"conf\"].timeline_update_interval) as cache:\n                force_update = force_update or not cache.is_valid\n                if force_update:\n                    tweets = get_remote_tweets(sources, limit, timeout, cache)\n                else:\n                    logger.debug(\"Multiple calls to 'timeline' within {0} seconds. Skipping update\".format(\n                        cache.update_interval))\n                    # Behold, almighty list comprehensions! (I might have gone overboard here…)\n                    tweets = list(chain.from_iterable([cache.get_tweets(source.url) for source in sources]))\n        except OSError as e:\n            logger.debug(e)\n            tweets = get_remote_tweets(sources, limit, timeout)\n    else:\n        tweets = get_remote_tweets(sources, limit, timeout)\n\n    if twtfile and not source:\n        source = Source(ctx.obj[\"conf\"].nick, ctx.obj[\"conf\"].twturl, file=twtfile)\n        tweets.extend(get_local_tweets(source, limit))\n\n    if not tweets:\n        return\n\n    tweets = sort_and_truncate_tweets(tweets, sorting, limit)\n\n    if pager:\n        click.echo_via_pager(style_timeline(tweets, porcelain))\n    else:\n        click.echo(style_timeline(tweets, porcelain))",
+                    "func_fullName": "twtxt.cli.timeline(ctx, pager, limit, twtfile, sorting, timeout, porcelain, source, cache, force_update)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "view",
+                    "func_desc": "Show feed of given source .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def view(ctx, **kwargs):\n    \"\"\"Show feed of given source.\"\"\"\n    ctx.forward(timeline)",
+                    "func_fullName": "twtxt.cli.view(ctx, kwargs)"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "unfollow",
+                    "func_desc": "Remove an existing source from your followings .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def unfollow(ctx, nick):\n    \"\"\"Remove an existing source from your followings.\"\"\"\n    source = ctx.obj['conf'].get_source_by_nick(nick)\n\n    try:\n        with Cache.discover(update_interval=ctx.obj[\"conf\"].timeline_update_interval) as cache:\n            cache.remove_tweets(source.url)\n    except OSError as e:\n        logger.debug(e)\n\n    ret_val = ctx.obj['conf'].remove_source_by_nick(nick)\n    if ret_val:\n        click.echo(\"✓ You’ve unfollowed {0}.\".format(\n            click.style(source.nick, bold=True)))\n    else:\n        click.echo(\"✗ You’re not following {0}.\".format(\n            click.style(nick, bold=True)))",
+                    "func_fullName": "twtxt.cli.unfollow(ctx, nick)"
+                },
+                {
+                    "func_id": 90,
+                    "func_name": "from_file",
+                    "func_desc": "Try loading given cache file .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def from_file(cls, file, *args, **kwargs):\n        \"\"\"Try loading given cache file.\"\"\"\n        try:\n            cache = shelve.open(file)\n            return cls(file, cache, *args, **kwargs)\n        except OSError as e:\n            logger.debug(\"Loading {0} failed\".format(file))\n            raise e",
+                    "func_fullName": "twtxt.cache.Cache.from_file(cls, file, args, kwargs)"
+                },
+                {
+                    "func_id": 91,
+                    "func_name": "discover",
+                    "func_desc": "Make a guess about the cache file location and try loading it .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def discover(cls, *args, **kwargs):\n        \"\"\"Make a guess about the cache file location and try loading it.\"\"\"\n        file = os.path.join(Cache.cache_dir, Cache.cache_name)\n        return cls.from_file(file, *args, **kwargs)",
+                    "func_fullName": "twtxt.cache.Cache.discover(cls, args, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 37,
+                    "func_name": "natural_content_length",
+                    "func_desc": "Returns a human - readable string representation of the content length of the resource .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def natural_content_length(self):\n        return humanize.naturalsize(self.content_length)",
+                    "func_fullName": "twtxt.twhttp.SourceResponse.natural_content_length(self)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "natural_last_modified",
+                    "func_desc": "Returns a string describing the natural date last modified .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def natural_last_modified(self):\n        if self.last_modified is None:\n            return \"?\"\n        else:\n            last_modified = parsedate_to_datetime(self.last_modified)\n            now = datetime.now(timezone.utc)\n            tense = \"from now\" if last_modified > now else \"ago\"\n            return \"{0} {1}\".format(humanize.naturaldelta(now - last_modified), tense)",
+                    "func_fullName": "twtxt.twhttp.SourceResponse.natural_last_modified(self)"
+                },
+                {
+                    "func_id": 72,
+                    "func_name": "style_source_with_status",
+                    "func_desc": "Style a source with a status object .",
+                    "func_file": "helper",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def style_source_with_status(source, status, porcelain=False):\n    if porcelain:\n        return \"{nick}\\t{url}\\t{status}\\t{content_length}\\t{last_modified}\".format(\n            nick=source.nick,\n            url=source.url,\n            status=status.status_code,\n            content_length=status.content_length,\n            last_modified=status.last_modified)\n    else:\n        if hasattr(status, \"status_code\") and status.status_code == 200:\n            scolor, smessage = \"green\", str(status.status_code)\n        elif status:\n            scolor, smessage = \"red\", str(status.status_code)\n        else:\n            scolor, smessage = \"red\", \"ERROR\"\n        return \"➤ {nick} @ {url} [{content_length}, {last_modified}] ({status})\".format(\n            nick=click.style(source.nick, bold=True, fg=scolor),\n            url=source.url,\n            status=click.style(smessage, fg=scolor),\n            content_length=status.natural_content_length,\n            last_modified=status.natural_last_modified)",
+                    "func_fullName": "twtxt.helper.style_source_with_status(source, status, porcelain)"
+                },
+                {
+                    "func_id": 96,
+                    "func_name": "last_modified",
+                    "func_desc": "Returns saved Last - Modified header if available .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def last_modified(self, url):\n        \"\"\"Returns saved 'Last-Modified' header, if available.\"\"\"\n        try:\n            return self.cache[url][\"last_modified\"]\n        except KeyError:\n            return None",
+                    "func_fullName": "twtxt.cache.Cache.last_modified(self, url)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 39,
+                    "func_name": "retrieve_status",
+                    "func_desc": "Retrieve status of a single node .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "async def retrieve_status(client, source):\n    status = None\n    try:\n        response = await client.head(source.url)\n        if response.headers.get(\"Content-Length\"):\n            content_length = response.headers.get(\"Content-Length\")\n        else:\n            content_length = 0\n        status = SourceResponse(status_code=response.status,\n                                content_length=content_length,\n                                last_modified=response.headers.get(\"Last-Modified\"))\n        await response.release()\n    except CertificateError as e:\n        click.echo(\"✗ SSL Certificate Error: The feed's ({0}) SSL certificate is untrusted. Try using HTTP, \"\n                   \"or contact the feed's owner to report this issue.\".format(source.url))\n        logger.debug(\"{0}: {1}\".format(source.url, e))\n    except Exception as e:\n        logger.debug(\"{0}: {1}\".format(source.url, e))\n    finally:\n        return source, status",
+                    "func_fullName": "twtxt.twhttp.retrieve_status(client, source)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "process_sources_for_status",
+                    "func_desc": "Retrieve status for all the given sources .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "async def process_sources_for_status(client, sources):\n    tasks = [retrieve_status(client, source) for source in sources]\n    statuses = await asyncio.gather(*tasks)\n\n    return sorted(statuses, key=lambda x: x[0].nick)",
+                    "func_fullName": "twtxt.twhttp.process_sources_for_status(client, sources)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 40,
+                    "func_name": "retrieve_file",
+                    "func_desc": "Retrieve a list of Tweets from a given source .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "async def retrieve_file(client, source, limit, cache):\n    is_cached = cache.is_cached(source.url) if cache else None\n    headers = {\"If-Modified-Since\": cache.last_modified(source.url)} if is_cached else {}\n\n    try:\n        response = await client.get(source.url, headers=headers)\n        content = await response.text()\n    except Exception as e:\n        if is_cached:\n            logger.debug(\"{0}: {1} - using cached content\".format(source.url, e))\n            return cache.get_tweets(source.url, limit)\n        else:\n            logger.debug(\"{0}: {1}\".format(source.url, e))\n            return []\n\n    if response.status == 200:\n        tweets = parse_tweets(content.splitlines(), source)\n\n        if cache:\n            last_modified_header = response.headers.get(\"Last-Modified\")\n            if last_modified_header:\n                logger.debug(\"{0} returned 200 and Last-Modified header - adding content to cache\".format(source.url))\n                cache.add_tweets(source.url, last_modified_header, tweets)\n            else:\n                logger.debug(\"{0} returned 200 but no Last-Modified header - can’t cache content\".format(source.url))\n        else:\n            logger.debug(\"{0} returned 200\".format(source.url))\n\n        return sorted(tweets, reverse=True)[:limit]\n\n    elif response.status == 410 and is_cached:\n        # 410 Gone:\n        # The resource requested is no longer available,\n        # and will not be available again.\n        logger.debug(\"{0} returned 410 - deleting cached content\".format(source.url))\n        cache.remove_tweets(source.url)\n        return []\n\n    elif is_cached:\n        logger.debug(\"{0} returned {1} - using cached content\".format(source.url, response.status))\n        return cache.get_tweets(source.url, limit)\n\n    else:\n        logger.debug(\"{0} returned {1}\".format(source.url, response.status))\n        return []",
+                    "func_fullName": "twtxt.twhttp.retrieve_file(client, source, limit, cache)"
+                },
+                {
+                    "func_id": 92,
+                    "func_name": "last_updated",
+                    "func_desc": "Returns the last NIX timestamp of last update of the cache .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def last_updated(self):\n        \"\"\"Returns *NIX timestamp of last update of the cache.\"\"\"\n        try:\n            return self.cache[\"last_update\"]\n        except KeyError:\n            return 0",
+                    "func_fullName": "twtxt.cache.Cache.last_updated(self)"
+                },
+                {
+                    "func_id": 93,
+                    "func_name": "is_valid",
+                    "func_desc": "Checks if the cache is up - to - date .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_valid(self):\n        \"\"\"Checks if the cache is considered to be up-to-date.\"\"\"\n        if timestamp() - self.last_updated <= self.update_interval:\n            return True\n        else:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.is_valid(self)"
+                },
+                {
+                    "func_id": 94,
+                    "func_name": "mark_updated",
+                    "func_desc": "Mark cache as updated at current NIX timestamp",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def mark_updated(self):\n        \"\"\"Mark cache as updated at current *NIX timestamp\"\"\"\n        if not self.is_valid:\n            self.cache[\"last_update\"] = timestamp()",
+                    "func_fullName": "twtxt.cache.Cache.mark_updated(self)"
+                },
+                {
+                    "func_id": 95,
+                    "func_name": "is_cached",
+                    "func_desc": "Checks if specified URL is cached .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_cached(self, url):\n        \"\"\"Checks if specified URL is cached.\"\"\"\n        try:\n            return True if url in self.cache else False\n        except TypeError:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.is_cached(self, url)"
+                },
+                {
+                    "func_id": 97,
+                    "func_name": "add_tweets",
+                    "func_desc": "Adds new tweets to the cache .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def add_tweets(self, url, last_modified, tweets):\n        \"\"\"Adds new tweets to the cache.\"\"\"\n        try:\n            self.cache[url] = {\"last_modified\": last_modified, \"tweets\": tweets}\n            self.mark_updated()\n            return True\n        except TypeError:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.add_tweets(self, url, last_modified, tweets)"
+                },
+                {
+                    "func_id": 98,
+                    "func_name": "get_tweets",
+                    "func_desc": "Retrieves tweets from the cache .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_tweets(self, url, limit=None):\n        \"\"\"Retrieves tweets from the cache.\"\"\"\n        try:\n            tweets = self.cache[url][\"tweets\"]\n            self.mark_updated()\n            return sorted(tweets, reverse=True)[:limit]\n        except KeyError:\n            return []",
+                    "func_fullName": "twtxt.cache.Cache.get_tweets(self, url, limit)"
+                },
+                {
+                    "func_id": 99,
+                    "func_name": "remove_tweets",
+                    "func_desc": "Tries to remove cached tweets .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def remove_tweets(self, url):\n        \"\"\"Tries to remove cached tweets.\"\"\"\n        try:\n            del self.cache[url]\n            self.mark_updated()\n            return True\n        except KeyError:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.remove_tweets(self, url)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 42,
+                    "func_name": "process_sources_for_file",
+                    "func_desc": "Retrieve tweets for a list of sources .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "async def process_sources_for_file(client, sources, limit, cache=None):\n    tasks = [retrieve_file(client, source, limit, cache) for source in sources]\n    tweets_by_source = await asyncio.gather(*tasks)\n\n    all_tweets = list(chain.from_iterable(tweets_by_source))\n\n    return sorted(all_tweets, reverse=True)[:limit]",
+                    "func_fullName": "twtxt.twhttp.process_sources_for_file(client, sources, limit, cache)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "get_remote_tweets",
+                    "func_desc": "Get remote tweets from sources .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_remote_tweets(sources, limit=None, timeout=5.0, cache=None):\n    async def start_loop():\n        conn = aiohttp.TCPConnector(use_dns_cache=True)\n        headers = generate_user_agent()\n\n        async with aiohttp.ClientSession(connector=conn, headers=headers, conn_timeout=timeout) as client:\n            return await process_sources_for_file(client, sources, limit, cache)\n\n    return asyncio.run(start_loop())",
+                    "func_fullName": "twtxt.twhttp.get_remote_tweets(sources, limit, timeout, cache)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "start_loop",
+                    "func_desc": "Main loop for the main loop .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def start_loop():\n        conn = aiohttp.TCPConnector(use_dns_cache=True)\n        headers = generate_user_agent()\n\n        async with aiohttp.ClientSession(connector=conn, headers=headers, conn_timeout=timeout) as client:\n            return await process_sources_for_file(client, sources, limit, cache)",
+                    "func_fullName": "twtxt.twhttp.get_remote_tweets.start_loop()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 44,
+                    "func_name": "get_remote_status",
+                    "func_desc": "Get remote status of a list of sources .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_remote_status(sources, timeout=5.0):\n    async def start_loop():\n        conn = aiohttp.TCPConnector(use_dns_cache=True)\n        headers = generate_user_agent()\n\n        async with aiohttp.ClientSession(connector=conn, headers=headers, conn_timeout=timeout) as client:\n            return await process_sources_for_status(client, sources)\n\n    return asyncio.run(start_loop())",
+                    "func_fullName": "twtxt.twhttp.get_remote_status(sources, timeout)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "start_loop",
+                    "func_desc": "A simple HTTP loop that runs the main loop .",
+                    "func_file": "twhttp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    async def start_loop():\n        conn = aiohttp.TCPConnector(use_dns_cache=True)\n        headers = generate_user_agent()\n\n        async with aiohttp.ClientSession(connector=conn, headers=headers, conn_timeout=timeout) as client:\n            return await process_sources_for_status(client, sources)",
+                    "func_fullName": "twtxt.twhttp.get_remote_status.start_loop()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 17,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 54,
+                    "func_name": "__str__",
+                    "func_desc": "Returns a string representation of the log entry .",
+                    "func_file": "models",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __str__(self):\n        return \"{created_at}\\t{text}\".format(created_at=self.created_at.isoformat(), text=self.text)",
+                    "func_fullName": "twtxt.models.Tweet.__str__(self)"
+                },
+                {
+                    "func_id": 101,
+                    "func_name": "sync",
+                    "func_desc": "Syncs Shelve object .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sync(self):\n        \"\"\"Syncs Shelve object.\"\"\"\n        try:\n            self.cache.sync()\n            return True\n        except AttributeError:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.sync(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 18,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 65,
+                    "func_name": "quickstart",
+                    "func_desc": "Quickstart wizard for setting up twtxt .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def quickstart():\n    \"\"\"Quickstart wizard for setting up twtxt.\"\"\"\n    width = shutil.get_terminal_size()[0]\n    width = width if width <= 79 else 79\n\n    click.secho(\"twtxt - quickstart\", fg=\"cyan\")\n    click.secho(\"==================\", fg=\"cyan\")\n    click.echo()\n\n    help_text = \"This wizard will generate a basic configuration file for twtxt with all mandatory options set. \" \\\n                \"You can change all of these later with either twtxt itself or by editing the config file manually. \" \\\n                \"Have a look at the docs to get information about the other available options and their meaning.\"\n    click.echo(textwrap.fill(help_text, width))\n\n    click.echo()\n    nick = click.prompt(\"➤ Please enter your desired nick\", default=os.environ.get(\"USER\", \"\"))\n\n    def overwrite_check(path):\n        if os.path.isfile(path):\n            click.confirm(\"➤ '{0}' already exists. Overwrite?\".format(path), abort=True)\n\n    cfgfile = click.prompt(\"➤ Please enter the desired location for your config file\",\n                           os.path.join(Config.config_dir, Config.config_name),\n                           type=click.Path(readable=True, writable=True, file_okay=True))\n    cfgfile = os.path.expanduser(cfgfile)\n    overwrite_check(cfgfile)\n\n    twtfile = click.prompt(\"➤ Please enter the desired location for your twtxt file\",\n                           os.path.expanduser(\"~/twtxt.txt\"),\n                           type=click.Path(readable=True, writable=True, file_okay=True))\n    twtfile = os.path.expanduser(twtfile)\n    overwrite_check(twtfile)\n\n    twturl = click.prompt(\"➤ Please enter the URL your twtxt file will be accessible from\",\n                          default=\"https://example.org/twtxt.txt\")\n\n    disclose_identity = click.confirm(\"➤ Do you want to disclose your identity? Your nick and URL will be shared when \"\n                                      \"making HTTP requests\", default=False)\n\n    click.echo()\n    add_news = click.confirm(\"➤ Do you want to follow the twtxt news feed?\", default=True)\n\n    conf = Config.create_config(cfgfile, nick, twtfile, twturl, disclose_identity, add_news)\n\n    twtfile_dir = os.path.dirname(twtfile)\n    if not os.path.exists(twtfile_dir):\n        os.makedirs(twtfile_dir)\n    open(twtfile, \"a\").close()\n\n    click.echo()\n    click.echo(\"✓ Created config file at '{0}'.\".format(click.format_filename(conf.config_file)))\n    click.echo(\"✓ Created twtxt file at '{0}'.\".format(click.format_filename(twtfile)))",
+                    "func_fullName": "twtxt.cli.quickstart()"
+                },
+                {
+                    "func_id": 67,
+                    "func_name": "overwrite_check",
+                    "func_desc": "Check if a file already exists .",
+                    "func_file": "cli",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def overwrite_check(path):\n        if os.path.isfile(path):\n            click.confirm(\"➤ '{0}' already exists. Overwrite?\".format(path), abort=True)",
+                    "func_fullName": "twtxt.cli.quickstart.overwrite_check(path)"
+                },
+                {
+                    "func_id": 89,
+                    "func_name": "__exit__",
+                    "func_desc": "Close the database connection .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __exit__(self, exc_type, exc_val, exc_tb):\n        return self.close()",
+                    "func_fullName": "twtxt.cache.Cache.__exit__(self, exc_type, exc_val, exc_tb)"
+                },
+                {
+                    "func_id": 100,
+                    "func_name": "close",
+                    "func_desc": "Closes Shelve object .",
+                    "func_file": "cache",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def close(self):\n        \"\"\"Closes Shelve object.\"\"\"\n        try:\n            self.cache.close()\n            return True\n        except AttributeError:\n            return False",
+                    "func_fullName": "twtxt.cache.Cache.close(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 19,
+            "feature_desc": "gamma=0.1500; k=19; a=0.25; combined=0.721; stability(ARI)=0.896; sep=0.349",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 84,
+                    "func_name": "format_mentions",
+                    "func_desc": "Searches the given text for mentions generated by expand_mention and returns a human - readable form .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def format_mentions(text, format_callback=format_mention):\n    \"\"\"Searches the given text for mentions generated by `expand_mention()` and returns a human-readable form.\n\n    For example:\n    \"@<bob http://example.org/twtxt.txt>\" will result in \"@bob\"\n\n    If you follow a source: source.nick will be bold\n    If you are the mentioned source: source.nick will be bold and coloured\n    If nothing from the above is true: nick will be unstyled\n    If nothing from the above is true and nick is not given: url will be used\n    \"\"\"\n\n    def handle_mention(match):\n        name, url = match.groups()\n        return format_callback(name, url)\n\n    return mention_re.sub(handle_mention, text)",
+                    "func_fullName": "twtxt.mentions.format_mentions(text, format_callback)"
+                },
+                {
+                    "func_id": 86,
+                    "func_name": "handle_mention",
+                    "func_desc": "Handle a mentions in the callback .",
+                    "func_file": "mentions",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_mention(match):\n        name, url = match.groups()\n        return format_callback(name, url)",
+                    "func_fullName": "twtxt.mentions.format_mentions.handle_mention(match)"
+                }
+            ]
+        }
+    ]
+}

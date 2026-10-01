@@ -1,0 +1,134 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 159,
+  "namespace": "alembic.operations.ops.CreateTableOp.from_table",
+  "model": "deepseek-v3.2",
+  "status": "context_limited",
+  "stop_reason": "context_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": true,
+  "context_records": [
+    {
+      "reason": "context_limit",
+      "input_estimate_before": 34573,
+      "input_estimate_after": 27009,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [
+        {
+          "message_index": 3,
+          "role": "tool",
+          "original_content_tokens": 734,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 5,
+          "role": "tool",
+          "original_content_tokens": 1192,
+          "retained_content_tokens": 0
+        },
+        {
+          "message_index": 9,
+          "role": "tool",
+          "original_content_tokens": 27719,
+          "retained_content_tokens": 22609
+        }
+      ],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nalembic/operations/ops.py\nline: 1176\nclass: CreateTableOp\nfunction: from_table\n\nalembic/operations/ops.py\nline: 1201\nfunction: CreateTableOp.to_table\n\nalembic/operations/ops.py\nline: 1333\nclass: DropTableOp\nfunction: from_table\n\nalembic/operations/schemaobj.py\nfunction: SchemaObjects.table\n\nalembic/operations/base.py\nfunction: Operations.register_operation\n```",
+  "final_locations": {
+    "files": [
+      "alembic/operations/ops.py",
+      "alembic/operations/schemaobj.py",
+      "alembic/operations/base.py"
+    ],
+    "entities": [
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateTableOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.CreateTableOp",
+        "start": 1145,
+        "end": 1303,
+        "code": "class CreateTableOp(MigrateOperation):\n    \"\"\"Represent a create table operation.\"\"\"\n\n    def __init__(\n        self,\n        table_name: str,\n        columns: Sequence[SchemaItem],\n        *,\n        schema: Optional[str] = None,\n        _namespace_metadata: Optional[MetaData] = None,\n        _constraints_included: bool = False,\n        **kw: Any,\n    ) -> None:\n        self.table_name = table_name\n        self.columns = columns\n        self.schema = schema\n        self.info = kw.pop(\"info\", {})\n        self.comment = kw.pop(\"comment\", None)\n        self.prefixes = kw.pop(\"prefixes\", None)\n        self.kw = kw\n        self._namespace_metadata = _namespace_metadata\n        self._constraints_included = _constraints_included\n\n    def reverse(self) -> DropTableOp:\n        return DropTableOp.from_table(\n            self.to_table(), _namespace_metadata=self._namespace_metadata\n        )\n\n    def to_diff_tuple(self) -> Tuple[str, Table]:\n        return (\"add_table\", self.to_table())\n\n    @classmethod\n    def from_table(\n        cls, table: Table, *, _namespace_metadata: Optional[MetaData] = None\n    ) -> CreateTableOp:\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def to_table(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> Table:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n\n        return schema_obj.table(\n            self.table_name,\n            *self.columns,\n            schema=self.schema,\n            prefixes=list(self.prefixes) if self.prefixes else [],\n            comment=self.comment,\n            info=self.info.copy() if self.info else {},\n            _constraints_included=self._constraints_included,\n            **self.kw,\n        )\n\n    @classmethod\n    def create_table(\n        cls,\n        operations: Operations,\n        table_name: str,\n        *columns: SchemaItem,\n        **kw: Any,\n    ) -> Table:\n        r\"\"\"Issue a \"create table\" instruction using the current migration\n        context.\n\n        This directive receives an argument list similar to that of the\n        traditional :class:`sqlalchemy.schema.Table` construct, but without the\n        metadata::\n\n            from sqlalchemy import INTEGER, VARCHAR, NVARCHAR, Column\n            from alembic import op\n\n            op.create_table(\n                \"account\",\n                Column(\"id\", INTEGER, primary_key=True),\n                Column(\"name\", VARCHAR(50), nullable=False),\n                Column(\"description\", NVARCHAR(200)),\n                Column(\"timestamp\", TIMESTAMP, server_default=func.now()),\n            )\n\n        Note that :meth:`.create_table` accepts\n        :class:`~sqlalchemy.schema.Column`\n        constructs directly from the SQLAlchemy library.  In particular,\n        default values to be created on the database side are\n        specified using the ``server_default`` parameter, and not\n        ``default`` which only specifies Python-side defaults::\n\n            from alembic import op\n            from sqlalchemy import Column, TIMESTAMP, func\n\n            # specify \"DEFAULT NOW\" along with the \"timestamp\" column\n            op.create_table(\n                \"account\",\n                Column(\"id\", INTEGER, primary_key=True),\n                Column(\"timestamp\", TIMESTAMP, server_default=func.now()),\n            )\n\n        The function also returns a newly created\n        :class:`~sqlalchemy.schema.Table` object, corresponding to the table\n        specification given, which is suitable for\n        immediate SQL operations, in particular\n        :meth:`.Operations.bulk_insert`::\n\n            from sqlalchemy import INTEGER, VARCHAR, NVARCHAR, Column\n            from alembic import op\n\n            account_table = op.create_table(\n                \"account\",\n                Column(\"id\", INTEGER, primary_key=True),\n                Column(\"name\", VARCHAR(50), nullable=False),\n                Column(\"description\", NVARCHAR(200)),\n                Column(\"timestamp\", TIMESTAMP, server_default=func.now()),\n            )\n\n            op.bulk_insert(\n                account_table,\n                [\n                    {\"name\": \"A1\", \"description\": \"account 1\"},\n                    {\"name\": \"A2\", \"description\": \"account 2\"},\n                ],\n            )\n\n        :param table_name: Name of the table\n        :param \\*columns: collection of :class:`~sqlalchemy.schema.Column`\n         objects within\n         the table, as well as optional :class:`~sqlalchemy.schema.Constraint`\n         objects\n         and :class:`~.sqlalchemy.schema.Index` objects.\n        :param schema: Optional schema name to operate within.  To control\n         quoting of the schema outside of the default behavior, use\n         the SQLAlchemy construct\n         :class:`~sqlalchemy.sql.elements.quoted_name`.\n        :param \\**kw: Other keyword arguments are passed to the underlying\n         :class:`sqlalchemy.schema.Table` object created for the command.\n\n        :return: the :class:`~sqlalchemy.schema.Table` object corresponding\n         to the parameters given.\n\n        \"\"\"\n        op = cls(table_name, columns, **kw)\n        return operations.invoke(op)"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "CreateTableOp.to_table",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.CreateTableOp.to_table",
+        "start": 1201,
+        "end": 1215,
+        "code": "    def to_table(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> Table:\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n\n        return schema_obj.table(\n            self.table_name,\n            *self.columns,\n            schema=self.schema,\n            prefixes=list(self.prefixes) if self.prefixes else [],\n            comment=self.comment,\n            info=self.info.copy() if self.info else {},\n            _constraints_included=self._constraints_included,\n            **self.kw,\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "DropTableOp.from_table",
+        "kind": "function",
+        "symbol": "alembic.operations.ops.DropTableOp.from_table",
+        "start": 1333,
+        "end": 1348,
+        "code": "    def from_table(\n        cls, table: Table, *, _namespace_metadata: Optional[MetaData] = None\n    ) -> DropTableOp:\n        return cls(\n            table.name,\n            schema=table.schema,\n            table_kw={\n                \"comment\": table.comment,\n                \"info\": dict(table.info),\n                \"prefixes\": list(table._prefixes),\n                **table.kwargs,\n            },\n            _reverse=CreateTableOp.from_table(\n                table, _namespace_metadata=_namespace_metadata\n            ),\n        )"
+      },
+      {
+        "file": "alembic/operations/ops.py",
+        "name": "DropTableOp",
+        "kind": "class",
+        "symbol": "alembic.operations.ops.DropTableOp",
+        "start": 1307,
+        "end": 1400,
+        "code": "class DropTableOp(MigrateOperation):\n    \"\"\"Represent a drop table operation.\"\"\"\n\n    def __init__(\n        self,\n        table_name: str,\n        *,\n        schema: Optional[str] = None,\n        table_kw: Optional[MutableMapping[Any, Any]] = None,\n        _reverse: Optional[CreateTableOp] = None,\n    ) -> None:\n        self.table_name = table_name\n        self.schema = schema\n        self.table_kw = table_kw or {}\n        self.comment = self.table_kw.pop(\"comment\", None)\n        self.info = self.table_kw.pop(\"info\", None)\n        self.prefixes = self.table_kw.pop(\"prefixes\", None)\n        self._reverse = _reverse\n\n    def to_diff_tuple(self) -> Tuple[str, Table]:\n        return (\"remove_table\", self.to_table())\n\n    def reverse(self) -> CreateTableOp:\n        return CreateTableOp.from_table(self.to_table())\n\n    @classmethod\n    def from_table(\n        cls, table: Table, *, _namespace_metadata: Optional[MetaData] = None\n    ) -> DropTableOp:\n        return cls(\n            table.name,\n            schema=table.schema,\n            table_kw={\n                \"comment\": table.comment,\n                \"info\": dict(table.info),\n                \"prefixes\": list(table._prefixes),\n                **table.kwargs,\n            },\n            _reverse=CreateTableOp.from_table(\n                table, _namespace_metadata=_namespace_metadata\n            ),\n        )\n\n    def to_table(\n        self, migration_context: Optional[MigrationContext] = None\n    ) -> Table:\n        if self._reverse:\n            cols_and_constraints = self._reverse.columns\n        else:\n            cols_and_constraints = []\n\n        schema_obj = schemaobj.SchemaObjects(migration_context)\n        t = schema_obj.table(\n            self.table_name,\n            *cols_and_constraints,\n            comment=self.comment,\n            info=self.info.copy() if self.info else {},\n            prefixes=list(self.prefixes) if self.prefixes else [],\n            schema=self.schema,\n            _constraints_included=self._reverse._constraints_included\n            if self._reverse\n            else False,\n            **self.table_kw,\n        )\n        return t\n\n    @classmethod\n    def drop_table(\n        cls,\n        operations: Operations,\n        table_name: str,\n        *,\n        schema: Optional[str] = None,\n        **kw: Any,\n    ) -> None:\n        r\"\"\"Issue a \"drop table\" instruction using the current\n        migration context.\n\n\n        e.g.::\n\n            drop_table(\"accounts\")\n\n        :param table_name: Name of the table\n        :param schema: Optional schema name to operate within.  To control\n         quoting of the schema outside of the default behavior, use\n         the SQLAlchemy construct\n         :class:`~sqlalchemy.sql.elements.quoted_name`.\n        :param \\**kw: Other keyword arguments are passed to the underlying\n         :class:`sqlalchemy.schema.Table` object created for the command.\n\n        \"\"\"\n        op = cls(table_name, schema=schema, table_kw=kw)\n        operations.invoke(op)"
+      },
+      {
+        "file": "alembic/operations/schemaobj.py",
+        "name": "SchemaObjects.table",
+        "kind": "function",
+        "symbol": "alembic.operations.schemaobj.SchemaObjects.table",
+        "start": 201,
+        "end": 236,
+        "code": "    def table(self, name: str, *columns, **kw) -> Table:\n        m = self.metadata()\n\n        cols = [\n            sqla_compat._copy(c) if c.table is not None else c\n            for c in columns\n            if isinstance(c, Column)\n        ]\n        # these flags have already added their UniqueConstraint /\n        # Index objects to the table, so flip them off here.\n        # SQLAlchemy tometadata() avoids this instead by preserving the\n        # flags and skipping the constraints that have _type_bound on them,\n        # but for a migration we'd rather list out the constraints\n        # explicitly.\n        _constraints_included = kw.pop(\"_constraints_included\", False)\n        if _constraints_included:\n            for c in cols:\n                c.unique = c.index = False\n\n        t = sa_schema.Table(name, m, *cols, **kw)\n\n        constraints = [\n            sqla_compat._copy(elem, target_table=t)\n            if getattr(elem, \"parent\", None) is not t\n            and getattr(elem, \"parent\", None) is not None\n            else elem\n            for elem in columns\n            if isinstance(elem, (Constraint, Index))\n        ]\n\n        for const in constraints:\n            t.append_constraint(const)\n\n        for f in t.foreign_keys:\n            self._ensure_table_for_fk(m, f)\n        return t"
+      }
+    ],
+    "unresolved": [
+      "alembic/operations/ops.py:function: from_table",
+      "alembic/operations/ops.py:function: from_table",
+      "alembic/operations/base.py:function: Operations.register_operation"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 10501
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 44361,
+    "completion_tokens": 1953,
+    "total_tokens": 46314,
+    "seconds": 103.5430920124054,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 132.15836429595947,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

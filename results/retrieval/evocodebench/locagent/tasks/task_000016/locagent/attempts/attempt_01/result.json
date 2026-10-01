@@ -1,0 +1,144 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 16,
+  "namespace": "litdata.streaming.serializers.NoHeaderTensorSerializer.deserialize",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 10546,
+      "input_estimate_after": 10546,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify the following reusable dependencies for implementing the `NoHeaderTensorSerializer.deserialize` method:\n\n```\nlitdata/streaming/serializers.py\nline: 169\nline: 176\nclass: TensorSerializer\nfunction: deserialize\n\nlitdata/streaming/serializers.py\nline: 260\nline: 262\nclass: NoHeaderNumpySerializer\nfunction: deserialize\n\nlitdata/constants.py\nline: 35\nline: 56\nvariable: _TORCH_DTYPES_MAPPING\n\nlitdata/streaming/serializers.py\nline: 191\nline: 196\nclass: NoHeaderTensorSerializer\nvariable: _dtype\n\nlitdata/streaming/serializers.py\nline: 124\nline: 126\nfunction: torch.frombuffer\n```",
+  "final_locations": {
+    "files": [
+      "litdata/streaming/serializers.py",
+      "litdata/constants.py"
+    ],
+    "entities": [
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "TensorSerializer.deserialize",
+        "kind": "function",
+        "symbol": "litdata.streaming.serializers.TensorSerializer.deserialize",
+        "start": 169,
+        "end": 180,
+        "code": "    def deserialize(self, data: bytes) -> torch.Tensor:\n        dtype_indice = np.frombuffer(data[0:4], np.uint32).item()\n        dtype = _TORCH_DTYPES_MAPPING[dtype_indice]\n        shape_size = np.frombuffer(data[4:8], np.uint32).item()\n        shape = []\n        for shape_idx in range(shape_size):\n            shape.append(np.frombuffer(data[8 + 4 * shape_idx : 8 + 4 * (shape_idx + 1)], np.uint32).item())\n        tensor = torch.frombuffer(data[8 + 4 * (shape_idx + 1) : len(data)], dtype=dtype)\n        shape = torch.Size(shape)\n        if tensor.shape == shape:\n            return tensor\n        return torch.reshape(tensor, shape)"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "TensorSerializer",
+        "kind": "class",
+        "symbol": "litdata.streaming.serializers.TensorSerializer",
+        "start": 153,
+        "end": 183,
+        "code": "class TensorSerializer(Serializer):\n    \"\"\"The TensorSerializer serialize and deserialize tensor to and from bytes.\"\"\"\n\n    def __init__(self) -> None:\n        super().__init__()\n        self._dtype_to_indices = {v: k for k, v in _TORCH_DTYPES_MAPPING.items()}\n\n    def serialize(self, item: torch.Tensor) -> Tuple[bytes, Optional[str]]:\n        dtype_indice = self._dtype_to_indices[item.dtype]\n        data = [np.uint32(dtype_indice).tobytes()]\n        data.append(np.uint32(len(item.shape)).tobytes())\n        for dim in item.shape:\n            data.append(np.uint32(dim).tobytes())\n        data.append(item.numpy().tobytes(order=\"C\"))\n        return b\"\".join(data), None\n\n    def deserialize(self, data: bytes) -> torch.Tensor:\n        dtype_indice = np.frombuffer(data[0:4], np.uint32).item()\n        dtype = _TORCH_DTYPES_MAPPING[dtype_indice]\n        shape_size = np.frombuffer(data[4:8], np.uint32).item()\n        shape = []\n        for shape_idx in range(shape_size):\n            shape.append(np.frombuffer(data[8 + 4 * shape_idx : 8 + 4 * (shape_idx + 1)], np.uint32).item())\n        tensor = torch.frombuffer(data[8 + 4 * (shape_idx + 1) : len(data)], dtype=dtype)\n        shape = torch.Size(shape)\n        if tensor.shape == shape:\n            return tensor\n        return torch.reshape(tensor, shape)\n\n    def can_serialize(self, item: torch.Tensor) -> bool:\n        return isinstance(item, torch.Tensor) and type(item) == torch.Tensor and len(item.shape) > 1"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "NoHeaderNumpySerializer.deserialize",
+        "kind": "function",
+        "symbol": "litdata.streaming.serializers.NoHeaderNumpySerializer.deserialize",
+        "start": 260,
+        "end": 262,
+        "code": "    def deserialize(self, data: bytes) -> np.ndarray:\n        assert self._dtype\n        return np.frombuffer(data, dtype=self._dtype)"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "NoHeaderNumpySerializer",
+        "kind": "class",
+        "symbol": "litdata.streaming.serializers.NoHeaderNumpySerializer",
+        "start": 245,
+        "end": 265,
+        "code": "class NoHeaderNumpySerializer(Serializer):\n    \"\"\"The NoHeaderNumpySerializer serialize and deserialize numpy to and from bytes.\"\"\"\n\n    def __init__(self) -> None:\n        super().__init__()\n        self._dtype_to_indices = {v: k for k, v in _NUMPY_DTYPES_MAPPING.items()}\n        self._dtype: Optional[np.dtype] = None\n\n    def setup(self, data_format: str) -> None:\n        self._dtype = _NUMPY_DTYPES_MAPPING[int(data_format.split(\":\")[1])]\n\n    def serialize(self, item: np.ndarray) -> Tuple[bytes, Optional[str]]:\n        dtype_indice: int = self._dtype_to_indices[item.dtype]\n        return item.tobytes(order=\"C\"), f\"no_header_numpy:{dtype_indice}\"\n\n    def deserialize(self, data: bytes) -> np.ndarray:\n        assert self._dtype\n        return np.frombuffer(data, dtype=self._dtype)\n\n    def can_serialize(self, item: np.ndarray) -> bool:\n        return isinstance(item, np.ndarray) and type(item) == np.ndarray and len(item.shape) == 1"
+      },
+      {
+        "file": "litdata/constants.py",
+        "name": "_TORCH_DTYPES_MAPPING",
+        "kind": "variable",
+        "symbol": "litdata.constants._TORCH_DTYPES_MAPPING",
+        "start": 35,
+        "end": 56,
+        "code": "_TORCH_DTYPES_MAPPING = {\n    0: torch.float32,\n    1: torch.float,\n    2: torch.float64,\n    3: torch.double,\n    4: torch.complex64,\n    5: torch.cfloat,\n    6: torch.complex128,\n    7: torch.cdouble,\n    8: torch.float16,\n    9: torch.half,\n    10: torch.bfloat16,  # Not supported https://github.com/pytorch/pytorch/issues/110285\n    11: torch.uint8,\n    12: torch.int8,\n    13: torch.int16,\n    14: torch.short,\n    15: torch.int32,\n    16: torch.int,\n    17: torch.int64,\n    18: torch.long,\n    19: torch.bool,\n}"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "NoHeaderTensorSerializer.__init__",
+        "kind": "function",
+        "symbol": "litdata.streaming.serializers.NoHeaderTensorSerializer.__init__",
+        "start": 189,
+        "end": 192,
+        "code": "    def __init__(self) -> None:\n        super().__init__()\n        self._dtype_to_indices = {v: k for k, v in _TORCH_DTYPES_MAPPING.items()}\n        self._dtype: Optional[torch.dtype] = None"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "NoHeaderTensorSerializer",
+        "kind": "class",
+        "symbol": "litdata.streaming.serializers.NoHeaderTensorSerializer",
+        "start": 186,
+        "end": 206,
+        "code": "class NoHeaderTensorSerializer(Serializer):\n    \"\"\"The TensorSerializer serialize and deserialize tensor to and from bytes.\"\"\"\n\n    def __init__(self) -> None:\n        super().__init__()\n        self._dtype_to_indices = {v: k for k, v in _TORCH_DTYPES_MAPPING.items()}\n        self._dtype: Optional[torch.dtype] = None\n\n    def setup(self, data_format: str) -> None:\n        self._dtype = _TORCH_DTYPES_MAPPING[int(data_format.split(\":\")[1])]\n\n    def serialize(self, item: torch.Tensor) -> Tuple[bytes, Optional[str]]:\n        dtype_indice = self._dtype_to_indices[item.dtype]\n        return item.numpy().tobytes(order=\"C\"), f\"no_header_tensor:{dtype_indice}\"\n\n    def deserialize(self, data: bytes) -> torch.Tensor:\n        pass\n\n\n    def can_serialize(self, item: torch.Tensor) -> bool:\n        return isinstance(item, torch.Tensor) and type(item) == torch.Tensor and len(item.shape) == 1"
+      },
+      {
+        "file": "litdata/streaming/serializers.py",
+        "name": "JPEGSerializer.deserialize",
+        "kind": "function",
+        "symbol": "litdata.streaming.serializers.JPEGSerializer.deserialize",
+        "start": 122,
+        "end": 134,
+        "code": "    def deserialize(self, data: bytes) -> Union[JpegImageFile, torch.Tensor]:\n        if _TORCH_VISION_AVAILABLE:\n            array = torch.frombuffer(data, dtype=torch.uint8)\n            try:\n                return decode_jpeg(array)\n            except RuntimeError:\n                # Note: Some datasets like Imagenet contains some PNG images with JPEG extension, so we fallback to PIL\n                pass\n\n        img = PILSerializer.deserialize(data)\n        if _TORCH_VISION_AVAILABLE:\n            img = pil_to_tensor(img)\n        return img"
+      }
+    ],
+    "unresolved": [
+      "litdata/streaming/serializers.py:function: deserialize",
+      "litdata/streaming/serializers.py:function: deserialize",
+      "litdata/streaming/serializers.py:variable: _dtype",
+      "litdata/streaming/serializers.py:function: torch.frombuffer"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "litdata.streaming.serializers.NoHeaderTensorSerializer._dtype"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 2,
+    "unresolved_locations": 4,
+    "returned_code_chars": 5336
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 33156,
+    "completion_tokens": 589,
+    "total_tokens": 33745,
+    "seconds": 73.2703423500061,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 148.59716725349426,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

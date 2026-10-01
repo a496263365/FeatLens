@@ -1,0 +1,133 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 414,
+  "namespace": "rest_framework.parsers.FileUploadParser.get_filename",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 11263,
+      "input_estimate_after": 11263,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the analysis of the repository structure and the evidence gathered, I have identified the key locations containing reusable dependencies and critical information for implementing the `get_filename` function in `FileUploadParser`. The target function needs to extract filenames from URL keyword arguments or Content-Disposition headers, which requires understanding the parser context, request handling, and related parser implementations.\n\nHere are the verified locations ordered by importance:\n\n```\nrest_framework/parsers.py\nline: 125\nclass: FileUploadParser\nfunction: parse\n\nrest_framework/views.py\nline: 192\nfunction: APIView.get_parser_context\n\nrest_framework/parsers.py\nline: 92\nclass: MultiPartParser\nfunction: parse\n\nrest_framework/request.py\nline: 292\nfunction: Request._load_stream\n\nrest_framework/parsers.py\nline: -1\nclass: DataAndFiles\n```",
+  "final_locations": {
+    "files": [
+      "rest_framework/parsers.py",
+      "rest_framework/views.py",
+      "rest_framework/request.py"
+    ],
+    "entities": [
+      {
+        "file": "rest_framework/parsers.py",
+        "name": "FileUploadParser.parse",
+        "kind": "function",
+        "symbol": "rest_framework.parsers.FileUploadParser.parse",
+        "start": 125,
+        "end": 190,
+        "code": "    def parse(self, stream, media_type=None, parser_context=None):\n        \"\"\"\n        Treats the incoming bytestream as a raw file upload and returns\n        a `DataAndFiles` object.\n\n        `.data` will be None (we expect request body to be a file content).\n        `.files` will be a `QueryDict` containing one 'file' element.\n        \"\"\"\n        parser_context = parser_context or {}\n        request = parser_context['request']\n        encoding = parser_context.get('encoding', settings.DEFAULT_CHARSET)\n        meta = request.META\n        upload_handlers = request.upload_handlers\n        filename = self.get_filename(stream, media_type, parser_context)\n\n        if not filename:\n            raise ParseError(self.errors['no_filename'])\n\n        # Note that this code is extracted from Django's handling of\n        # file uploads in MultiPartParser.\n        content_type = meta.get('HTTP_CONTENT_TYPE',\n                                meta.get('CONTENT_TYPE', ''))\n        try:\n            content_length = int(meta.get('HTTP_CONTENT_LENGTH',\n                                          meta.get('CONTENT_LENGTH', 0)))\n        except (ValueError, TypeError):\n            content_length = None\n\n        # See if the handler will want to take care of the parsing.\n        for handler in upload_handlers:\n            result = handler.handle_raw_input(stream,\n                                              meta,\n                                              content_length,\n                                              None,\n                                              encoding)\n            if result is not None:\n                return DataAndFiles({}, {'file': result[1]})\n\n        # This is the standard case.\n        possible_sizes = [x.chunk_size for x in upload_handlers if x.chunk_size]\n        chunk_size = min([2 ** 31 - 4] + possible_sizes)\n        chunks = ChunkIter(stream, chunk_size)\n        counters = [0] * len(upload_handlers)\n\n        for index, handler in enumerate(upload_handlers):\n            try:\n                handler.new_file(None, filename, content_type,\n                                 content_length, encoding)\n            except StopFutureHandlers:\n                upload_handlers = upload_handlers[:index + 1]\n                break\n\n        for chunk in chunks:\n            for index, handler in enumerate(upload_handlers):\n                chunk_length = len(chunk)\n                chunk = handler.receive_data_chunk(chunk, counters[index])\n                counters[index] += chunk_length\n                if chunk is None:\n                    break\n\n        for index, handler in enumerate(upload_handlers):\n            file_obj = handler.file_complete(counters[index])\n            if file_obj is not None:\n                return DataAndFiles({}, {'file': file_obj})\n\n        raise ParseError(self.errors['unhandled'])"
+      },
+      {
+        "file": "rest_framework/parsers.py",
+        "name": "FileUploadParser",
+        "kind": "class",
+        "symbol": "rest_framework.parsers.FileUploadParser",
+        "start": 115,
+        "end": 193,
+        "code": "class FileUploadParser(BaseParser):\n    \"\"\"\n    Parser for file upload data.\n    \"\"\"\n    media_type = '*/*'\n    errors = {\n        'unhandled': 'FileUpload parse error - none of upload handlers can handle the stream',\n        'no_filename': 'Missing filename. Request should include a Content-Disposition header with a filename parameter.',\n    }\n\n    def parse(self, stream, media_type=None, parser_context=None):\n        \"\"\"\n        Treats the incoming bytestream as a raw file upload and returns\n        a `DataAndFiles` object.\n\n        `.data` will be None (we expect request body to be a file content).\n        `.files` will be a `QueryDict` containing one 'file' element.\n        \"\"\"\n        parser_context = parser_context or {}\n        request = parser_context['request']\n        encoding = parser_context.get('encoding', settings.DEFAULT_CHARSET)\n        meta = request.META\n        upload_handlers = request.upload_handlers\n        filename = self.get_filename(stream, media_type, parser_context)\n\n        if not filename:\n            raise ParseError(self.errors['no_filename'])\n\n        # Note that this code is extracted from Django's handling of\n        # file uploads in MultiPartParser.\n        content_type = meta.get('HTTP_CONTENT_TYPE',\n                                meta.get('CONTENT_TYPE', ''))\n        try:\n            content_length = int(meta.get('HTTP_CONTENT_LENGTH',\n                                          meta.get('CONTENT_LENGTH', 0)))\n        except (ValueError, TypeError):\n            content_length = None\n\n        # See if the handler will want to take care of the parsing.\n        for handler in upload_handlers:\n            result = handler.handle_raw_input(stream,\n                                              meta,\n                                              content_length,\n                                              None,\n                                              encoding)\n            if result is not None:\n                return DataAndFiles({}, {'file': result[1]})\n\n        # This is the standard case.\n        possible_sizes = [x.chunk_size for x in upload_handlers if x.chunk_size]\n        chunk_size = min([2 ** 31 - 4] + possible_sizes)\n        chunks = ChunkIter(stream, chunk_size)\n        counters = [0] * len(upload_handlers)\n\n        for index, handler in enumerate(upload_handlers):\n            try:\n                handler.new_file(None, filename, content_type,\n                                 content_length, encoding)\n            except StopFutureHandlers:\n                upload_handlers = upload_handlers[:index + 1]\n                break\n\n        for chunk in chunks:\n            for index, handler in enumerate(upload_handlers):\n                chunk_length = len(chunk)\n                chunk = handler.receive_data_chunk(chunk, counters[index])\n                counters[index] += chunk_length\n                if chunk is None:\n                    break\n\n        for index, handler in enumerate(upload_handlers):\n            file_obj = handler.file_complete(counters[index])\n            if file_obj is not None:\n                return DataAndFiles({}, {'file': file_obj})\n\n        raise ParseError(self.errors['unhandled'])\n\n    def get_filename(self, stream, media_type, parser_context):\n        pass"
+      },
+      {
+        "file": "rest_framework/views.py",
+        "name": "APIView.get_parser_context",
+        "kind": "function",
+        "symbol": "rest_framework.views.APIView.get_parser_context",
+        "start": 192,
+        "end": 203,
+        "code": "    def get_parser_context(self, http_request):\n        \"\"\"\n        Returns a dict that is passed through to Parser.parse(),\n        as the `parser_context` keyword argument.\n        \"\"\"\n        # Note: Additionally `request` and `encoding` will also be added\n        #       to the context by the Request object.\n        return {\n            'view': self,\n            'args': getattr(self, 'args', ()),\n            'kwargs': getattr(self, 'kwargs', {})\n        }"
+      },
+      {
+        "file": "rest_framework/parsers.py",
+        "name": "MultiPartParser.parse",
+        "kind": "function",
+        "symbol": "rest_framework.parsers.MultiPartParser.parse",
+        "start": 92,
+        "end": 112,
+        "code": "    def parse(self, stream, media_type=None, parser_context=None):\n        \"\"\"\n        Parses the incoming bytestream as a multipart encoded form,\n        and returns a DataAndFiles object.\n\n        `.data` will be a `QueryDict` containing all the form parameters.\n        `.files` will be a `QueryDict` containing all the form files.\n        \"\"\"\n        parser_context = parser_context or {}\n        request = parser_context['request']\n        encoding = parser_context.get('encoding', settings.DEFAULT_CHARSET)\n        meta = request.META.copy()\n        meta['CONTENT_TYPE'] = media_type\n        upload_handlers = request.upload_handlers\n\n        try:\n            parser = DjangoMultiPartParser(meta, stream, upload_handlers, encoding)\n            data, files = parser.parse()\n            return DataAndFiles(data, files)\n        except MultiPartParserError as exc:\n            raise ParseError('Multipart form parse error - %s' % str(exc))"
+      },
+      {
+        "file": "rest_framework/parsers.py",
+        "name": "MultiPartParser",
+        "kind": "class",
+        "symbol": "rest_framework.parsers.MultiPartParser",
+        "start": 86,
+        "end": 112,
+        "code": "class MultiPartParser(BaseParser):\n    \"\"\"\n    Parser for multipart form data, which may include file data.\n    \"\"\"\n    media_type = 'multipart/form-data'\n\n    def parse(self, stream, media_type=None, parser_context=None):\n        \"\"\"\n        Parses the incoming bytestream as a multipart encoded form,\n        and returns a DataAndFiles object.\n\n        `.data` will be a `QueryDict` containing all the form parameters.\n        `.files` will be a `QueryDict` containing all the form files.\n        \"\"\"\n        parser_context = parser_context or {}\n        request = parser_context['request']\n        encoding = parser_context.get('encoding', settings.DEFAULT_CHARSET)\n        meta = request.META.copy()\n        meta['CONTENT_TYPE'] = media_type\n        upload_handlers = request.upload_handlers\n\n        try:\n            parser = DjangoMultiPartParser(meta, stream, upload_handlers, encoding)\n            data, files = parser.parse()\n            return DataAndFiles(data, files)\n        except MultiPartParserError as exc:\n            raise ParseError('Multipart form parse error - %s' % str(exc))"
+      },
+      {
+        "file": "rest_framework/request.py",
+        "name": "Request._load_stream",
+        "kind": "function",
+        "symbol": "rest_framework.request.Request._load_stream",
+        "start": 292,
+        "end": 309,
+        "code": "    def _load_stream(self):\n        \"\"\"\n        Return the content body of the request, as a stream.\n        \"\"\"\n        meta = self._request.META\n        try:\n            content_length = int(\n                meta.get('CONTENT_LENGTH', meta.get('HTTP_CONTENT_LENGTH', 0))\n            )\n        except (ValueError, TypeError):\n            content_length = 0\n\n        if content_length == 0:\n            self._stream = None\n        elif not self._request._read_started:\n            self._stream = self._request\n        else:\n            self._stream = io.BytesIO(self.body)"
+      },
+      {
+        "file": "rest_framework/parsers.py",
+        "name": "DataAndFiles",
+        "kind": "class",
+        "symbol": "rest_framework.parsers.DataAndFiles",
+        "start": 24,
+        "end": 27,
+        "code": "class DataAndFiles:\n    def __init__(self, data, files):\n        self.data = data\n        self.files = files"
+      }
+    ],
+    "unresolved": [
+      "rest_framework/parsers.py:function: parse",
+      "rest_framework/parsers.py:function: parse",
+      "rest_framework/parsers.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 3,
+    "unresolved_locations": 3,
+    "returned_code_chars": 9317
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 38054,
+    "completion_tokens": 547,
+    "total_tokens": 38601,
+    "seconds": 46.561355113983154,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 80.72740459442139,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

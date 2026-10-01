@@ -1,0 +1,116 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 960,
+  "namespace": "dominate.dom_tag.dom_tag.render",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7417,
+      "input_estimate_after": 7417,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence gathered, here are the key reusable dependencies for implementing the `render` functionality in `dominate/dom_tag.py`:\n\n```\ndominate/dom_tag.py\nline: 330-365\nfunction: dom_tag._render\n\ndominate/dom_tag.py\nline: 367-379\nfunction: dom_tag._render_children\n\ndominate/util.py\nline: (implied by usage)\nfunction: util.escape\n\ndominate/dom_tag.py\nline: 396-448\nfunction: dom_tag.clean_attribute\nfunction: dom_tag.clean_pair\n```",
+  "final_locations": {
+    "files": [
+      "dominate/dom_tag.py",
+      "dominate/util.py"
+    ],
+    "entities": [
+      {
+        "file": "dominate/dom_tag.py",
+        "name": "dom_tag._render",
+        "kind": "function",
+        "symbol": "dominate.dom_tag.dom_tag._render",
+        "start": 330,
+        "end": 365,
+        "code": "  def _render(self, sb, indent_level, indent_str, pretty, xhtml):\n    pretty = pretty and self.is_pretty\n\n    name = getattr(self, 'tagname', type(self).__name__)\n\n    # Workaround for python keywords and standard classes/methods\n    # (del, object, input)\n    if name[-1] == '_':\n      name = name[:-1]\n\n    # open tag\n    sb.append('<')\n    sb.append(name)\n\n    for attribute, value in sorted(self.attributes.items()):\n      if value in (False, None):\n        continue\n      val = unicode(value) if isinstance(value, util.text) and not value.escape else util.escape(unicode(value), True)\n      sb.append(' %s=\"%s\"' % (attribute, val))\n\n    sb.append(' />' if self.is_single and xhtml else '>')\n\n    if self.is_single:\n      return sb\n\n    inline = self._render_children(sb, indent_level + 1, indent_str, pretty, xhtml)\n    if pretty and not inline:\n      sb.append('\\n')\n      sb.append(indent_str * indent_level)\n\n    # close tag\n    sb.append('</')\n    sb.append(name)\n    sb.append('>')\n\n    return sb"
+      },
+      {
+        "file": "dominate/dom_tag.py",
+        "name": "dom_tag._render_children",
+        "kind": "function",
+        "symbol": "dominate.dom_tag.dom_tag._render_children",
+        "start": 367,
+        "end": 379,
+        "code": "  def _render_children(self, sb, indent_level, indent_str, pretty, xhtml):\n    inline = True\n    for child in self.children:\n      if isinstance(child, dom_tag):\n        if pretty and not child.is_inline:\n          inline = False\n          sb.append('\\n')\n          sb.append(indent_str * indent_level)\n        child._render(sb, indent_level, indent_str, pretty, xhtml)\n      else:\n        sb.append(unicode(child))\n\n    return inline"
+      },
+      {
+        "file": "dominate/dom_tag.py",
+        "name": "dom_tag",
+        "kind": "class",
+        "symbol": "dominate.dom_tag.dom_tag",
+        "start": 54,
+        "end": 448,
+        "code": "class dom_tag(object):\n  is_single = False  # Tag does not require matching end tag (ex. <hr/>)\n  is_pretty = True   # Text inside the tag should be left as-is (ex. <pre>)\n                     # otherwise, text will be escaped() and whitespace may be\n                     # modified\n  is_inline = False\n\n\n  def __new__(_cls, *args, **kwargs):\n    '''\n    Check if bare tag is being used a a decorator\n    (called with a single function arg).\n    decorate the function and return\n    '''\n    if len(args) == 1 and isinstance(args[0], Callable) \\\n        and not isinstance(args[0], dom_tag) and not kwargs:\n      wrapped = args[0]\n\n      @wraps(wrapped)\n      def f(*args, **kwargs):\n        with _cls() as _tag:\n          return wrapped(*args, **kwargs) or _tag\n      return f\n    return object.__new__(_cls)\n\n\n  def __init__(self, *args, **kwargs):\n    '''\n    Creates a new tag. Child tags should be passed as arguments and attributes\n    should be passed as keyword arguments.\n\n    There is a non-rendering attribute which controls how the tag renders:\n\n    * `__inline` - Boolean value. If True renders all children tags on the same\n                   line.\n    '''\n\n    self.attributes = {}\n    self.children   = []\n    self.parent     = None\n\n    # Does not insert newlines on all children if True (recursive attribute)\n    self.is_inline = kwargs.pop('__inline', self.is_inline)\n    self.is_pretty = kwargs.pop('__pretty', self.is_pretty)\n\n    #Add child elements\n    if args:\n      self.add(*args)\n\n    for attr, value in kwargs.items():\n      self.set_attribute(*type(self).clean_pair(attr, value))\n\n    self._ctx = None\n    self._add_to_ctx()\n\n\n  # context manager\n  frame = namedtuple('frame', ['tag', 'items', 'used'])\n  # stack of frames\n  _with_contexts = defaultdict(list)\n\n  def _add_to_ctx(self):\n    stack = dom_tag._with_contexts.get(_get_thread_context())\n    if stack:\n      self._ctx = stack[-1]\n      stack[-1].items.append(self)\n\n\n  def __enter__(self):\n    stack = dom_tag._with_contexts[_get_thread_context()]\n    stack.append(dom_tag.frame(self, [], set()))\n    return self\n\n\n  def __exit__(self, type, value, traceback):\n    thread_id = _get_thread_context()\n    stack = dom_tag._with_contexts[thread_id]\n    frame = stack.pop()\n    for item in frame.items:\n      if item in frame.used: continue\n      self.add(item)\n    if not stack:\n      del dom_tag._with_contexts[thread_id]\n\n\n  def __call__(self, func):\n    '''\n    tag instance is being used as a decorator.\n    wrap func to make a copy of this tag\n    '''\n    # remove decorator from its context so it doesn't\n    # get added in where it was defined\n    if self._ctx:\n      self._ctx.used.add(self)\n\n    @wraps(func)\n    def f(*args, **kwargs):\n      tag = copy.deepcopy(self)\n      tag._add_to_ctx()\n      with tag:\n        return func(*args, **kwargs) or tag\n    return f\n\n\n  def set_attribute(self, key, value):\n    '''\n    Add or update the value of an attribute.\n    '''\n    if isinstance(key, int):\n      self.children[key] = value\n    elif isinstance(key, basestring):\n      self.attributes[key] = value\n    else:\n      raise TypeError('Only integer and string types are valid for assigning '\n          'child tags and attributes, respectively.')\n  __setitem__ = set_attribute\n\n\n  def delete_attribute(self, key):\n    if isinstance(key, int):\n      del self.children[key:key+1]\n    else:\n      del self.attributes[key]\n  __delitem__ = delete_attribute\n\n\n  def add(self, *args):\n    '''\n    Add new child tags.\n    '''\n    for obj in args:\n      if isinstance(obj, numbers.Number):\n        # Convert to string so we fall into next if block\n        obj = str(obj)\n\n      if isinstance(obj, basestring):\n        obj = util.escape(obj)\n        self.children.append(obj)\n\n      elif isinstance(obj, dom_tag):\n        stack = dom_tag._with_contexts.get(_get_thread_context(), [])\n        for s in stack:\n          s.used.add(obj)\n        self.children.append(obj)\n        obj.parent = self\n\n      elif isinstance(obj, dict):\n        for attr, value in obj.items():\n          self.set_attribute(*dom_tag.clean_pair(attr, value))\n\n      elif hasattr(obj, '__iter__'):\n        for subobj in obj:\n          self.add(subobj)\n\n      else:  # wtf is it?\n        raise ValueError('%r not a tag or string.' % obj)\n\n    if len(args) == 1:\n      return args[0]\n\n    return args\n\n\n  def add_raw_string(self, s):\n    self.children.append(s)\n\n\n  def remove(self, obj):\n    self.children.remove(obj)\n\n\n  def clear(self):\n    for i in self.children:\n      if isinstance(i, dom_tag) and i.parent is self:\n        i.parent = None\n    self.children = []\n\n\n  def get(self, tag=None, **kwargs):\n    '''\n    Recursively searches children for tags of a certain\n    type with matching attributes.\n    '''\n    # Stupid workaround since we can not use dom_tag in the method declaration\n    if tag is None: tag = dom_tag\n\n    attrs = [(dom_tag.clean_attribute(attr), value)\n        for attr, value in kwargs.items()]\n\n    results = []\n    for child in self.children:\n      if (isinstance(tag, basestring) and type(child).__name__ == tag) or \\\n        (not isinstance(tag, basestring) and isinstance(child, tag)):\n\n        if all(child.attributes.get(attribute) == value\n            for attribute, value in attrs):\n          # If the child is of correct type and has all attributes and values\n          # in kwargs add as a result\n          results.append(child)\n      if isinstance(child, dom_tag):\n        # If the child is a dom_tag extend the search down through its children\n        results.extend(child.get(tag, **kwargs))\n    return results\n\n\n  def __getitem__(self, key):\n    '''\n    Returns the stored value of the specified attribute or child\n    (if it exists).\n    '''\n    if isinstance(key, int):\n      # Children are accessed using integers\n      try:\n        return object.__getattribute__(self, 'children')[key]\n      except IndexError:\n        raise IndexError('Child with index \"%s\" does not exist.' % key)\n    elif isinstance(key, basestring):\n      # Attributes are accessed using strings\n      try:\n        return object.__getattribute__(self, 'attributes')[key]\n      except KeyError:\n        raise AttributeError('Attribute \"%s\" does not exist.' % key)\n    else:\n      raise TypeError('Only integer and string types are valid for accessing '\n          'child tags and attributes, respectively.')\n  __getattr__ = __getitem__\n\n\n  def __len__(self):\n    '''\n    Number of child elements.\n    '''\n    return len(self.children)\n\n\n  def __bool__(self):\n    '''\n    Hack for \"if x\" and __len__\n    '''\n    return True\n  __nonzero__ = __bool__\n\n\n  def __iter__(self):\n    '''\n    Iterates over child elements.\n    '''\n    return self.children.__iter__()\n\n\n  def __contains__(self, item):\n    '''\n    Checks recursively if item is in children tree.\n    Accepts both a string and a class.\n    '''\n    return bool(self.get(item))\n\n\n  def __iadd__(self, obj):\n    '''\n    Reflexive binary addition simply adds tag as a child.\n    '''\n    self.add(obj)\n    return self\n\n  # String and unicode representations are the same as render()\n  def __unicode__(self):\n    return self.render()\n  __str__ = __unicode__\n\n\n  def render(self, indent='  ', pretty=True, xhtml=False):\n    pass\n\n\n\n  def _render(self, sb, indent_level, indent_str, pretty, xhtml):\n    pretty = pretty and self.is_pretty\n\n    name = getattr(self, 'tagname', type(self).__name__)\n\n    # Workaround for python keywords and standard classes/methods\n    # (del, object, input)\n    if name[-1] == '_':\n      name = name[:-1]\n\n    # open tag\n    sb.append('<')\n    sb.append(name)\n\n    for attribute, value in sorted(self.attributes.items()):\n      if value in (False, None):\n        continue\n      val = unicode(value) if isinstance(value, util.text) and not value.escape else util.escape(unicode(value), True)\n      sb.append(' %s=\"%s\"' % (attribute, val))\n\n    sb.append(' />' if self.is_single and xhtml else '>')\n\n    if self.is_single:\n      return sb\n\n    inline = self._render_children(sb, indent_level + 1, indent_str, pretty, xhtml)\n    if pretty and not inline:\n      sb.append('\\n')\n      sb.append(indent_str * indent_level)\n\n    # close tag\n    sb.append('</')\n    sb.append(name)\n    sb.append('>')\n\n    return sb\n\n  def _render_children(self, sb, indent_level, indent_str, pretty, xhtml):\n    inline = True\n    for child in self.children:\n      if isinstance(child, dom_tag):\n        if pretty and not child.is_inline:\n          inline = False\n          sb.append('\\n')\n          sb.append(indent_str * indent_level)\n        child._render(sb, indent_level, indent_str, pretty, xhtml)\n      else:\n        sb.append(unicode(child))\n\n    return inline\n\n\n  def __repr__(self):\n    name = '%s.%s' % (self.__module__, type(self).__name__)\n\n    attributes_len = len(self.attributes)\n    attributes = '%s attribute' % attributes_len\n    if attributes_len != 1: attributes += 's'\n\n    children_len = len(self.children)\n    children = '%s child' % children_len\n    if children_len != 1: children += 'ren'\n\n    return '<%s at %x: %s, %s>' % (name, id(self), attributes, children)\n\n\n  @staticmethod\n  def clean_attribute(attribute):\n    '''\n    Normalize attribute names for shorthand and work arounds for limitations\n    in Python's syntax\n    '''\n\n    # Shorthand\n    attribute = {\n      'cls': 'class',\n      'className': 'class',\n      'class_name': 'class',\n      'klass': 'class',\n      'fr': 'for',\n      'html_for': 'for',\n      'htmlFor': 'for',\n      'phor': 'for',\n    }.get(attribute, attribute)\n\n    # Workaround for Python's reserved words\n    if attribute[0] == '_':\n      attribute = attribute[1:]\n\n    # Workaround for dash\n    special_prefix = any([attribute.startswith(x) for x in ('data_', 'aria_')])\n    if attribute in set(['http_equiv']) or special_prefix:\n      attribute = attribute.replace('_', '-').lower()\n\n    # Workaround for colon\n    if attribute.split('_')[0] in ('xlink', 'xml', 'xmlns'):\n      attribute = attribute.replace('_', ':', 1).lower()\n\n    return attribute\n\n\n  @classmethod\n  def clean_pair(cls, attribute, value):\n    '''\n    This will call `clean_attribute` on the attribute and also allows for the\n    creation of boolean attributes.\n\n    Ex. input(selected=True) is equivalent to input(selected=\"selected\")\n    '''\n    attribute = cls.clean_attribute(attribute)\n\n    # Check for boolean attributes\n    # (i.e. selected=True becomes selected=\"selected\")\n    if value is True:\n      value = attribute\n\n    # Ignore `if value is False`: this is filtered out in render()\n\n    return (attribute, value)"
+      },
+      {
+        "file": "dominate/dom_tag.py",
+        "name": "dom_tag.clean_pair",
+        "kind": "function",
+        "symbol": "dominate.dom_tag.dom_tag.clean_pair",
+        "start": 432,
+        "end": 448,
+        "code": "  def clean_pair(cls, attribute, value):\n    '''\n    This will call `clean_attribute` on the attribute and also allows for the\n    creation of boolean attributes.\n\n    Ex. input(selected=True) is equivalent to input(selected=\"selected\")\n    '''\n    attribute = cls.clean_attribute(attribute)\n\n    # Check for boolean attributes\n    # (i.e. selected=True becomes selected=\"selected\")\n    if value is True:\n      value = attribute\n\n    # Ignore `if value is False`: this is filtered out in render()\n\n    return (attribute, value)"
+      },
+      {
+        "file": "dominate/dom_tag.py",
+        "name": "dom_tag.clean_attribute",
+        "kind": "function",
+        "symbol": "dominate.dom_tag.dom_tag.clean_attribute",
+        "start": 397,
+        "end": 428,
+        "code": "  def clean_attribute(attribute):\n    '''\n    Normalize attribute names for shorthand and work arounds for limitations\n    in Python's syntax\n    '''\n\n    # Shorthand\n    attribute = {\n      'cls': 'class',\n      'className': 'class',\n      'class_name': 'class',\n      'klass': 'class',\n      'fr': 'for',\n      'html_for': 'for',\n      'htmlFor': 'for',\n      'phor': 'for',\n    }.get(attribute, attribute)\n\n    # Workaround for Python's reserved words\n    if attribute[0] == '_':\n      attribute = attribute[1:]\n\n    # Workaround for dash\n    special_prefix = any([attribute.startswith(x) for x in ('data_', 'aria_')])\n    if attribute in set(['http_equiv']) or special_prefix:\n      attribute = attribute.replace('_', '-').lower()\n\n    # Workaround for colon\n    if attribute.split('_')[0] in ('xlink', 'xml', 'xmlns'):\n      attribute = attribute.replace('_', ':', 1).lower()\n\n    return attribute"
+      }
+    ],
+    "unresolved": [
+      "dominate/util.py:function: util.escape"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 1,
+    "hit_dependencies": [
+      "dominate.dom_tag.dom_tag._render"
+    ],
+    "exact_hit_dependencies": [
+      "dominate.dom_tag.dom_tag._render"
+    ],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 13446
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26794,
+    "completion_tokens": 499,
+    "total_tokens": 27293,
+    "seconds": 38.48493266105652,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 39.958216190338135,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,139 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 226,
+  "namespace": "datasette.utils.asgi.Response.json",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 9078,
+      "input_estimate_after": 9078,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I have identified the following locations containing reusable dependencies for implementing the `Response.json` class method in `datasette/utils/asgi.py`:\n\n```\ndatasette/utils/asgi.py\nline: 216\nfunction: asgi_send_json\n\ndatasette/utils/asgi.py\nline: 248\nfunction: asgi_send\n\ndatasette/utils/asgi.py\nline: 253\nfunction: asgi_start\n\ndatasette/utils/asgi.py\nline: III\nclass: Response\nline: 386\nfunction: Response.html\nline: 394\nfunction: Response.text\nline: 413\nfunction: Response.redirect\n\ndatasette/utils/__init__.py\nline: 6\nclass: CustomJSONEncoder\n```\n\nThese locations provide the necessary reusable components:\n1. `asgi_send_json` shows how to serialize JSON and set appropriate headers\n2. `asgi_send` and `asgi_start` demonstrate the ASGI response pattern\n3. The `Response` class and its existing class methods (`html`, `text`, `redirect`) provide the template for implementing `json`\n4. `CustomJSONEncoder` provides the JSON serialization mechanism used elsewhere in the codebase",
+  "final_locations": {
+    "files": [
+      "datasette/utils/asgi.py",
+      "datasette/utils/__init__.py"
+    ],
+    "entities": [
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "asgi_send_json",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.asgi_send_json",
+        "start": 216,
+        "end": 224,
+        "code": "async def asgi_send_json(send, info, status=200, headers=None):\n    headers = headers or {}\n    await asgi_send(\n        send,\n        json.dumps(info),\n        status=status,\n        headers=headers,\n        content_type=\"application/json; charset=utf-8\",\n    )"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "asgi_send",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.asgi_send",
+        "start": 248,
+        "end": 250,
+        "code": "async def asgi_send(send, content, status, headers=None, content_type=\"text/plain\"):\n    await asgi_start(send, status, headers, content_type)\n    await send({\"type\": \"http.response.body\", \"body\": content.encode(\"utf-8\")})"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "asgi_start",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.asgi_start",
+        "start": 253,
+        "end": 267,
+        "code": "async def asgi_start(send, status, headers=None, content_type=\"text/plain\"):\n    headers = headers or {}\n    # Remove any existing content-type header\n    headers = {k: v for k, v in headers.items() if k.lower() != \"content-type\"}\n    headers[\"content-type\"] = content_type\n    await send(\n        {\n            \"type\": \"http.response.start\",\n            \"status\": status,\n            \"headers\": [\n                [key.encode(\"latin1\"), value.encode(\"latin1\")]\n                for key, value in headers.items()\n            ],\n        }\n    )"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Response",
+        "kind": "class",
+        "symbol": "datasette.utils.asgi.Response",
+        "start": 324,
+        "end": 416,
+        "code": "class Response:\n    def __init__(self, body=None, status=200, headers=None, content_type=\"text/plain\"):\n        self.body = body\n        self.status = status\n        self.headers = headers or {}\n        self._set_cookie_headers = []\n        self.content_type = content_type\n\n    async def asgi_send(self, send):\n        headers = {}\n        headers.update(self.headers)\n        headers[\"content-type\"] = self.content_type\n        raw_headers = [\n            [key.encode(\"utf-8\"), value.encode(\"utf-8\")]\n            for key, value in headers.items()\n        ]\n        for set_cookie in self._set_cookie_headers:\n            raw_headers.append([b\"set-cookie\", set_cookie.encode(\"utf-8\")])\n        await send(\n            {\n                \"type\": \"http.response.start\",\n                \"status\": self.status,\n                \"headers\": raw_headers,\n            }\n        )\n        body = self.body\n        if not isinstance(body, bytes):\n            body = body.encode(\"utf-8\")\n        await send({\"type\": \"http.response.body\", \"body\": body})\n\n    def set_cookie(\n        self,\n        key,\n        value=\"\",\n        max_age=None,\n        expires=None,\n        path=\"/\",\n        domain=None,\n        secure=False,\n        httponly=False,\n        samesite=\"lax\",\n    ):\n        assert samesite in SAMESITE_VALUES, \"samesite should be one of {}\".format(\n            SAMESITE_VALUES\n        )\n        cookie = SimpleCookie()\n        cookie[key] = value\n        for prop_name, prop_value in (\n            (\"max_age\", max_age),\n            (\"expires\", expires),\n            (\"path\", path),\n            (\"domain\", domain),\n            (\"samesite\", samesite),\n        ):\n            if prop_value is not None:\n                cookie[key][prop_name.replace(\"_\", \"-\")] = prop_value\n        for prop_name, prop_value in ((\"secure\", secure), (\"httponly\", httponly)):\n            if prop_value:\n                cookie[key][prop_name] = True\n        self._set_cookie_headers.append(cookie.output(header=\"\").strip())\n\n    @classmethod\n    def html(cls, body, status=200, headers=None):\n        return cls(\n            body,\n            status=status,\n            headers=headers,\n            content_type=\"text/html; charset=utf-8\",\n        )\n\n    @classmethod\n    def text(cls, body, status=200, headers=None):\n        return cls(\n            str(body),\n            status=status,\n            headers=headers,\n            content_type=\"text/plain; charset=utf-8\",\n        )\n\n    @classmethod\n    def json(cls, body, status=200, headers=None, default=None):\n        pass\n\n\n\n\n\n\n    @classmethod\n    def redirect(cls, path, status=302, headers=None):\n        headers = headers or {}\n        headers[\"Location\"] = path\n        return cls(\"\", status=status, headers=headers)"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Response.html",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.Response.html",
+        "start": 386,
+        "end": 392,
+        "code": "    def html(cls, body, status=200, headers=None):\n        return cls(\n            body,\n            status=status,\n            headers=headers,\n            content_type=\"text/html; charset=utf-8\",\n        )"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Response.text",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.Response.text",
+        "start": 395,
+        "end": 401,
+        "code": "    def text(cls, body, status=200, headers=None):\n        return cls(\n            str(body),\n            status=status,\n            headers=headers,\n            content_type=\"text/plain; charset=utf-8\",\n        )"
+      },
+      {
+        "file": "datasette/utils/asgi.py",
+        "name": "Response.redirect",
+        "kind": "function",
+        "symbol": "datasette.utils.asgi.Response.redirect",
+        "start": 413,
+        "end": 416,
+        "code": "    def redirect(cls, path, status=302, headers=None):\n        headers = headers or {}\n        headers[\"Location\"] = path\n        return cls(\"\", status=status, headers=headers)"
+      },
+      {
+        "file": "datasette/utils/__init__.py",
+        "name": "CustomJSONEncoder",
+        "kind": "class",
+        "symbol": "datasette.utils.CustomJSONEncoder",
+        "start": 163,
+        "end": 178,
+        "code": "class CustomJSONEncoder(json.JSONEncoder):\n    def default(self, obj):\n        if isinstance(obj, sqlite3.Row):\n            return tuple(obj)\n        if isinstance(obj, sqlite3.Cursor):\n            return list(obj)\n        if isinstance(obj, bytes):\n            # Does it encode to utf8?\n            try:\n                return obj.decode(\"utf8\")\n            except UnicodeDecodeError:\n                return {\n                    \"$base64\": True,\n                    \"encoded\": base64.b64encode(obj).decode(\"latin1\"),\n                }\n        return json.JSONEncoder.default(self, obj)"
+      }
+    ],
+    "unresolved": [
+      "datasette/utils/__init__.py:line: 6"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 8,
+    "returned_files": 2,
+    "unresolved_locations": 1,
+    "returned_code_chars": 4962
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 30388,
+    "completion_tokens": 680,
+    "total_tokens": 31068,
+    "seconds": 131.02647614479065,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 138.444265127182,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

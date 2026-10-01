@@ -1,0 +1,603 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "calc_average_degree",
+                    "func_desc": "Calculate the average degree of the nodes in the graph .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def calc_average_degree(graph):\n    average = 0\n\n    for key, neighbors in graph.items():\n        average += len([n for n in neighbors if n])\n    average /= float(len(graph.items()))\n\n    return average",
+                    "func_fullName": "zxcvbn.scoring.calc_average_degree(graph)"
+                },
+                {
+                    "func_id": 25,
+                    "func_name": "build_ranked_dict",
+                    "func_desc": "Build a dictionary of word - > rank .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def build_ranked_dict(ordered_list):\n    return {word: idx for idx, word in enumerate(ordered_list, 1)}",
+                    "func_fullName": "zxcvbn.matching.build_ranked_dict(ordered_list)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "add_frequency_lists",
+                    "func_desc": "Add frequency lists to RANKED_DICTIONARIES .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def add_frequency_lists(frequency_lists_):\n    for name, lst in frequency_lists_.items():\n        RANKED_DICTIONARIES[name] = build_ranked_dict(lst)",
+                    "func_fullName": "zxcvbn.matching.add_frequency_lists(frequency_lists_)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "nCk",
+                    "func_desc": "nCk - nCk",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def nCk(n, k):\n    \"\"\"http://blog.plover.com/math/choose.html\"\"\"\n    if k > n:\n        return 0\n    if k == 0:\n        return 1\n\n    r = 1\n    for d in range(1, k + 1):\n        r *= n\n        r /= d\n        n -= 1\n\n    return r",
+                    "func_fullName": "zxcvbn.scoring.nCk(n, k)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "dictionary_guesses",
+                    "func_desc": "Calculate the guesses of a dictionary .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def dictionary_guesses(match):\n    # keep these as properties for display purposes\n    match['base_guesses'] = match['rank']\n    match['uppercase_variations'] = uppercase_variations(match)\n    match['l33t_variations'] = l33t_variations(match)\n    reversed_variations = match.get('reversed', False) and 2 or 1\n\n    return match['base_guesses'] * match['uppercase_variations'] * \\\n        match['l33t_variations'] * reversed_variations",
+                    "func_fullName": "zxcvbn.scoring.dictionary_guesses(match)"
+                },
+                {
+                    "func_id": 11,
+                    "func_name": "uppercase_variations",
+                    "func_desc": "Returns the number of uppercase words in a word sequence .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def uppercase_variations(match):\n    word = match['token']\n\n    if ALL_LOWER.match(word) or word.lower() == word:\n        return 1\n\n    for regex in [START_UPPER, END_UPPER, ALL_UPPER]:\n        if regex.match(word):\n            return 2\n\n    U = sum(1 for c in word if c.isupper())\n    L = sum(1 for c in word if c.islower())\n    variations = 0\n    for i in range(1, min(U, L) + 1):\n        variations += nCk(U + L, i)\n\n    return variations",
+                    "func_fullName": "zxcvbn.scoring.uppercase_variations(match)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "l33t_variations",
+                    "func_desc": "Calculate the number of words in a sequence of tokens that can be found in a match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def l33t_variations(match):\n    if not match.get('l33t', False):\n        return 1\n\n    variations = 1\n\n    for subbed, unsubbed in match['sub'].items():\n        # lower-case match.token before calculating: capitalization shouldn't\n        # affect l33t calc.\n        chrs = list(match['token'].lower())\n        S = sum(1 for chr in chrs if chr == subbed)\n        U = sum(1 for chr in chrs if chr == unsubbed)\n        if S == 0 or U == 0:\n            # for this sub, password is either fully subbed (444) or fully\n            # unsubbed (aaa) treat that as doubling the space (attacker needs\n            # to try fully subbed chars in addition to unsubbed.)\n            variations *= 2\n        else:\n            # this case is similar to capitalization:\n            # with aa44a, U = 3, S = 2, attacker needs to try unsubbed + one\n            # sub + two subs\n            p = min(U, S)\n            possibilities = 0\n            for i in range(1, p + 1):\n                possibilities += nCk(U + S, i)\n            variations *= possibilities\n\n    return variations",
+                    "func_fullName": "zxcvbn.scoring.l33t_variations(match)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 2,
+                    "func_name": "most_guessable_match_sequence",
+                    "func_desc": "Given a list of matches return the most guessable match sequence .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def most_guessable_match_sequence(password, matches, _exclude_additive=False):\n    n = len(password)\n\n    # partition matches into sublists according to ending index j\n    matches_by_j = [[] for _ in range(n)]\n    try:\n        for m in matches:\n            matches_by_j[m['j']].append(m)\n    except TypeError:\n        pass\n    # small detail: for deterministic output, sort each sublist by i.\n    for lst in matches_by_j:\n        lst.sort(key=lambda m1: m1['i'])\n\n    optimal = {\n        # optimal.m[k][l] holds final match in the best length-l match sequence\n        # covering the password prefix up to k, inclusive.\n        # if there is no length-l sequence that scores better (fewer guesses)\n        # than a shorter match sequence spanning the same prefix,\n        # optimal.m[k][l] is undefined.\n        'm': [{} for _ in range(n)],\n\n        # same structure as optimal.m -- holds the product term Prod(m.guesses\n        # for m in sequence). optimal.pi allows for fast (non-looping) updates\n        # to the minimization function.\n        'pi': [{} for _ in range(n)],\n\n        # same structure as optimal.m -- holds the overall metric.\n        'g': [{} for _ in range(n)],\n    }\n\n    # helper: considers whether a length-l sequence ending at match m is better\n    # (fewer guesses) than previously encountered sequences, updating state if\n    # so.\n    def update(m, l):\n        k = m['j']\n        pi = estimate_guesses(m, password)\n        if l > 1:\n            # we're considering a length-l sequence ending with match m:\n            # obtain the product term in the minimization function by\n            # multiplying m's guesses by the product of the length-(l-1)\n            # sequence ending just before m, at m.i - 1.\n            pi = pi * Decimal(optimal['pi'][m['i'] - 1][l - 1])\n        # calculate the minimization func\n        g = factorial(l) * pi\n        if not _exclude_additive:\n            g += MIN_GUESSES_BEFORE_GROWING_SEQUENCE ** (l - 1)\n\n        # update state if new best.\n        # first see if any competing sequences covering this prefix, with l or\n        # fewer matches, fare better than this sequence. if so, skip it and\n        # return.\n        for competing_l, competing_g in optimal['g'][k].items():\n            if competing_l > l:\n                continue\n            if competing_g <= g:\n                return\n\n        # this sequence might be part of the final optimal sequence.\n        optimal['g'][k][l] = g\n        optimal['m'][k][l] = m\n        optimal['pi'][k][l] = pi\n\n    # helper: evaluate bruteforce matches ending at k.\n    def bruteforce_update(k):\n        # see if a single bruteforce match spanning the k-prefix is optimal.\n        m = make_bruteforce_match(0, k)\n        update(m, 1)\n        for i in range(1, k + 1):\n            # generate k bruteforce matches, spanning from (i=1, j=k) up to\n            # (i=k, j=k). see if adding these new matches to any of the\n            # sequences in optimal[i-1] leads to new bests.\n            m = make_bruteforce_match(i, k)\n            for l, last_m in optimal['m'][i - 1].items():\n                l = int(l)\n\n                # corner: an optimal sequence will never have two adjacent\n                # bruteforce matches. it is strictly better to have a single\n                # bruteforce match spanning the same region: same contribution\n                # to the guess product with a lower length.\n                # --> safe to skip those cases.\n                if last_m.get('pattern', False) == 'bruteforce':\n                    continue\n\n                # try adding m to this length-l sequence.\n                update(m, l + 1)\n\n    # helper: make bruteforce match objects spanning i to j, inclusive.\n    def make_bruteforce_match(i, j):\n        return {\n            'pattern': 'bruteforce',\n            'token': password[i:j + 1],\n            'i': i,\n            'j': j,\n        }\n\n    # helper: step backwards through optimal.m starting at the end,\n    # constructing the final optimal match sequence.\n    def unwind(n):\n        optimal_match_sequence = []\n        k = n - 1\n        # find the final best sequence length and score\n        l = None\n        g = float('inf')\n        for candidate_l, candidate_g in optimal['g'][k].items():\n            if candidate_g < g:\n                l = candidate_l\n                g = candidate_g\n\n        while k >= 0:\n            m = optimal['m'][k][l]\n            optimal_match_sequence.insert(0, m)\n            k = m['i'] - 1\n            l -= 1\n\n        return optimal_match_sequence\n\n    for k in range(n):\n        for m in matches_by_j[k]:\n            if m['i'] > 0:\n                for l in optimal['m'][m['i'] - 1]:\n                    l = int(l)\n                    update(m, l + 1)\n            else:\n                update(m, 1)\n        bruteforce_update(k)\n\n    optimal_match_sequence = unwind(n)\n    optimal_l = len(optimal_match_sequence)\n\n    # corner: empty password\n    if len(password) == 0:\n        guesses = 1\n    else:\n        guesses = optimal['g'][n - 1][optimal_l]\n\n    # final result object\n    return {\n        'password': password,\n        'guesses': guesses,\n        'guesses_log10': log(guesses, 10),\n        'sequence': optimal_match_sequence,\n    }",
+                    "func_fullName": "zxcvbn.scoring.most_guessable_match_sequence(password, matches, _exclude_additive)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "estimate_guesses",
+                    "func_desc": "Estimate guesses for a given match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def estimate_guesses(match, password):\n    if match.get('guesses', False):\n        return Decimal(match['guesses'])\n\n    min_guesses = 1\n    if len(match['token']) < len(password):\n        if len(match['token']) == 1:\n            min_guesses = MIN_SUBMATCH_GUESSES_SINGLE_CHAR\n        else:\n            min_guesses = MIN_SUBMATCH_GUESSES_MULTI_CHAR\n\n    estimation_functions = {\n        'bruteforce': bruteforce_guesses,\n        'dictionary': dictionary_guesses,\n        'spatial': spatial_guesses,\n        'repeat': repeat_guesses,\n        'sequence': sequence_guesses,\n        'regex': regex_guesses,\n        'date': date_guesses,\n    }\n\n    guesses = estimation_functions[match['pattern']](match)\n    match['guesses'] = max(guesses, min_guesses)\n    match['guesses_log10'] = log(match['guesses'], 10)\n\n    return Decimal(match['guesses'])",
+                    "func_fullName": "zxcvbn.scoring.estimate_guesses(match, password)"
+                },
+                {
+                    "func_id": 4,
+                    "func_name": "bruteforce_guesses",
+                    "func_desc": "Returns the number of guesses that should be made to bruteforce matches for a given match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def bruteforce_guesses(match):\n    guesses = BRUTEFORCE_CARDINALITY ** len(match['token'])\n    # small detail: make bruteforce matches at minimum one guess bigger than\n    # smallest allowed submatch guesses, such that non-bruteforce submatches\n    # over the same [i..j] take precedence.\n    if len(match['token']) == 1:\n        min_guesses = MIN_SUBMATCH_GUESSES_SINGLE_CHAR + 1\n    else:\n        min_guesses = MIN_SUBMATCH_GUESSES_MULTI_CHAR + 1\n\n    return max(guesses, min_guesses)",
+                    "func_fullName": "zxcvbn.scoring.bruteforce_guesses(match)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "repeat_guesses",
+                    "func_desc": "Calculate the number of times a match should be repeated .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def repeat_guesses(match):\n    return match['base_guesses'] * Decimal(match['repeat_count'])",
+                    "func_fullName": "zxcvbn.scoring.repeat_guesses(match)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "sequence_guesses",
+                    "func_desc": "Returns the number of guesses for a sequence of tokens in a match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def sequence_guesses(match):\n    first_chr = match['token'][:1]\n    # lower guesses for obvious starting points\n    if first_chr in ['a', 'A', 'z', 'Z', '0', '1', '9']:\n        base_guesses = 4\n    else:\n        if re.compile(r'\\d').match(first_chr):\n            base_guesses = 10  # digits\n        else:\n            # could give a higher base for uppercase,\n            # assigning 26 to both upper and lower sequences is more\n            # conservative.\n            base_guesses = 26\n    if not match['ascending']:\n        base_guesses *= 2\n\n    return base_guesses * len(match['token'])",
+                    "func_fullName": "zxcvbn.scoring.sequence_guesses(match)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "regex_guesses",
+                    "func_desc": "Guesses the number of tokens that match a given regex .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def regex_guesses(match):\n    char_class_bases = {\n        'alpha_lower': 26,\n        'alpha_upper': 26,\n        'alpha': 52,\n        'alphanumeric': 62,\n        'digits': 10,\n        'symbols': 33,\n    }\n    if match['regex_name'] in char_class_bases:\n        return char_class_bases[match['regex_name']] ** len(match['token'])\n    elif match['regex_name'] == 'recent_year':\n        # conservative estimate of year space: num years from REFERENCE_YEAR.\n        # if year is close to REFERENCE_YEAR, estimate a year space of\n        # MIN_YEAR_SPACE.\n        year_space = abs(int(match['regex_match'].group(0)) - REFERENCE_YEAR)\n        year_space = max(year_space, MIN_YEAR_SPACE)\n\n        return year_space",
+                    "func_fullName": "zxcvbn.scoring.regex_guesses(match)"
+                },
+                {
+                    "func_id": 9,
+                    "func_name": "date_guesses",
+                    "func_desc": "Calculate the number of guesses for a given match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def date_guesses(match):\n    year_space = max(abs(match['year'] - REFERENCE_YEAR), MIN_YEAR_SPACE)\n    guesses = year_space * 365\n    if match.get('separator', False):\n        guesses *= 4\n\n    return guesses",
+                    "func_fullName": "zxcvbn.scoring.date_guesses(match)"
+                },
+                {
+                    "func_id": 10,
+                    "func_name": "spatial_guesses",
+                    "func_desc": "Calculate the number of spatial guesses for a given match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def spatial_guesses(match):\n    if match['graph'] in ['qwerty', 'dvorak']:\n        s = KEYBOARD_STARTING_POSITIONS\n        d = KEYBOARD_AVERAGE_DEGREE\n    else:\n        s = KEYPAD_STARTING_POSITIONS\n        d = KEYPAD_AVERAGE_DEGREE\n    guesses = 0\n    L = len(match['token'])\n    t = match['turns']\n    # estimate the number of possible patterns w/ length L or less with t turns\n    # or less.\n    for i in range(2, L + 1):\n        possible_turns = min(t, i - 1) + 1\n        for j in range(1, possible_turns):\n            guesses += nCk(i - 1, j - 1) * s * pow(d, j)\n    # add extra guesses for shifted keys. (% instead of 5, A instead of a.)\n    # math is similar to extra guesses of l33t substitutions in dictionary\n    # matches.\n    if match['shifted_count']:\n        S = match['shifted_count']\n        U = len(match['token']) - match['shifted_count']  # unshifted count\n        if S == 0 or U == 0:\n            guesses *= 2\n        else:\n            shifted_variations = 0\n            for i in range(1, min(S, U) + 1):\n                shifted_variations += nCk(S + U, i)\n            guesses *= shifted_variations\n\n    return guesses",
+                    "func_fullName": "zxcvbn.scoring.spatial_guesses(match)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "update",
+                    "func_desc": "update the state of the optimal sequence based on the length - l sequence .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def update(m, l):\n        k = m['j']\n        pi = estimate_guesses(m, password)\n        if l > 1:\n            # we're considering a length-l sequence ending with match m:\n            # obtain the product term in the minimization function by\n            # multiplying m's guesses by the product of the length-(l-1)\n            # sequence ending just before m, at m.i - 1.\n            pi = pi * Decimal(optimal['pi'][m['i'] - 1][l - 1])\n        # calculate the minimization func\n        g = factorial(l) * pi\n        if not _exclude_additive:\n            g += MIN_GUESSES_BEFORE_GROWING_SEQUENCE ** (l - 1)\n\n        # update state if new best.\n        # first see if any competing sequences covering this prefix, with l or\n        # fewer matches, fare better than this sequence. if so, skip it and\n        # return.\n        for competing_l, competing_g in optimal['g'][k].items():\n            if competing_l > l:\n                continue\n            if competing_g <= g:\n                return\n\n        # this sequence might be part of the final optimal sequence.\n        optimal['g'][k][l] = g\n        optimal['m'][k][l] = m\n        optimal['pi'][k][l] = pi",
+                    "func_fullName": "zxcvbn.scoring.most_guessable_match_sequence.update(m, l)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "bruteforce_update",
+                    "func_desc": "This function updates the breath - best match sequence with the optimal sequence .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def bruteforce_update(k):\n        # see if a single bruteforce match spanning the k-prefix is optimal.\n        m = make_bruteforce_match(0, k)\n        update(m, 1)\n        for i in range(1, k + 1):\n            # generate k bruteforce matches, spanning from (i=1, j=k) up to\n            # (i=k, j=k). see if adding these new matches to any of the\n            # sequences in optimal[i-1] leads to new bests.\n            m = make_bruteforce_match(i, k)\n            for l, last_m in optimal['m'][i - 1].items():\n                l = int(l)\n\n                # corner: an optimal sequence will never have two adjacent\n                # bruteforce matches. it is strictly better to have a single\n                # bruteforce match spanning the same region: same contribution\n                # to the guess product with a lower length.\n                # --> safe to skip those cases.\n                if last_m.get('pattern', False) == 'bruteforce':\n                    continue\n\n                # try adding m to this length-l sequence.\n                update(m, l + 1)",
+                    "func_fullName": "zxcvbn.scoring.most_guessable_match_sequence.bruteforce_update(k)"
+                },
+                {
+                    "func_id": 15,
+                    "func_name": "make_bruteforce_match",
+                    "func_desc": "Return a dict of attributes for a bruteforce match .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def make_bruteforce_match(i, j):\n        return {\n            'pattern': 'bruteforce',\n            'token': password[i:j + 1],\n            'i': i,\n            'j': j,\n        }",
+                    "func_fullName": "zxcvbn.scoring.most_guessable_match_sequence.make_bruteforce_match(i, j)"
+                },
+                {
+                    "func_id": 16,
+                    "func_name": "unwind",
+                    "func_desc": "Unwinds the optimal match sequence from the specified number of tables .",
+                    "func_file": "scoring",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def unwind(n):\n        optimal_match_sequence = []\n        k = n - 1\n        # find the final best sequence length and score\n        l = None\n        g = float('inf')\n        for candidate_l, candidate_g in optimal['g'][k].items():\n            if candidate_g < g:\n                l = candidate_l\n                g = candidate_g\n\n        while k >= 0:\n            m = optimal['m'][k][l]\n            optimal_match_sequence.insert(0, m)\n            k = m['i'] - 1\n            l -= 1\n\n        return optimal_match_sequence",
+                    "func_fullName": "zxcvbn.scoring.most_guessable_match_sequence.unwind(n)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "repeat_match",
+                    "func_desc": "Repeat match of sequence sequence sequence sequence sequence sequence base token and base guesses .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def repeat_match(password, _ranked_dictionaries=RANKED_DICTIONARIES):\n    from zxcvbn.scoring import most_guessable_match_sequence\n    matches = []\n    greedy = re.compile(r'(.+)\\1+')\n    lazy = re.compile(r'(.+?)\\1+')\n    lazy_anchored = re.compile(r'^(.+?)\\1+$')\n    last_index = 0\n    while last_index < len(password):\n        greedy_match = greedy.search(password, pos=last_index)\n        lazy_match = lazy.search(password, pos=last_index)\n\n        if not greedy_match:\n            break\n\n        if len(greedy_match.group(0)) > len(lazy_match.group(0)):\n            # greedy beats lazy for 'aabaab'\n            #   greedy: [aabaab, aab]\n            #   lazy:   [aa,     a]\n            match = greedy_match\n            # greedy's repeated string might itself be repeated, eg.\n            # aabaab in aabaabaabaab.\n            # run an anchored lazy match on greedy's repeated string\n            # to find the shortest repeated string\n            base_token = lazy_anchored.search(match.group(0)).group(1)\n        else:\n            match = lazy_match\n            base_token = match.group(1)\n\n        i, j = match.span()[0], match.span()[1] - 1\n\n        # recursively match and score the base string\n        base_analysis = most_guessable_match_sequence(\n            base_token,\n            omnimatch(base_token)\n        )\n        base_matches = base_analysis['sequence']\n        base_guesses = base_analysis['guesses']\n        matches.append({\n            'pattern': 'repeat',\n            'i': i,\n            'j': j,\n            'token': match.group(0),\n            'base_token': base_token,\n            'base_guesses': base_guesses,\n            'base_matches': base_matches,\n            'repeat_count': len(match.group(0)) / len(base_token),\n        })\n        last_index = j + 1\n\n    return matches",
+                    "func_fullName": "zxcvbn.matching.repeat_match(password, _ranked_dictionaries)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 17,
+                    "func_name": "estimate_attack_times",
+                    "func_desc": "Estimate the attack times for a given set of guesses .",
+                    "func_file": "time_estimates",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def estimate_attack_times(guesses):\n    crack_times_seconds = {\n        'online_throttling_100_per_hour': Decimal(guesses) / float_to_decimal(100.0 / 3600.0),\n        'online_no_throttling_10_per_second': Decimal(guesses) / float_to_decimal(10.0),\n        'offline_slow_hashing_1e4_per_second': Decimal(guesses) / float_to_decimal(1e4),\n        'offline_fast_hashing_1e10_per_second': Decimal(guesses) / float_to_decimal(1e10),\n    }\n\n    crack_times_display = {}\n    for scenario, seconds in crack_times_seconds.items():\n        crack_times_display[scenario] = display_time(seconds)\n\n    return {\n        'crack_times_seconds': crack_times_seconds,\n        'crack_times_display': crack_times_display,\n        'score': guesses_to_score(guesses),\n    }",
+                    "func_fullName": "zxcvbn.time_estimates.estimate_attack_times(guesses)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "guesses_to_score",
+                    "func_desc": "Convert a list of guesses to a score .",
+                    "func_file": "time_estimates",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def guesses_to_score(guesses):\n    delta = 5\n\n    if guesses < 1e3 + delta:\n        # risky password: \"too guessable\"\n        return 0\n    elif guesses < 1e6 + delta:\n        # modest protection from throttled online attacks: \"very guessable\"\n        return 1\n    elif guesses < 1e8 + delta:\n        # modest protection from unthrottled online attacks: \"somewhat\n        # guessable\"\n        return 2\n    elif guesses < 1e10 + delta:\n        # modest protection from offline attacks: \"safely unguessable\"\n        # assuming a salted, slow hash function like bcrypt, scrypt, PBKDF2,\n        # argon, etc\n        return 3\n    else:\n        # strong protection from offline attacks under same scenario: \"very\n        # unguessable\"\n        return 4",
+                    "func_fullName": "zxcvbn.time_estimates.guesses_to_score(guesses)"
+                },
+                {
+                    "func_id": 19,
+                    "func_name": "display_time",
+                    "func_desc": "Display a time in a nagios file .",
+                    "func_file": "time_estimates",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def display_time(seconds):\n    minute = 60\n    hour = minute * 60\n    day = hour * 24\n    month = day * 31\n    year = month * 12\n    century = year * 100\n    if seconds < 1:\n        display_num, display_str = None, 'less than a second'\n    elif seconds < minute:\n        base = round(seconds)\n        display_num, display_str = base, '%s second' % base\n    elif seconds < hour:\n        base = round(seconds / minute)\n        display_num, display_str = base, '%s minute' % base\n    elif seconds < day:\n        base = round(seconds / hour)\n        display_num, display_str = base, '%s hour' % base\n    elif seconds < month:\n        base = round(seconds / day)\n        display_num, display_str = base, '%s day' % base\n    elif seconds < year:\n        base = round(seconds / month)\n        display_num, display_str = base, '%s month' % base\n    elif seconds < century:\n        base = round(seconds / year)\n        display_num, display_str = base, '%s year' % base\n    else:\n        display_num, display_str = None, 'centuries'\n\n    if display_num and display_num != 1:\n        display_str += 's'\n\n    return display_str",
+                    "func_fullName": "zxcvbn.time_estimates.display_time(seconds)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "float_to_decimal",
+                    "func_desc": "Convert a floating point number to a Decimal with no loss of information",
+                    "func_file": "time_estimates",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def float_to_decimal(f):\n    \"Convert a floating point number to a Decimal with no loss of information\"\n    n, d = f.as_integer_ratio()\n    numerator, denominator = Decimal(n), Decimal(d)\n    ctx = Context(prec=60)\n    result = ctx.divide(numerator, denominator)\n    while ctx.flags[Inexact]:\n        ctx.flags[Inexact] = False\n        ctx.prec *= 2\n        result = ctx.divide(numerator, denominator)\n    return result",
+                    "func_fullName": "zxcvbn.time_estimates.float_to_decimal(f)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "get_feedback",
+                    "func_desc": "Get feedback for a single match .",
+                    "func_file": "feedback",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_feedback(score, sequence):\n    if len(sequence) == 0:\n        return {\n            'warning': '',\n            'suggestions': [\n                _(\"Use a few words, avoid common phrases.\"),\n                _(\"No need for symbols, digits, or uppercase letters.\")\n            ]\n        }\n\n    if score > 2:\n        return {\n            'warning': '',\n            'suggestions': [],\n        }\n\n    longest_match = sequence[0]\n    for match in sequence[1:]:\n        if len(match['token']) > len(longest_match['token']):\n            longest_match = match\n\n    feedback = get_match_feedback(longest_match, len(sequence) == 1)\n    extra_feedback = _('Add another word or two. Uncommon words are better.')\n    if feedback:\n        feedback['suggestions'].insert(0, extra_feedback)\n        if not feedback['warning']:\n            feedback['warning'] = ''\n    else:\n        feedback = {\n            'warning': '',\n            'suggestions': [extra_feedback]\n        }\n\n    return feedback",
+                    "func_fullName": "zxcvbn.feedback.get_feedback(score, sequence)"
+                },
+                {
+                    "func_id": 22,
+                    "func_name": "get_match_feedback",
+                    "func_desc": "Get feedback for a single match .",
+                    "func_file": "feedback",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_match_feedback(match, is_sole_match):\n    if match['pattern'] == 'dictionary':\n        return get_dictionary_match_feedback(match, is_sole_match)\n    elif match['pattern'] == 'spatial':\n        if match['turns'] == 1:\n            warning = _('Straight rows of keys are easy to guess.')\n        else:\n            warning = _('Short keyboard patterns are easy to guess.')\n\n        return {\n            'warning': warning,\n            'suggestions': [\n                _('Use a longer keyboard pattern with more turns.')\n            ]\n        }\n    elif match['pattern'] == 'repeat':\n        if len(match['base_token']) == 1:\n            warning = _('Repeats like \"aaa\" are easy to guess.')\n        else:\n            warning = _('Repeats like \"abcabcabc\" are only slightly harder to ' \\\n                        'guess than \"abc\".')\n        return {\n            'warning': warning,\n            'suggestions': [\n                _('Avoid repeated words and characters.')\n            ]\n        }\n    elif match['pattern'] == 'sequence':\n        return {\n            'warning': _('Sequences like \"abc\" or \"6543\" are easy to guess.'),\n            'suggestions': [\n                _('Avoid sequences.')\n            ]\n        }\n    elif match['pattern'] == 'regex':\n        if match['regex_name'] == 'recent_year':\n            return {\n                'warning': _(\"Recent years are easy to guess.\"),\n                'suggestions': [\n                    _('Avoid recent years.'),\n                    _('Avoid years that are associated with you.'),\n                ]\n            }\n    elif match['pattern'] == 'date':\n        return {\n            'warning': _(\"Dates are often easy to guess.\"),\n            'suggestions': [\n                _('Avoid dates and years that are associated with you.'),\n            ],\n        }",
+                    "func_fullName": "zxcvbn.feedback.get_match_feedback(match, is_sole_match)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "get_dictionary_match_feedback",
+                    "func_desc": "Get a feedback for a dictionary match .",
+                    "func_file": "feedback",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def get_dictionary_match_feedback(match, is_sole_match):\n    warning = ''\n    if match['dictionary_name'] == 'passwords':\n        if is_sole_match and not match.get('l33t', False) and not \\\n                match['reversed']:\n            if match['rank'] <= 10:\n                warning = _('This is a top-10 common password.')\n            elif match['rank'] <= 100:\n                warning = _('This is a top-100 common password.')\n            else:\n                warning = _('This is a very common password.')\n        elif match['guesses_log10'] <= 4:\n            warning = _('This is similar to a commonly used password.')\n    elif match['dictionary_name'] == 'english':\n        if is_sole_match:\n            warning = _('A word by itself is easy to guess.')\n    elif match['dictionary_name'] in ['surnames', 'male_names',\n                                      'female_names', ]:\n        if is_sole_match:\n            warning = _('Names and surnames by themselves are easy to guess.')\n        else:\n            warning = _('Common names and surnames are easy to guess.')\n    else:\n        warning = ''\n\n    suggestions = []\n    word = match['token']\n    if START_UPPER.search(word):\n        suggestions.append(_(\"Capitalization doesn't help very much.\"))\n    elif ALL_UPPER.search(word) and word.lower() != word:\n        suggestions.append(_(\"All-uppercase is almost as easy to guess as \"\n                             \"all-lowercase.\"))\n\n    if match['reversed'] and len(match['token']) >= 4:\n        suggestions.append(_(\"Reversed words aren't much harder to guess.\"))\n    if match.get('l33t', False):\n        suggestions.append(_(\"Predictable substitutions like '@' instead of 'a' \"\n                             \"don't help very much.\"))\n\n    return {\n        'warning': warning,\n        'suggestions': suggestions,\n    }",
+                    "func_fullName": "zxcvbn.feedback.get_dictionary_match_feedback(match, is_sole_match)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 24,
+                    "func_name": "zxcvbn",
+                    "func_desc": "Zxcvbn - Analyse a password using the most guessable algorithm .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def zxcvbn(password, user_inputs=None):\n    try:\n        # Python 2 string types\n        basestring = (str, unicode)\n    except NameError:\n        # Python 3 string types\n        basestring = (str, bytes)\n\n    if user_inputs is None:\n        user_inputs = []\n\n    start = datetime.now()\n\n    sanitized_inputs = []\n    for arg in user_inputs:\n        if not isinstance(arg, basestring):\n            arg = str(arg)\n        sanitized_inputs.append(arg.lower())\n\n    ranked_dictionaries = matching.RANKED_DICTIONARIES\n    ranked_dictionaries['user_inputs'] = matching.build_ranked_dict(sanitized_inputs)\n\n    matches = matching.omnimatch(password, ranked_dictionaries)\n    result = scoring.most_guessable_match_sequence(password, matches)\n    result['calc_time'] = datetime.now() - start\n\n    attack_times = time_estimates.estimate_attack_times(result['guesses'])\n    for prop, val in attack_times.items():\n        result[prop] = val\n\n    result['feedback'] = feedback.get_feedback(result['score'],\n                                               result['sequence'])\n\n    return result",
+                    "func_fullName": "zxcvbn.__init__.zxcvbn(password, user_inputs)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "cli",
+                    "func_desc": "ZXCvbn command line interface .",
+                    "func_file": "__main__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def cli():\n    args = parser.parse_args()\n\n    # check if stdin is ready for reading\n    rlist, _, _ = select.select([sys.stdin], [], [], 0.0)\n    if rlist:\n        password = rlist[0].read()\n        if password[-1] == '\\n':  # strip off the trailing newline\n            password = password[:-1]\n    else:\n        password = getpass.getpass()\n\n    res = zxcvbn(password, user_inputs=args.user_input)\n    json.dump(res, sys.stdout, indent=2, cls=JSONEncoder)\n    sys.stdout.write('\\n')",
+                    "func_fullName": "zxcvbn.__main__.cli()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 27,
+                    "func_name": "omnimatch",
+                    "func_desc": "Return a list of tokens that match the given password .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def omnimatch(password, _ranked_dictionaries=RANKED_DICTIONARIES):\n    matches = []\n    for matcher in [\n        dictionary_match,\n        reverse_dictionary_match,\n        l33t_match,\n        spatial_match,\n        repeat_match,\n        sequence_match,\n        regex_match,\n        date_match,\n    ]:\n        matches.extend(matcher(password, _ranked_dictionaries=_ranked_dictionaries))\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.omnimatch(password, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "dictionary_match",
+                    "func_desc": "Returns a list of dict matches for a given password .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def dictionary_match(password, _ranked_dictionaries=RANKED_DICTIONARIES):\n    matches = []\n    length = len(password)\n    password_lower = password.lower()\n    for dictionary_name, ranked_dict in _ranked_dictionaries.items():\n        for i in range(length):\n            for j in range(i, length):\n                if password_lower[i:j + 1] in ranked_dict:\n                    word = password_lower[i:j + 1]\n                    rank = ranked_dict[word]\n                    matches.append({\n                        'pattern': 'dictionary',\n                        'i': i,\n                        'j': j,\n                        'token': password[i:j + 1],\n                        'matched_word': word,\n                        'rank': rank,\n                        'dictionary_name': dictionary_name,\n                        'reversed': False,\n                        'l33t': False,\n                    })\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.dictionary_match(password, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 29,
+                    "func_name": "reverse_dictionary_match",
+                    "func_desc": "Reverse dictionary match .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def reverse_dictionary_match(password,\n                             _ranked_dictionaries=RANKED_DICTIONARIES):\n    reversed_password = ''.join(reversed(password))\n    matches = dictionary_match(reversed_password, _ranked_dictionaries)\n    for match in matches:\n        match['token'] = ''.join(reversed(match['token']))\n        match['reversed'] = True\n        match['i'], match['j'] = len(password) - 1 - match['j'], \\\n                                 len(password) - 1 - match['i']\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.reverse_dictionary_match(password, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "relevant_l33t_subtable",
+                    "func_desc": "Return a subtable that contains all the l33t characters in the password .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def relevant_l33t_subtable(password, table):\n    password_chars = {}\n    for char in list(password):\n        password_chars[char] = True\n\n    subtable = {}\n    for letter, subs in table.items():\n        relevant_subs = [sub for sub in subs if sub in password_chars]\n        if len(relevant_subs) > 0:\n            subtable[letter] = relevant_subs\n\n    return subtable",
+                    "func_fullName": "zxcvbn.matching.relevant_l33t_subtable(password, table)"
+                },
+                {
+                    "func_id": 32,
+                    "func_name": "translate",
+                    "func_desc": "Translate a string with a given chr_map .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def translate(string, chr_map):\n    chars = []\n    for char in list(string):\n        if chr_map.get(char, False):\n            chars.append(chr_map[char])\n        else:\n            chars.append(char)\n\n    return ''.join(chars)",
+                    "func_fullName": "zxcvbn.matching.translate(string, chr_map)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "l33t_match",
+                    "func_desc": "Return a list of matches for a given password with a list of L33T substitution .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def l33t_match(password, _ranked_dictionaries=RANKED_DICTIONARIES,\n               _l33t_table=L33T_TABLE):\n    matches = []\n\n    for sub in enumerate_l33t_subs(\n            relevant_l33t_subtable(password, _l33t_table)):\n        if not len(sub):\n            break\n\n        subbed_password = translate(password, sub)\n        for match in dictionary_match(subbed_password, _ranked_dictionaries):\n            token = password[match['i']:match['j'] + 1]\n            if token.lower() == match['matched_word']:\n                # only return the matches that contain an actual substitution\n                continue\n\n            # subset of mappings in sub that are in use for this match\n            match_sub = {}\n            for subbed_chr, chr in sub.items():\n                if subbed_chr in token:\n                    match_sub[subbed_chr] = chr\n            match['l33t'] = True\n            match['token'] = token\n            match['sub'] = match_sub\n            match['sub_display'] = ', '.join(\n                [\"%s -> %s\" % (k, v) for k, v in match_sub.items()]\n            )\n            matches.append(match)\n\n    matches = [match for match in matches if len(match['token']) > 1]\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.l33t_match(password, _ranked_dictionaries, _l33t_table)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "spatial_match",
+                    "func_desc": "Return a list of matches for a password using spatial match .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def spatial_match(password, _graphs=GRAPHS, _ranked_dictionaries=RANKED_DICTIONARIES):\n    matches = []\n    for graph_name, graph in _graphs.items():\n        matches.extend(spatial_match_helper(password, graph, graph_name))\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.spatial_match(password, _graphs, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "spatial_match_helper",
+                    "func_desc": "This function is a helper function that returns a list of matches for a spatial match .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def spatial_match_helper(password, graph, graph_name):\n    matches = []\n    i = 0\n    while i < len(password) - 1:\n        j = i + 1\n        last_direction = None\n        turns = 0\n        if graph_name in ['qwerty', 'dvorak', ] and \\\n                SHIFTED_RX.search(password[i]):\n            # initial character is shifted\n            shifted_count = 1\n        else:\n            shifted_count = 0\n\n        while True:\n            prev_char = password[j - 1]\n            found = False\n            found_direction = -1\n            cur_direction = -1\n            try:\n                adjacents = graph[prev_char] or []\n            except KeyError:\n                adjacents = []\n            # consider growing pattern by one character if j hasn't gone\n            # over the edge.\n            if j < len(password):\n                cur_char = password[j]\n                for adj in adjacents:\n                    cur_direction += 1\n                    if adj and cur_char in adj:\n                        found = True\n                        found_direction = cur_direction\n                        if adj.index(cur_char) == 1:\n                            # index 1 in the adjacency means the key is shifted,\n                            # 0 means unshifted: A vs a, % vs 5, etc.\n                            # for example, 'q' is adjacent to the entry '2@'.\n                            # @ is shifted w/ index 1, 2 is unshifted.\n                            shifted_count += 1\n                        if last_direction != found_direction:\n                            # adding a turn is correct even in the initial case\n                            # when last_direction is null:\n                            # every spatial pattern starts with a turn.\n                            turns += 1\n                            last_direction = found_direction\n                        break\n            # if the current pattern continued, extend j and try to grow again\n            if found:\n                j += 1\n            # otherwise push the pattern discovered so far, if any...\n            else:\n                if j - i > 2:  # don't consider length 1 or 2 chains.\n                    matches.append({\n                        'pattern': 'spatial',\n                        'i': i,\n                        'j': j - 1,\n                        'token': password[i:j],\n                        'graph': graph_name,\n                        'turns': turns,\n                        'shifted_count': shifted_count,\n                    })\n                # ...and then start a new search for the rest of the password.\n                i = j\n                break\n\n    return matches",
+                    "func_fullName": "zxcvbn.matching.spatial_match_helper(password, graph, graph_name)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "regex_match",
+                    "func_desc": "Match regex in password .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def regex_match(password, _regexen=REGEXEN, _ranked_dictionaries=RANKED_DICTIONARIES):\n    matches = []\n    for name, regex in _regexen.items():\n        for rx_match in regex.finditer(password):\n            matches.append({\n                'pattern': 'regex',\n                'token': rx_match.group(0),\n                'i': rx_match.start(),\n                'j': rx_match.end()-1,\n                'regex_name': name,\n                'regex_match': rx_match,\n            })\n\n    return sorted(matches, key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.regex_match(password, _regexen, _ranked_dictionaries)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 31,
+                    "func_name": "enumerate_l33t_subs",
+                    "func_desc": "Enumerate all the sub - dictionaries in a dictionary .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def enumerate_l33t_subs(table):\n    keys = list(table.keys())\n    subs = [[]]\n\n    def dedup(subs):\n        deduped = []\n        members = {}\n        for sub in subs:\n            assoc = [(k, v) for v, k in sub]\n            assoc.sort()\n            label = '-'.join([k + ',' + str(v) for k, v in assoc])\n            if label not in members:\n                members[label] = True\n                deduped.append(sub)\n\n        return deduped\n\n    def helper(keys, subs):\n        if not len(keys):\n            return subs\n\n        first_key = keys[0]\n        rest_keys = keys[1:]\n        next_subs = []\n        for l33t_chr in table[first_key]:\n            for sub in subs:\n                dup_l33t_index = -1\n                for i in range(len(sub)):\n                    if sub[i][0] == l33t_chr:\n                        dup_l33t_index = i\n                        break\n                if dup_l33t_index == -1:\n                    sub_extension = list(sub)\n                    sub_extension.append([l33t_chr, first_key])\n                    next_subs.append(sub_extension)\n                else:\n                    sub_alternative = list(sub)\n                    sub_alternative.pop(dup_l33t_index)\n                    sub_alternative.append([l33t_chr, first_key])\n                    next_subs.append(sub)\n                    next_subs.append(sub_alternative)\n\n        subs = dedup(next_subs)\n        return helper(rest_keys, subs)\n\n    subs = helper(keys, subs)\n    sub_dicts = []  # convert from assoc lists to dicts\n    for sub in subs:\n        sub_dict = {}\n        for l33t_chr, chr in sub:\n            sub_dict[l33t_chr] = chr\n        sub_dicts.append(sub_dict)\n\n    return sub_dicts",
+                    "func_fullName": "zxcvbn.matching.enumerate_l33t_subs(table)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "dedup",
+                    "func_desc": "Deduplicate a list of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def dedup(subs):\n        deduped = []\n        members = {}\n        for sub in subs:\n            assoc = [(k, v) for v, k in sub]\n            assoc.sort()\n            label = '-'.join([k + ',' + str(v) for k, v in assoc])\n            if label not in members:\n                members[label] = True\n                deduped.append(sub)\n\n        return deduped",
+                    "func_fullName": "zxcvbn.matching.enumerate_l33t_subs.dedup(subs)"
+                },
+                {
+                    "func_id": 44,
+                    "func_name": "helper",
+                    "func_desc": "helper function to find the sub - list of a sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of sequence of",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def helper(keys, subs):\n        if not len(keys):\n            return subs\n\n        first_key = keys[0]\n        rest_keys = keys[1:]\n        next_subs = []\n        for l33t_chr in table[first_key]:\n            for sub in subs:\n                dup_l33t_index = -1\n                for i in range(len(sub)):\n                    if sub[i][0] == l33t_chr:\n                        dup_l33t_index = i\n                        break\n                if dup_l33t_index == -1:\n                    sub_extension = list(sub)\n                    sub_extension.append([l33t_chr, first_key])\n                    next_subs.append(sub_extension)\n                else:\n                    sub_alternative = list(sub)\n                    sub_alternative.pop(dup_l33t_index)\n                    sub_alternative.append([l33t_chr, first_key])\n                    next_subs.append(sub)\n                    next_subs.append(sub_alternative)\n\n        subs = dedup(next_subs)\n        return helper(rest_keys, subs)",
+                    "func_fullName": "zxcvbn.matching.enumerate_l33t_subs.helper(keys, subs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 37,
+                    "func_name": "sequence_match",
+                    "func_desc": "Identifies sequences by looking for repeated differences in unicode sequence sequence_name and sequence_space .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def sequence_match(password, _ranked_dictionaries=RANKED_DICTIONARIES):\n    # Identifies sequences by looking for repeated differences in unicode codepoint.\n    # this allows skipping, such as 9753, and also matches some extended unicode sequences\n    # such as Greek and Cyrillic alphabets.\n    #\n    # for example, consider the input 'abcdb975zy'\n    #\n    # password: a   b   c   d   b    9   7   5   z   y\n    # index:    0   1   2   3   4    5   6   7   8   9\n    # delta:      1   1   1  -2  -41  -2  -2  69   1\n    #\n    # expected result:\n    # [(i, j, delta), ...] = [(0, 3, 1), (5, 7, -2), (8, 9, 1)]\n    if len(password) == 1:\n        return []\n\n    def update(i, j, delta):\n        if j - i > 1 or (delta and abs(delta) == 1):\n            if 0 < abs(delta) <= MAX_DELTA:\n                token = password[i:j + 1]\n                if re.compile(r'^[a-z]+$').match(token):\n                    sequence_name = 'lower'\n                    sequence_space = 26\n                elif re.compile(r'^[A-Z]+$').match(token):\n                    sequence_name = 'upper'\n                    sequence_space = 26\n                elif re.compile(r'^\\d+$').match(token):\n                    sequence_name = 'digits'\n                    sequence_space = 10\n                else:\n                    sequence_name = 'unicode'\n                    sequence_space = 26\n                result.append({\n                    'pattern': 'sequence',\n                    'i': i,\n                    'j': j,\n                    'token': password[i:j + 1],\n                    'sequence_name': sequence_name,\n                    'sequence_space': sequence_space,\n                    'ascending': delta > 0\n                })\n\n    result = []\n    i = 0\n    last_delta = None\n\n    for k in range(1, len(password)):\n        delta = ord(password[k]) - ord(password[k - 1])\n        if last_delta is None:\n            last_delta = delta\n        if delta == last_delta:\n            continue\n        j = k - 1\n        update(i, j, last_delta)\n        i = j\n        last_delta = delta\n    update(i, len(password) - 1, last_delta)\n\n    return result",
+                    "func_fullName": "zxcvbn.matching.sequence_match(password, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "update",
+                    "func_desc": "Updates the sequence sequence .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def update(i, j, delta):\n        if j - i > 1 or (delta and abs(delta) == 1):\n            if 0 < abs(delta) <= MAX_DELTA:\n                token = password[i:j + 1]\n                if re.compile(r'^[a-z]+$').match(token):\n                    sequence_name = 'lower'\n                    sequence_space = 26\n                elif re.compile(r'^[A-Z]+$').match(token):\n                    sequence_name = 'upper'\n                    sequence_space = 26\n                elif re.compile(r'^\\d+$').match(token):\n                    sequence_name = 'digits'\n                    sequence_space = 10\n                else:\n                    sequence_name = 'unicode'\n                    sequence_space = 26\n                result.append({\n                    'pattern': 'sequence',\n                    'i': i,\n                    'j': j,\n                    'token': password[i:j + 1],\n                    'sequence_name': sequence_name,\n                    'sequence_space': sequence_space,\n                    'ascending': delta > 0\n                })",
+                    "func_fullName": "zxcvbn.matching.sequence_match.update(i, j, delta)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "default",
+                    "func_desc": "JSON encoder for NoSQL .",
+                    "func_file": "__main__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def default(self, o):\n        try:\n            return super(JSONEncoder, self).default(o)\n        except TypeError:\n            return str(o)",
+                    "func_fullName": "zxcvbn.__main__.JSONEncoder.default(self, o)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 39,
+                    "func_name": "date_match",
+                    "func_desc": "A function to match a date in a string .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def date_match(password, _ranked_dictionaries=RANKED_DICTIONARIES):\n    # a \"date\" is recognized as:\n    #   any 3-tuple that starts or ends with a 2- or 4-digit year,\n    #   with 2 or 0 separator chars (1.1.91 or 1191),\n    #   maybe zero-padded (01-01-91 vs 1-1-91),\n    #   a month between 1 and 12,\n    #   a day between 1 and 31.\n    #\n    # note: this isn't true date parsing in that \"feb 31st\" is allowed,\n    # this doesn't check for leap years, etc.\n    #\n    # recipe:\n    # start with regex to find maybe-dates, then attempt to map the integers\n    # onto month-day-year to filter the maybe-dates into dates.\n    # finally, remove matches that are substrings of other matches to reduce noise.\n    #\n    # note: instead of using a lazy or greedy regex to find many dates over the full string,\n    # this uses a ^...$ regex against every substring of the password -- less performant but leads\n    # to every possible date match.\n    matches = []\n    maybe_date_no_separator = re.compile(r'^\\d{4,8}$')\n    maybe_date_with_separator = re.compile(\n        r'^(\\d{1,4})([\\s/\\\\_.-])(\\d{1,2})\\2(\\d{1,4})$'\n    )\n\n    # dates without separators are between length 4 '1191' and 8 '11111991'\n    for i in range(len(password) - 3):\n        for j in range(i + 3, i + 8):\n            if j >= len(password):\n                break\n\n            token = password[i:j + 1]\n            if not maybe_date_no_separator.match(token):\n                continue\n            candidates = []\n            for k, l in DATE_SPLITS[len(token)]:\n                dmy = map_ints_to_dmy([\n                    int(token[0:k]),\n                    int(token[k:l]),\n                    int(token[l:])\n                ])\n                if dmy:\n                    candidates.append(dmy)\n            if not len(candidates) > 0:\n                continue\n            # at this point: different possible dmy mappings for the same i,j\n            # substring. match the candidate date that likely takes the fewest\n            # guesses: a year closest to 2000. (scoring.REFERENCE_YEAR).\n            #\n            # ie, considering '111504', prefer 11-15-04 to 1-1-1504\n            # (interpreting '04' as 2004)\n            best_candidate = candidates[0]\n\n            def metric(candidate_):\n                return abs(candidate_['year'] - scoring.REFERENCE_YEAR)\n\n            min_distance = metric(candidates[0])\n            for candidate in candidates[1:]:\n                distance = metric(candidate)\n                if distance < min_distance:\n                    best_candidate, min_distance = candidate, distance\n            matches.append({\n                'pattern': 'date',\n                'token': token,\n                'i': i,\n                'j': j,\n                'separator': '',\n                'year': best_candidate['year'],\n                'month': best_candidate['month'],\n                'day': best_candidate['day'],\n            })\n\n    # dates with separators are between length 6 '1/1/91' and 10 '11/11/1991'\n    for i in range(len(password) - 5):\n        for j in range(i + 5, i + 10):\n            if j >= len(password):\n                break\n            token = password[i:j + 1]\n            rx_match = maybe_date_with_separator.match(token)\n            if not rx_match:\n                continue\n            dmy = map_ints_to_dmy([\n                int(rx_match.group(1)),\n                int(rx_match.group(3)),\n                int(rx_match.group(4)),\n            ])\n            if not dmy:\n                continue\n            matches.append({\n                'pattern': 'date',\n                'token': token,\n                'i': i,\n                'j': j,\n                'separator': rx_match.group(2),\n                'year': dmy['year'],\n                'month': dmy['month'],\n                'day': dmy['day'],\n            })\n\n    # matches now contains all valid date strings in a way that is tricky to\n    # capture with regexes only. while thorough, it will contain some\n    # unintuitive noise:\n    #\n    # '2015_06_04', in addition to matching 2015_06_04, will also contain\n    # 5(!) other date matches: 15_06_04, 5_06_04, ..., even 2015\n    # (matched as 5/1/2020)\n    #\n    # to reduce noise, remove date matches that are strict substrings of others\n    def filter_fun(match):\n        is_submatch = False\n        for other in matches:\n            if match == other:\n                continue\n            if other['i'] <= match['i'] and other['j'] >= match['j']:\n                is_submatch = True\n                break\n        return not is_submatch\n\n    return sorted(filter(filter_fun, matches), key=lambda x: (x['i'], x['j']))",
+                    "func_fullName": "zxcvbn.matching.date_match(password, _ranked_dictionaries)"
+                },
+                {
+                    "func_id": 46,
+                    "func_name": "metric",
+                    "func_desc": "Average year score .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "            def metric(candidate_):\n                return abs(candidate_['year'] - scoring.REFERENCE_YEAR)",
+                    "func_fullName": "zxcvbn.matching.date_match.metric(candidate_)"
+                },
+                {
+                    "func_id": 47,
+                    "func_name": "filter_fun",
+                    "func_desc": "Filter function for a single match .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def filter_fun(match):\n        is_submatch = False\n        for other in matches:\n            if match == other:\n                continue\n            if other['i'] <= match['i'] and other['j'] >= match['j']:\n                is_submatch = True\n                break\n        return not is_submatch",
+                    "func_fullName": "zxcvbn.matching.date_match.filter_fun(match)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1500; k=11; a=0.25; combined=0.732; stability(ARI)=1.000; sep=0.406",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 40,
+                    "func_name": "map_ints_to_dmy",
+                    "func_desc": "given a list of 3 - tuples return a dictionary of the date year month and day of the next occurrence of the integer .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def map_ints_to_dmy(ints):\n    # given a 3-tuple, discard if:\n    #   middle int is over 31 (for all dmy formats, years are never allowed in\n    #   the middle)\n    #   middle int is zero\n    #   any int is over the max allowable year\n    #   any int is over two digits but under the min allowable year\n    #   2 ints are over 31, the max allowable day\n    #   2 ints are zero\n    #   all ints are over 12, the max allowable month\n    if ints[1] > 31 or ints[1] <= 0:\n        return\n    over_12 = 0\n    over_31 = 0\n    under_1 = 0\n    for int in ints:\n        if 99 < int < DATE_MIN_YEAR or int > DATE_MAX_YEAR:\n            return\n        if int > 31:\n            over_31 += 1\n        if int > 12:\n            over_12 += 1\n        if int <= 0:\n            under_1 += 1\n    if over_31 >= 2 or over_12 == 3 or under_1 >= 2:\n        return\n\n    # first look for a four digit year: yyyy + daymonth or daymonth + yyyy\n    possible_four_digit_splits = [\n        (ints[2], ints[0:2]),\n        (ints[0], ints[1:3]),\n    ]\n    for y, rest in possible_four_digit_splits:\n        if DATE_MIN_YEAR <= y <= DATE_MAX_YEAR:\n            dm = map_ints_to_dm(rest)\n            if dm:\n                return {\n                    'year': y,\n                    'month': dm['month'],\n                    'day': dm['day'],\n                }\n            else:\n                # for a candidate that includes a four-digit year,\n                # when the remaining ints don't match to a day and month,\n                # it is not a date.\n                return\n\n    # given no four-digit year, two digit years are the most flexible int to\n    # match, so try to parse a day-month out of ints[0..1] or ints[1..0]\n    for y, rest in possible_four_digit_splits:\n        dm = map_ints_to_dm(rest)\n        if dm:\n            y = two_to_four_digit_year(y)\n            return {\n                'year': y,\n                'month': dm['month'],\n                'day': dm['day'],\n            }",
+                    "func_fullName": "zxcvbn.matching.map_ints_to_dmy(ints)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "map_ints_to_dm",
+                    "func_desc": "Map ints to Dm .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def map_ints_to_dm(ints):\n    for d, m in [ints, reversed(ints)]:\n        if 1 <= d <= 31 and 1 <= m <= 12:\n            return {\n                'day': d,\n                'month': m,\n            }",
+                    "func_fullName": "zxcvbn.matching.map_ints_to_dm(ints)"
+                },
+                {
+                    "func_id": 42,
+                    "func_name": "two_to_four_digit_year",
+                    "func_desc": "Two digit year to four digit year .",
+                    "func_file": "matching",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def two_to_four_digit_year(year):\n    if year > 99:\n        return year\n    elif year > 50:\n        # 87 -> 1987\n        return year + 1900\n    else:\n        # 15 -> 2015\n        return year + 2000",
+                    "func_fullName": "zxcvbn.matching.two_to_four_digit_year(year)"
+                }
+            ]
+        }
+    ]
+}

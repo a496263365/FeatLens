@@ -1,0 +1,96 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 58,
+  "namespace": "chatette.parsing.UnitRefBuilder.create_concrete",
+  "model": "deepseek-v3.2",
+  "status": "completed",
+  "stop_reason": "model_finish",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [],
+  "final_text": "```\nchatette/parsing/__init__.py\nline: 110\nclass: UnitRefBuilder\nfunction: create_concrete\n\nchatette/units/modifiable/unit_reference.py\nclass: UnitReference\n\nchatette/parsing/parser.py\nfunction: Parser._parse_unit_declaration\nfunction: Parser._parse_rule\n```",
+  "final_locations": {
+    "files": [
+      "chatette/parsing/__init__.py",
+      "chatette/units/modifiable/unit_reference.py",
+      "chatette/parsing/parser.py"
+    ],
+    "entities": [
+      {
+        "file": "chatette/parsing/__init__.py",
+        "name": "UnitRefBuilder",
+        "kind": "class",
+        "symbol": "chatette.parsing.UnitRefBuilder",
+        "start": 88,
+        "end": 111,
+        "code": "class UnitRefBuilder(ItemBuilder):\n    def __init__(self):\n        super(UnitRefBuilder, self).__init__()\n        self.type = None\n        self.identifier = None\n        self.variation = None\n        self.arg_value = None\n\n    def _check_information(self):\n        super(UnitRefBuilder, self)._check_information()\n        if self.type is None or self.identifier is None:  # Should never happen\n            raise ValueError(\n                \"Tried to create a concrete unit reference without setting \" + \\\n                \"its identifier or type.\"\n            )\n\n    def _build_modifiers_repr(self):\n        modifiers = super(UnitRefBuilder, self)._build_modifiers_repr()\n        modifiers.argument_value = self.arg_value\n        modifiers.variation_name = self.variation\n        return modifiers\n\n    def create_concrete(self):\n        pass"
+      },
+      {
+        "file": "chatette/units/modifiable/unit_reference.py",
+        "name": "UnitReference",
+        "kind": "class",
+        "symbol": "chatette.units.modifiable.unit_reference.UnitReference",
+        "start": 16,
+        "end": 126,
+        "code": "class UnitReference(ModifiableItem):\n    \"\"\"\n    Represents a reference to a unit definition that can be contained\n    in a template rule.\n    \"\"\"\n    def __init__(self, identifier, unit_type, leading_space, modifiers):\n        self._unit_type = unit_type\n        super(UnitReference, self).__init__(\n            identifier, leading_space, modifiers\n        )\n        try:\n            self._definition = AST.get_or_create()[unit_type][identifier]\n            self._fix_arg_value_modifier()\n        except KeyError:\n            self._definition = None\n\n\n    def _compute_full_name(self):\n        return \"reference to \" + self._unit_type.value + \" '\" + \\\n            self._name + \"'\"\n\n\n    def get_definition(self):\n        if self._definition is None:\n            try:\n                self._definition = \\\n                    AST.get_or_create()[self._unit_type][self._name]\n                self._fix_arg_value_modifier()\n            except KeyError:\n                raise KeyError(\n                    \"Couldn't find the definition corresponding to \" + \\\n                    self.full_name + \".\"\n                )\n        return self._definition\n\n\n    def _compute_nb_possibilities(self):\n        return \\\n            self.get_definition() \\\n                .get_max_nb_possibilities(\n                    variation_name=self._modifiers_repr.variation_name\n                )\n\n    def _generate_random_strategy(self):\n        return \\\n            self.get_definition() \\\n                .generate_random(\n                    variation_name=self._modifiers_repr.variation_name\n                )\n\n    def _generate_all_strategy(self):\n        return \\\n            self.get_definition() \\\n                .generate_all(\n                    variation_name=self._modifiers_repr.variation_name\n                )\n\n    def _generate_n_strategy(self, n):\n        return \\\n            self.get_definition() \\\n                .generate_nb_possibilities(\n                    n, variation_name=self._modifiers_repr.variation_name\n                )\n\n\n    def _fix_arg_value_modifier(self):\n        \"\"\"\n        Transforms the modifier representation to have a mapping between\n        an argument name and value rather than the value only.\n        This method has no effect if:\n            - no argument value is set.\n            - a mapping is already set as this modifier.\n            - the definition doesn't exist yet.\n        @raises: - `SyntaxError` if the definition does not have an argument.  # TODO should it be just a warning?\n                 - `SyntaxError` if the definition has more than one argument\n                   defined.\n        \"\"\"\n        if self._definition is not None and (\n            self._modifiers_repr.argument_value is not None\n            and not isinstance(self._modifiers_repr.argument_value, dict)\n        ):\n            arg_name = self._definition._modifiers_repr.argument_name\n            if arg_name is None:\n                raise SyntaxError(\n                    self.full_name.capitalize() + \" was given an argument \" + \\\n                    \"while the definition it references has no argument \" + \\\n                    \"defined.\"\n                )\n            if isinstance(arg_name, list):\n                raise SyntaxError(\n                    self.full_name.capitalize() + \" was given a single \" + \\\n                    \"unnamed argument, while the definition \" + \\\n                    \"it references defines several arguments.\"\n                )\n            mapping = \\\n                OrderedDict(\n                    [(arg_name, self._modifiers_repr.argument_value)]\n                )\n            self._modifiers_repr.argument_value = mapping\n\n    def as_template_str(self):\n        result = \"\"\n        result += putils.get_template_unit_sym(self._unit_type)\n        result += putils.UNIT_START_SYM\n        result += putils.get_template_pre_modifiers(self._modifiers_repr)\n        result += self._name\n        result += putils.get_template_post_modifiers(self._modifiers_repr)\n        result += putils.UNIT_END_SYM\n        if self._leading_space:\n            result = ' ' + result\n        return result"
+      },
+      {
+        "file": "chatette/parsing/parser.py",
+        "name": "Parser._parse_unit_declaration",
+        "kind": "function",
+        "symbol": "chatette.parsing.parser.Parser._parse_unit_declaration",
+        "start": 169,
+        "end": 244,
+        "code": "    def _parse_unit_declaration(self, lexical_tokens):\n        \"\"\"\n        Parses the tokens `lexical_tokens` that contain a unit declaration.\n        Returns the corresponding concrete unit.\n        \"\"\"\n        if lexical_tokens[0].type == TerminalType.alias_decl_start:\n            builder = AliasDefBuilder()\n        elif lexical_tokens[0].type == TerminalType.slot_decl_start:\n            builder = SlotDefBuilder()\n        elif lexical_tokens[0].type == TerminalType.intent_decl_start:\n            builder = IntentDefBuilder()\n        else:  # Should never happen\n            raise ValueError(\n                \"Tried to parse a line as if it was a unit declaration \" + \\\n                \"while it wasn't.\"\n            )\n\n        i = 1\n        while i < len(lexical_tokens):\n            token = lexical_tokens[i]\n            if token.type == TerminalType.unit_identifier:\n                builder.identifier = token.text\n            elif token.type == TerminalType.casegen_marker:\n                builder.casegen = True\n            elif token.type == TerminalType.randgen_marker:\n                builder.randgen = True\n            elif token.type == TerminalType.randgen_name:\n                builder.randgen_name = token.text\n            elif token.type == TerminalType.variation_marker:\n                pass\n            elif token.type == TerminalType.variation_name:\n                builder.variation = token.text\n            elif token.type == TerminalType.arg_marker:\n                pass\n            elif token.type == TerminalType.arg_name:\n                builder.arg_name = token.text\n            elif (\n                token.type in \\\n                (TerminalType.alias_decl_end,\n                 TerminalType.slot_decl_end,\n                 TerminalType.intent_decl_end)\n            ):\n                i += 1\n                break\n            else:\n                raise ValueError(  # Should never happen\n                    \"Detected invalid token type in unit definition: \" + \\\n                    token.type.name\n                )\n            i += 1\n\n\n        if (\n            i < len(lexical_tokens)\n            and lexical_tokens[i].type == TerminalType.annotation_start\n        ):\n            if not isinstance(builder, IntentDefBuilder):\n                if isinstance(builder, AliasDefBuilder):\n                    unit_type = \"alias\"\n                else:\n                    unit_type = \"slot\"\n                print_warn(\n                    \"Found an annotation when parsing \" + unit_type + \" '\" + \\\n                    builder.identifier + \"'\\n\" + \\\n                    \"Annotations are currently only supported for intent \" + \\\n                    \"definitions. Any other annotation is ignored.\"\n                )\n            else:\n                annotation_tokens = lexical_tokens[i:]\n                annotation = self._annotation_tokens_to_dict(annotation_tokens)\n                (nb_training_ex, nb_testing_ex) = \\\n                    self._parse_intent_annotation(annotation)\n                builder.nb_training_ex = nb_training_ex\n                builder.nb_testing_ex = nb_testing_ex\n\n        return (builder.create_concrete(), builder.variation)"
+      },
+      {
+        "file": "chatette/parsing/parser.py",
+        "name": "Parser._parse_rule",
+        "kind": "function",
+        "symbol": "chatette.parsing.parser.Parser._parse_rule",
+        "start": 356,
+        "end": 477,
+        "code": "    def _parse_rule(self, tokens):\n        \"\"\"\n        Handles the tokens `tokens` that contain a rule (inside a unit\n        definition).\n        Returns the rule (`Rule`) that `tokens` represent.\n        \"\"\"\n        # TODO replace this with a (stateful) iterator to make it more readable\n        rule_contents = []\n        current_builder = None\n        leading_space = False\n        slot_value = None\n        i = 0\n        while i < len(tokens):\n            token = tokens[i]\n            if token.type == TerminalType.whitespace:\n                leading_space = True\n                if current_builder is not None:\n                    rule_contents.append(current_builder.create_concrete())\n                    current_builder = None\n            # Units and rule contents\n            elif token.type == TerminalType.word:\n                rule_contents.append(Word(token.text, leading_space))\n                leading_space = False\n            elif (\n                token.type in \\\n                (TerminalType.alias_ref_start,\n                    TerminalType.slot_ref_start,\n                    TerminalType.intent_ref_end)\n            ):\n                if current_builder is not None:\n                    rule_contents.append(current_builder.create_concrete())\n                current_builder = UnitRefBuilder()\n                current_builder.leading_space = leading_space\n                if token.type == TerminalType.alias_ref_start:\n                    current_builder.type = UnitType.alias\n                elif token.type == TerminalType.slot_ref_start:\n                    current_builder.type = UnitType.slot\n                elif token.type == TerminalType.intent_ref_start:\n                    current_builder.type = UnitType.intent\n            elif (\n                token.type in \\\n                (TerminalType.alias_ref_end,\n                 TerminalType.slot_ref_end,\n                 TerminalType.intent_ref_end)\n            ):\n                rule_contents.append(current_builder.create_concrete())\n                current_builder = None\n                leading_space = False\n            elif token.type == TerminalType.unit_identifier:\n                current_builder.identifier = token.text\n            elif token.type == TerminalType.choice_start:\n                if current_builder is not None:\n                    rule_contents.append(current_builder.create_concrete())\n                current_builder = ChoiceBuilder()\n                current_builder.leading_space = leading_space\n                last_internal_choice_token = \\\n                    find_index_last_choice_content(tokens, i)\n                if last_internal_choice_token is not None:\n                    i += 1\n                    if tokens[i].type == TerminalType.casegen_marker:\n                        current_builder.casegen = True\n                        i += 1\n                    internal_rules = \\\n                        self._parse_choice(\n                            tokens[i:last_internal_choice_token + 1]\n                        )\n                    current_builder.rules = internal_rules\n                    i = last_internal_choice_token\n                else:\n                    self.input_file_manager.syntax_error(\n                        \"Inconsistent choice start and ending.\"\n                    )\n            elif token.type == TerminalType.choice_end:\n                rule_contents.append(current_builder.create_concrete())\n                current_builder = None\n                leading_space = False\n            # Modifiers\n            elif token.type == TerminalType.casegen_marker:\n                current_builder.casegen = True\n            elif token.type == TerminalType.randgen_marker:\n                current_builder.randgen = True\n            elif token.type == TerminalType.opposite_randgen_marker:\n                current_builder.randgen_opposite = True\n            elif token.type == TerminalType.randgen_name:\n                current_builder.randgen_name = token.text\n            elif token.type == TerminalType.percentgen_marker:\n                pass\n            elif token.type == TerminalType.percentgen:\n                current_builder.randgen_percent = \\\n                    self._str_to_int(\n                        token.text,\n                        \"Couldn't parse the percentage \" + \\\n                        \"for the random generation modifier.\"\n                    )\n            elif token.type == TerminalType.variation_marker:\n                pass\n            elif token.type == TerminalType.variation_name:\n                current_builder.variation = token.text\n            elif token.type == TerminalType.arg_marker:\n                pass\n            elif token.type == TerminalType.arg_value:\n                current_builder.arg_value = token.text\n            elif token.type == TerminalType.slot_val_marker:\n                pass\n            elif token.type == TerminalType.slot_val:\n                slot_value = token.text\n            else:\n                raise ValueError(  # Should never happen\n                    \"Detected invalid token type in rule: \" + \\\n                    token.type.name + \" for text '\" + token.text + \"'.\"\n                )\n            i += 1\n        if current_builder is not None:\n            rule_contents.append(current_builder.create_concrete())\n\n        if self._current_unit_declaration is not None:\n            return Rule(\n                self._current_unit_declaration.full_name,\n                rule_contents, slot_value\n            )\n        # NOTE can only come from an interactive command (the 'rule' command)\n        return Rule(None, rule_contents, slot_value)"
+      }
+    ],
+    "unresolved": [
+      "chatette/parsing/__init__.py:function: create_concrete"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.16666666666666666,
+    "exact_entity_dr": 0.16666666666666666,
+    "dependency_count": 6,
+    "hit_dependencies": [
+      "chatette.units.modifiable.unit_reference.UnitReference"
+    ],
+    "exact_hit_dependencies": [
+      "chatette.units.modifiable.unit_reference.UnitReference"
+    ],
+    "returned_entities": 4,
+    "returned_files": 3,
+    "unresolved_locations": 1,
+    "returned_code_chars": 13806
+  },
+  "usage": {
+    "calls": 4,
+    "successful_calls": 4,
+    "physical_requests": 4,
+    "failed_requests": 0,
+    "prompt_tokens": 12166,
+    "completion_tokens": 1084,
+    "total_tokens": 13250,
+    "seconds": 34.0840847492218,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 35.528629302978516,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,117 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 313,
+  "namespace": "boto.dynamodb2.items.Item.prepare_full",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 7645,
+      "input_estimate_after": 7645,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nboto/dynamodb2/items.py\nline: 333\nfunction: Item.prepare_partial\n\nboto/dynamodb2/items.py\nline: 448\nfunction: Item.save\n\nboto/dynamodb2/items.py\nline: 305\nfunction: Item._is_storable\n\nboto/dynamodb2/items.py\nline: 249\nfunction: Item.get_raw_keys\n\nboto/dynamodb2/items.py\nline: 301\nfunction: Item._dynamizer.encode\n```",
+  "final_locations": {
+    "files": [
+      "boto/dynamodb2/items.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.prepare_partial",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.prepare_partial",
+        "start": 333,
+        "end": 367,
+        "code": "    def prepare_partial(self):\n        \"\"\"\n        Runs through **ONLY** the changed/deleted fields & encodes them to be\n        handed off to DynamoDB as part of an ``partial_save`` (``update_item``)\n        call.\n\n        Largely internal.\n        \"\"\"\n        # This doesn't save on its own. Rather, we prepare the datastructure\n        # and hand-off to the table to handle creation/update.\n        final_data = {}\n        fields = set()\n        alterations = self._determine_alterations()\n\n        for key, value in alterations['adds'].items():\n            final_data[key] = {\n                'Action': 'PUT',\n                'Value': self._dynamizer.encode(self._data[key])\n            }\n            fields.add(key)\n\n        for key, value in alterations['changes'].items():\n            final_data[key] = {\n                'Action': 'PUT',\n                'Value': self._dynamizer.encode(self._data[key])\n            }\n            fields.add(key)\n\n        for key in alterations['deletes']:\n            final_data[key] = {\n                'Action': 'DELETE',\n            }\n            fields.add(key)\n\n        return final_data, fields"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.save",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.save",
+        "start": 415,
+        "end": 458,
+        "code": "    def save(self, overwrite=False):\n        \"\"\"\n        Saves all data to DynamoDB.\n\n        By default, this attempts to ensure that none of the underlying\n        data has changed. If any fields have changed in between when the\n        ``Item`` was constructed & when it is saved, this call will fail so\n        as not to cause any data loss.\n\n        If you're sure possibly overwriting data is acceptable, you can pass\n        an ``overwrite=True``. If that's not acceptable, you may be able to use\n        ``Item.partial_save`` to only write the changed field data.\n\n        Optionally accepts an ``overwrite`` parameter, which should be a\n        boolean. If you provide ``True``, the item will be forcibly overwritten\n        within DynamoDB, even if another process changed the data in the\n        meantime. (Default: ``False``)\n\n        Returns ``True`` on success, ``False`` if no save was performed.\n\n        Example::\n\n            >>> user['last_name'] = 'Doh!'\n            # All data on the Item is sent to DynamoDB.\n            >>> user.save()\n\n            # If it fails, you can overwrite.\n            >>> user.save(overwrite=True)\n\n        \"\"\"\n        if not self.needs_save() and not overwrite:\n            return False\n\n        final_data = self.prepare_full()\n        expects = None\n\n        if overwrite is False:\n            # Build expectations about *all* of the data.\n            expects = self.build_expects()\n\n        returned = self.table._put_item(final_data, expects=expects)\n        # Mark the object as clean.\n        self.mark_clean()\n        return returned"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item._is_storable",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item._is_storable",
+        "start": 305,
+        "end": 312,
+        "code": "    def _is_storable(self, value):\n        # We need to prevent ``None``, empty string & empty set from\n        # heading to DDB, but allow false-y values like 0 & False make it.\n        if not value:\n            if not value in (0, 0.0, False):\n                return False\n\n        return True"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.get_raw_keys",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.get_raw_keys",
+        "start": 240,
+        "end": 251,
+        "code": "    def get_raw_keys(self):\n        \"\"\"\n        Returns a DynamoDB-style dict of the keys/values.\n\n        Largely internal.\n        \"\"\"\n        raw_key_data = {}\n\n        for key, value in self.get_keys().items():\n            raw_key_data[key] = self._dynamizer.encode(value)\n\n        return raw_key_data"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.build_expects",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.build_expects",
+        "start": 253,
+        "end": 303,
+        "code": "    def build_expects(self, fields=None):\n        \"\"\"\n        Builds up a list of expecations to hand off to DynamoDB on save.\n\n        Largely internal.\n        \"\"\"\n        expects = {}\n\n        if fields is None:\n            fields = list(self._data.keys()) + list(self._orig_data.keys())\n\n        # Only uniques.\n        fields = set(fields)\n\n        for key in fields:\n            expects[key] = {\n                'Exists': True,\n            }\n            value = None\n\n            # Check for invalid keys.\n            if not key in self._orig_data and not key in self._data:\n                raise ValueError(\"Unknown key %s provided.\" % key)\n\n            # States:\n            # * New field (only in _data)\n            # * Unchanged field (in both _data & _orig_data, same data)\n            # * Modified field (in both _data & _orig_data, different data)\n            # * Deleted field (only in _orig_data)\n            orig_value = self._orig_data.get(key, NEWVALUE)\n            current_value = self._data.get(key, NEWVALUE)\n\n            if orig_value == current_value:\n                # Existing field unchanged.\n                value = current_value\n            else:\n                if key in self._data:\n                    if not key in self._orig_data:\n                        # New field.\n                        expects[key]['Exists'] = False\n                    else:\n                        # Existing field modified.\n                        value = orig_value\n                else:\n                   # Existing field deleted.\n                    value = orig_value\n\n            if value is not None:\n                expects[key]['Value'] = self._dynamizer.encode(value)\n\n        return expects"
+      }
+    ],
+    "unresolved": [
+      "boto/dynamodb2/items.py:function: Item._dynamizer.encode"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.75,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "boto.dynamodb2.items.Item._data",
+      "boto.dynamodb2.items.Item._dynamizer",
+      "boto.dynamodb2.items.Item._is_storable"
+    ],
+    "exact_hit_dependencies": [
+      "boto.dynamodb2.items.Item._is_storable"
+    ],
+    "returned_entities": 5,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5041
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 25765,
+    "completion_tokens": 1464,
+    "total_tokens": 27229,
+    "seconds": 83.35363459587097,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 141.26291298866272,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

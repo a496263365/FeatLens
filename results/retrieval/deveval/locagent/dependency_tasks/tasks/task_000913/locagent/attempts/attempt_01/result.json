@@ -1,0 +1,101 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 913,
+  "namespace": "mrjob.parse._parse_progress_from_resource_manager",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6198,
+      "input_estimate_after": 6198,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the verified dependencies and execution flow analysis, here are the key reusable components that interact with or support the target function:\n\n```\nmrjob/emr.py\nline: 1739\nfunction: EMRJobRunner._log_step_progress\n\nmrjob/parse.py\nline: 173\nfunction: _parse_progress_from_job_tracker\n\nmrjob/emr.py\nline: 1765\nfunction: EMRJobRunner._progress_html_from_tunnel\n\nmrjob/emr.py\nline: 1751\nfunction: EMRJobRunner._ssh_tunnel_config\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/emr.py",
+      "mrjob/parse.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/emr.py",
+        "name": "EMRJobRunner._log_step_progress",
+        "kind": "function",
+        "symbol": "mrjob.emr.EMRJobRunner._log_step_progress",
+        "start": 1739,
+        "end": 1763,
+        "code": "    def _log_step_progress(self):\n        \"\"\"Tunnel to the job tracker/resource manager and log the\n        progress of the current step.\n\n        (This takes no arguments; we just assume the most recent running\n        job is ours, which should be correct for EMR.)\n        \"\"\"\n        progress_html = (self._progress_html_from_tunnel() or\n                         self._progress_html_over_ssh())\n        if not progress_html:\n            return\n\n        tunnel_config = self._ssh_tunnel_config()\n\n        if tunnel_config['name'] == 'job tracker':\n            map_progress, reduce_progress = (\n                _parse_progress_from_job_tracker(progress_html))\n            if map_progress is not None:\n                log.info('   map %3d%% reduce %3d%%' % (\n                    map_progress, reduce_progress))\n        else:\n            progress = _parse_progress_from_resource_manager(\n                progress_html)\n            if progress is not None:\n                log.info('   %5.1f%% complete' % progress)"
+      },
+      {
+        "file": "mrjob/parse.py",
+        "name": "_parse_progress_from_job_tracker",
+        "kind": "function",
+        "symbol": "mrjob.parse._parse_progress_from_job_tracker",
+        "start": 173,
+        "end": 194,
+        "code": "def _parse_progress_from_job_tracker(html_bytes):\n    \"\"\"Pull (map_percent, reduce_percent) from running job from job tracker\n    HTML as floats, or return (None, None).\n\n    This assumes at most one running job (designed for EMR).\n    \"\"\"\n    # snip out the Running Jobs section (ignore the header)\n    start = html_bytes.rfind(b'Running Jobs')\n    if start == -1:\n        return None, None\n    end = html_bytes.find(b'Jobs', start + len(b'Running Jobs'))\n    if end == -1:\n        end = None\n\n    html_bytes = html_bytes[start:end]\n\n    # search it for percents\n    matches = _JOB_TRACKER_HTML_RE.findall(html_bytes)\n    if len(matches) >= 2:\n        return float(matches[0]), float(matches[1])\n    else:\n        return None, None"
+      },
+      {
+        "file": "mrjob/emr.py",
+        "name": "EMRJobRunner._progress_html_from_tunnel",
+        "kind": "function",
+        "symbol": "mrjob.emr.EMRJobRunner._progress_html_from_tunnel",
+        "start": 1765,
+        "end": 1784,
+        "code": "    def _progress_html_from_tunnel(self):\n        \"\"\"Fetch progress by calling :py:func:`urlopen` on our ssh tunnel, or\n        return ``None``.\"\"\"\n        if not self._ssh_tunnel_url:\n            return None\n\n        tunnel_config = self._ssh_tunnel_config()\n        log.debug('  Fetching progress from %s at %s' % (\n            tunnel_config['name'], self._ssh_tunnel_url))\n\n        tunnel_handle = None\n        try:\n            tunnel_handle = urlopen(self._ssh_tunnel_url)\n            return tunnel_handle.read()\n        except Exception as e:\n            log.debug('    failed: %s' % str(e))\n            return None\n        finally:\n            if tunnel_handle:\n                tunnel_handle.close()"
+      },
+      {
+        "file": "mrjob/emr.py",
+        "name": "EMRJobRunner._ssh_tunnel_config",
+        "kind": "function",
+        "symbol": "mrjob.emr.EMRJobRunner._ssh_tunnel_config",
+        "start": 861,
+        "end": 869,
+        "code": "    def _ssh_tunnel_config(self):\n        \"\"\"Look up AMI version, and return a dict with the following keys:\n\n        name: \"job tracker\" or \"resource manager\"\n        path: path to start page of job tracker/resource manager\n        port: port job tracker/resource manager is running on.\n        \"\"\"\n        return map_version(self.get_image_version(),\n                           _IMAGE_VERSION_TO_SSH_TUNNEL_CONFIG)"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 1,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 2866
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 26735,
+    "completion_tokens": 457,
+    "total_tokens": 27192,
+    "seconds": 39.531006813049316,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 105.25268983840942,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

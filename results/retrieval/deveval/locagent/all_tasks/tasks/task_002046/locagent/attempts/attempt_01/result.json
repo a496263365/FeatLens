@@ -1,0 +1,132 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 2046,
+  "namespace": "sqlite_utils.utils.chunks",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 26084,
+      "input_estimate_after": 26084,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on my analysis of the repository, I can identify the following key locations containing reusable dependencies and patterns that should be referenced when implementing the `chunks` function in `sqlite_utils/utils.py`. These locations demonstrate the existing patterns for iteration, chunking, and utility function design in the codebase:\n\n```\nsqlite_utils/utils.py\nline: 7\nimport: itertools\nline: 12\ntype: Iterable (from typing import Iterable)\n\nsqlite_utils/db.py\nline: 3241\nfunction: Table.insert_all\nline: 3241\nusage: chunks(itertools.chain([first_record], records), batch_size)\n\nsqlite_utils/cli.py\nline: 1075\nfunction: insert_upsert_implementation\nline: 1075\nusage: doc_chunks = chunks(docs, batch_size)\n\nsqlite_utils/utils.py\nline: 161\nclass: UpdateWrapper\nline: 161\nfunction: UpdateWrapper.__iter__\npattern: yield-based iteration\n\nsqlite_utils/utils.py\nline: 361\nclass: TypeTracker\nline: 361\nfunction: TypeTracker.wrap\npattern: generator function with yield\ntype: Iterable[dict] parameter and return\n\nsqlite_utils/utils.py\nline: 532\nfunction: _flatten\nline: 532\npattern: generator function with nested yield\n```",
+  "final_locations": {
+    "files": [
+      "sqlite_utils/utils.py",
+      "sqlite_utils/db.py",
+      "sqlite_utils/cli.py"
+    ],
+    "entities": [
+      {
+        "file": "sqlite_utils/db.py",
+        "name": "Table.insert_all",
+        "kind": "function",
+        "symbol": "sqlite_utils.db.Table.insert_all",
+        "start": 3163,
+        "end": 3293,
+        "code": "    def insert_all(\n        self,\n        records,\n        pk=DEFAULT,\n        foreign_keys=DEFAULT,\n        column_order=DEFAULT,\n        not_null=DEFAULT,\n        defaults=DEFAULT,\n        batch_size=DEFAULT,\n        hash_id=DEFAULT,\n        hash_id_columns=DEFAULT,\n        alter=DEFAULT,\n        ignore=DEFAULT,\n        replace=DEFAULT,\n        truncate=False,\n        extracts=DEFAULT,\n        conversions=DEFAULT,\n        columns=DEFAULT,\n        upsert=False,\n        analyze=False,\n    ) -> \"Table\":\n        \"\"\"\n        Like ``.insert()`` but takes a list of records and ensures that the table\n        that it creates (if table does not exist) has columns for ALL of that data.\n\n        Use ``analyze=True`` to run ``ANALYZE`` after the insert has completed.\n        \"\"\"\n        pk = self.value_or_default(\"pk\", pk)\n        foreign_keys = self.value_or_default(\"foreign_keys\", foreign_keys)\n        column_order = self.value_or_default(\"column_order\", column_order)\n        not_null = self.value_or_default(\"not_null\", not_null)\n        defaults = self.value_or_default(\"defaults\", defaults)\n        batch_size = self.value_or_default(\"batch_size\", batch_size)\n        hash_id = self.value_or_default(\"hash_id\", hash_id)\n        hash_id_columns = self.value_or_default(\"hash_id_columns\", hash_id_columns)\n        alter = self.value_or_default(\"alter\", alter)\n        ignore = self.value_or_default(\"ignore\", ignore)\n        replace = self.value_or_default(\"replace\", replace)\n        extracts = self.value_or_default(\"extracts\", extracts)\n        conversions = self.value_or_default(\"conversions\", conversions) or {}\n        columns = self.value_or_default(\"columns\", columns)\n\n        if hash_id_columns and hash_id is None:\n            hash_id = \"id\"\n\n        if upsert and (not pk and not hash_id):\n            raise PrimaryKeyRequired(\"upsert() requires a pk\")\n        assert not (hash_id and pk), \"Use either pk= or hash_id=\"\n        if hash_id_columns and (hash_id is None):\n            hash_id = \"id\"\n        if hash_id:\n            pk = hash_id\n\n        assert not (\n            ignore and replace\n        ), \"Use either ignore=True or replace=True, not both\"\n        all_columns = []\n        first = True\n        num_records_processed = 0\n        # Fix up any records with square braces in the column names\n        records = fix_square_braces(records)\n        # We can only handle a max of 999 variables in a SQL insert, so\n        # we need to adjust the batch_size down if we have too many cols\n        records = iter(records)\n        # Peek at first record to count its columns:\n        try:\n            first_record = next(records)\n        except StopIteration:\n            return self  # It was an empty list\n        num_columns = len(first_record.keys())\n        assert (\n            num_columns <= SQLITE_MAX_VARS\n        ), \"Rows can have a maximum of {} columns\".format(SQLITE_MAX_VARS)\n        batch_size = max(1, min(batch_size, SQLITE_MAX_VARS // num_columns))\n        self.last_rowid = None\n        self.last_pk = None\n        if truncate and self.exists():\n            self.db.execute(\"DELETE FROM [{}];\".format(self.name))\n        for chunk in chunks(itertools.chain([first_record], records), batch_size):\n            chunk = list(chunk)\n            num_records_processed += len(chunk)\n            if first:\n                if not self.exists():\n                    # Use the first batch to derive the table names\n                    column_types = suggest_column_types(chunk)\n                    column_types.update(columns or {})\n                    self.create(\n                        column_types,\n                        pk,\n                        foreign_keys,\n                        column_order=column_order,\n                        not_null=not_null,\n                        defaults=defaults,\n                        hash_id=hash_id,\n                        hash_id_columns=hash_id_columns,\n                        extracts=extracts,\n                    )\n                all_columns_set = set()\n                for record in chunk:\n                    all_columns_set.update(record.keys())\n                all_columns = list(sorted(all_columns_set))\n                if hash_id:\n                    all_columns.insert(0, hash_id)\n            else:\n                for record in chunk:\n                    all_columns += [\n                        column for column in record if column not in all_columns\n                    ]\n\n            first = False\n\n            self.insert_chunk(\n                alter,\n                extracts,\n                chunk,\n                all_columns,\n                hash_id,\n                hash_id_columns,\n                upsert,\n                pk,\n                not_null,\n                conversions,\n                num_records_processed,\n                replace,\n                ignore,\n            )\n\n        if analyze:\n            self.analyze()\n\n        return self"
+      },
+      {
+        "file": "sqlite_utils/cli.py",
+        "name": "insert_upsert_implementation",
+        "kind": "function",
+        "symbol": "sqlite_utils.cli.insert_upsert_implementation",
+        "start": 911,
+        "end": 1113,
+        "code": "def insert_upsert_implementation(\n    path,\n    table,\n    file,\n    pk,\n    flatten,\n    nl,\n    csv,\n    tsv,\n    empty_null,\n    lines,\n    text,\n    convert,\n    imports,\n    delimiter,\n    quotechar,\n    sniff,\n    no_headers,\n    encoding,\n    batch_size,\n    stop_after,\n    alter,\n    upsert,\n    ignore=False,\n    replace=False,\n    truncate=False,\n    not_null=None,\n    default=None,\n    detect_types=None,\n    analyze=False,\n    load_extension=None,\n    silent=False,\n    bulk_sql=None,\n    functions=None,\n):\n    db = sqlite_utils.Database(path)\n    _load_extensions(db, load_extension)\n    if functions:\n        _register_functions(db, functions)\n    if (delimiter or quotechar or sniff or no_headers) and not tsv:\n        csv = True\n    if (nl + csv + tsv) >= 2:\n        raise click.ClickException(\"Use just one of --nl, --csv or --tsv\")\n    if (csv or tsv) and flatten:\n        raise click.ClickException(\"--flatten cannot be used with --csv or --tsv\")\n    if empty_null and not (csv or tsv):\n        raise click.ClickException(\"--empty-null can only be used with --csv or --tsv\")\n    if encoding and not (csv or tsv):\n        raise click.ClickException(\"--encoding must be used with --csv or --tsv\")\n    if pk and len(pk) == 1:\n        pk = pk[0]\n    encoding = encoding or \"utf-8-sig\"\n\n    # The --sniff option needs us to buffer the file to peek ahead\n    sniff_buffer = None\n    decoded_buffer = None\n    if sniff:\n        sniff_buffer = io.BufferedReader(file, buffer_size=4096)\n        decoded_buffer = io.TextIOWrapper(sniff_buffer, encoding=encoding)\n    else:\n        decoded_buffer = io.TextIOWrapper(file, encoding=encoding)\n\n    tracker = None\n    with file_progress(decoded_buffer, silent=silent) as decoded:\n        if csv or tsv:\n            if sniff:\n                # Read first 2048 bytes and use that to detect\n                first_bytes = sniff_buffer.peek(2048)\n                dialect = csv_std.Sniffer().sniff(\n                    first_bytes.decode(encoding, \"ignore\")\n                )\n            else:\n                dialect = \"excel-tab\" if tsv else \"excel\"\n            csv_reader_args = {\"dialect\": dialect}\n            if delimiter:\n                csv_reader_args[\"delimiter\"] = delimiter\n            if quotechar:\n                csv_reader_args[\"quotechar\"] = quotechar\n            reader = csv_std.reader(decoded, **csv_reader_args)\n            first_row = next(reader)\n            if no_headers:\n                headers = [\"untitled_{}\".format(i + 1) for i in range(len(first_row))]\n                reader = itertools.chain([first_row], reader)\n            else:\n                headers = first_row\n            if empty_null:\n                docs = (\n                    dict(zip(headers, [None if cell == \"\" else cell for cell in row]))\n                    for row in reader\n                )\n            else:\n                docs = (dict(zip(headers, row)) for row in reader)\n            if detect_types:\n                tracker = TypeTracker()\n                docs = tracker.wrap(docs)\n        elif lines:\n            docs = ({\"line\": line.strip()} for line in decoded)\n        elif text:\n            docs = ({\"text\": decoded.read()},)\n        else:\n            try:\n                if nl:\n                    docs = (json.loads(line) for line in decoded if line.strip())\n                else:\n                    docs = json.load(decoded)\n                    if isinstance(docs, dict):\n                        docs = [docs]\n            except json.decoder.JSONDecodeError as ex:\n                raise click.ClickException(\n                    \"Invalid JSON - use --csv for CSV or --tsv for TSV files\\n\\nJSON error: {}\".format(\n                        ex\n                    )\n                )\n            if flatten:\n                docs = (_flatten(doc) for doc in docs)\n\n    if stop_after:\n        docs = itertools.islice(docs, stop_after)\n\n    if convert:\n        variable = \"row\"\n        if lines:\n            variable = \"line\"\n        elif text:\n            variable = \"text\"\n        fn = _compile_code(convert, imports, variable=variable)\n        if lines:\n            docs = (fn(doc[\"line\"]) for doc in docs)\n        elif text:\n            # Special case: this is allowed to be an iterable\n            text_value = list(docs)[0][\"text\"]\n            fn_return = fn(text_value)\n            if isinstance(fn_return, dict):\n                docs = [fn_return]\n            else:\n                try:\n                    docs = iter(fn_return)\n                except TypeError:\n                    raise click.ClickException(\"--convert must return dict or iterator\")\n        else:\n            docs = (fn(doc) or doc for doc in docs)\n\n    extra_kwargs = {\n        \"ignore\": ignore,\n        \"replace\": replace,\n        \"truncate\": truncate,\n        \"analyze\": analyze,\n    }\n    if not_null:\n        extra_kwargs[\"not_null\"] = set(not_null)\n    if default:\n        extra_kwargs[\"defaults\"] = dict(default)\n    if upsert:\n        extra_kwargs[\"upsert\"] = upsert\n\n    # docs should all be dictionaries\n    docs = (verify_is_dict(doc) for doc in docs)\n\n    # Apply {\"$base64\": true, ...} decoding, if needed\n    docs = (decode_base64_values(doc) for doc in docs)\n\n    # For bulk_sql= we use cursor.executemany() instead\n    if bulk_sql:\n        if batch_size:\n            doc_chunks = chunks(docs, batch_size)\n        else:\n            doc_chunks = [docs]\n        for doc_chunk in doc_chunks:\n            with db.conn:\n                db.conn.cursor().executemany(bulk_sql, doc_chunk)\n        return\n\n    try:\n        db[table].insert_all(\n            docs, pk=pk, batch_size=batch_size, alter=alter, **extra_kwargs\n        )\n    except Exception as e:\n        if (\n            isinstance(e, OperationalError)\n            and e.args\n            and \"has no column named\" in e.args[0]\n        ):\n            raise click.ClickException(\n                \"{}\\n\\nTry using --alter to add additional columns\".format(e.args[0])\n            )\n        # If we can find sql= and parameters= arguments, show those\n        variables = _find_variables(e.__traceback__, [\"sql\", \"parameters\"])\n        if \"sql\" in variables and \"parameters\" in variables:\n            raise click.ClickException(\n                \"{}\\n\\nsql = {}\\nparameters = {}\".format(\n                    str(e), variables[\"sql\"], variables[\"parameters\"]\n                )\n            )\n        else:\n            raise\n    if tracker is not None:\n        db[table].transform(types=tracker.types)\n\n    # Clean up open file-like objects\n    if sniff_buffer:\n        sniff_buffer.close()\n    if decoded_buffer:\n        decoded_buffer.close()"
+      },
+      {
+        "file": "sqlite_utils/utils.py",
+        "name": "UpdateWrapper.__iter__",
+        "kind": "function",
+        "symbol": "sqlite_utils.utils.UpdateWrapper.__iter__",
+        "start": 161,
+        "end": 164,
+        "code": "    def __iter__(self):\n        for line in self._wrapped:\n            self._update(len(line))\n            yield line"
+      },
+      {
+        "file": "sqlite_utils/utils.py",
+        "name": "UpdateWrapper",
+        "kind": "class",
+        "symbol": "sqlite_utils.utils.UpdateWrapper",
+        "start": 156,
+        "end": 169,
+        "code": "class UpdateWrapper:\n    def __init__(self, wrapped, update):\n        self._wrapped = wrapped\n        self._update = update\n\n    def __iter__(self):\n        for line in self._wrapped:\n            self._update(len(line))\n            yield line\n\n    def read(self, size=-1):\n        data = self._wrapped.read(size)\n        self._update(len(data))\n        return data"
+      },
+      {
+        "file": "sqlite_utils/utils.py",
+        "name": "TypeTracker.wrap",
+        "kind": "function",
+        "symbol": "sqlite_utils.utils.TypeTracker.wrap",
+        "start": 361,
+        "end": 372,
+        "code": "    def wrap(self, iterator: Iterable[dict]) -> Iterable[dict]:\n        \"\"\"\n        Use this to loop through an existing iterator, tracking the column types\n        as part of the iteration.\n\n        :param iterator: The iterator to wrap\n        \"\"\"\n        for row in iterator:\n            for key, value in row.items():\n                tracker = self.trackers.setdefault(key, ValueTracker())\n                tracker.evaluate(value)\n            yield row"
+      },
+      {
+        "file": "sqlite_utils/utils.py",
+        "name": "TypeTracker",
+        "kind": "class",
+        "symbol": "sqlite_utils.utils.TypeTracker",
+        "start": 337,
+        "end": 380,
+        "code": "class TypeTracker:\n    \"\"\"\n    Wrap an iterator of dictionaries and keep track of which SQLite column\n    types are the most likely fit for each of their keys.\n\n    Example usage:\n\n    .. code-block:: python\n\n        from sqlite_utils.utils import TypeTracker\n        import sqlite_utils\n\n        db = sqlite_utils.Database(memory=True)\n        tracker = TypeTracker()\n        rows = [{\"id\": \"1\", \"name\": \"Cleo\", \"id\": \"2\", \"name\": \"Cardi\"}]\n        db[\"creatures\"].insert_all(tracker.wrap(rows))\n        print(tracker.types)\n        # Outputs {'id': 'integer', 'name': 'text'}\n        db[\"creatures\"].transform(types=tracker.types)\n    \"\"\"\n\n    def __init__(self):\n        self.trackers = {}\n\n    def wrap(self, iterator: Iterable[dict]) -> Iterable[dict]:\n        \"\"\"\n        Use this to loop through an existing iterator, tracking the column types\n        as part of the iteration.\n\n        :param iterator: The iterator to wrap\n        \"\"\"\n        for row in iterator:\n            for key, value in row.items():\n                tracker = self.trackers.setdefault(key, ValueTracker())\n                tracker.evaluate(value)\n            yield row\n\n    @property\n    def types(self) -> Dict[str, str]:\n        \"\"\"\n        A dictionary mapping column names to their detected types. This can be passed\n        to the ``db[table_name].transform(types=tracker.types)`` method.\n        \"\"\"\n        return {key: tracker.guessed_type for key, tracker in self.trackers.items()}"
+      },
+      {
+        "file": "sqlite_utils/utils.py",
+        "name": "_flatten",
+        "kind": "function",
+        "symbol": "sqlite_utils.utils._flatten",
+        "start": 532,
+        "end": 538,
+        "code": "def _flatten(d):\n    for key, value in d.items():\n        if isinstance(value, dict):\n            for key2, value2 in _flatten(value):\n                yield key + \"_\" + key2, value2\n        else:\n            yield key, value"
+      }
+    ],
+    "unresolved": [
+      "sqlite_utils/utils.py:line: 7",
+      "sqlite_utils/utils.py:line: 12"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.0,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 0,
+    "hit_dependencies": [],
+    "exact_hit_dependencies": [],
+    "returned_entities": 7,
+    "returned_files": 3,
+    "unresolved_locations": 2,
+    "returned_code_chars": 14233
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 59842,
+    "completion_tokens": 714,
+    "total_tokens": 60556,
+    "seconds": 90.69388055801392,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 102.53294253349304,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

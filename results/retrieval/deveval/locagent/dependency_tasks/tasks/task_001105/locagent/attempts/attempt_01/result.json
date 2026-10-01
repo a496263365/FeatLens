@@ -1,0 +1,95 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1105,
+  "namespace": "praw.models.util.ExponentialCounter.counter",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 4229,
+      "input_estimate_after": 4229,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\npraw/models/util.py\nline: 193\nclass: ExponentialCounter\nfunction: counter\n\npraw/models/util.py\nline: 216\nfunction: ExponentialCounter.reset\n\npraw/models/util.py\nline: 124\nfunction: stream_generator\n```",
+  "final_locations": {
+    "files": [
+      "praw/models/util.py"
+    ],
+    "entities": [
+      {
+        "file": "praw/models/util.py",
+        "name": "ExponentialCounter",
+        "kind": "class",
+        "symbol": "praw.models.util.ExponentialCounter",
+        "start": 193,
+        "end": 218,
+        "code": "class ExponentialCounter:\n    \"\"\"A class to provide an exponential counter with jitter.\"\"\"\n\n    def __init__(self, max_counter: int):\n        \"\"\"Initialize an :class:`.ExponentialCounter` instance.\n\n        :param max_counter: The maximum base value.\n\n            .. note::\n\n                The computed value may be 3.125% higher due to jitter.\n\n        \"\"\"\n        self._base = 1\n        self._max = max_counter\n\n    def counter(self) -> Union[int, float]:\n        pass\n\n\n\n\n\n    def reset(self):\n        \"\"\"Reset the counter to 1.\"\"\"\n        self._base = 1"
+      },
+      {
+        "file": "praw/models/util.py",
+        "name": "ExponentialCounter.reset",
+        "kind": "function",
+        "symbol": "praw.models.util.ExponentialCounter.reset",
+        "start": 216,
+        "end": 218,
+        "code": "    def reset(self):\n        \"\"\"Reset the counter to 1.\"\"\"\n        self._base = 1"
+      },
+      {
+        "file": "praw/models/util.py",
+        "name": "stream_generator",
+        "kind": "function",
+        "symbol": "praw.models.util.stream_generator",
+        "start": 38,
+        "end": 161,
+        "code": "def stream_generator(\n    function: Callable,\n    *,\n    attribute_name: str = \"fullname\",\n    exclude_before: bool = False,\n    pause_after: Optional[int] = None,\n    skip_existing: bool = False,\n    **function_kwargs: Any,\n) -> Generator[Any, None, None]:\n    \"\"\"Yield new items from ``function`` as they become available.\n\n    :param function: A callable that returns a :class:`.ListingGenerator`, e.g.,\n        :meth:`.Subreddit.comments` or :meth:`.Subreddit.new`.\n    :param attribute_name: The field to use as an ID (default: ``\"fullname\"``).\n    :param exclude_before: When ``True`` does not pass ``params`` to ``function``\n        (default: ``False``).\n    :param pause_after: An integer representing the number of requests that result in no\n        new items before this function yields ``None``, effectively introducing a pause\n        into the stream. A negative value yields ``None`` after items from a single\n        response have been yielded, regardless of number of new items obtained in that\n        response. A value of ``0`` yields ``None`` after every response resulting in no\n        new items, and a value of ``None`` never introduces a pause (default: ``None``).\n    :param skip_existing: When ``True``, this does not yield any results from the first\n        request thereby skipping any items that existed in the stream prior to starting\n        the stream (default: ``False``).\n\n    Additional keyword arguments will be passed to ``function``.\n\n    .. note::\n\n        This function internally uses an exponential delay with jitter between\n        subsequent responses that contain no new results, up to a maximum delay of just\n        over 16 seconds. In practice, that means that the time before pause for\n        ``pause_after=N+1`` is approximately twice the time before pause for\n        ``pause_after=N``.\n\n    For example, to create a stream of comment replies, try:\n\n    .. code-block:: python\n\n        reply_function = reddit.inbox.comment_replies\n        for reply in praw.models.util.stream_generator(reply_function):\n            print(reply)\n\n    To pause a comment stream after six responses with no new comments, try:\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        for comment in subreddit.stream.comments(pause_after=6):\n            if comment is None:\n                break\n            print(comment)\n\n    To resume fetching comments after a pause, try:\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        comment_stream = subreddit.stream.comments(pause_after=5)\n\n        for comment in comment_stream:\n            if comment is None:\n                break\n            print(comment)\n        # Do any other processing, then try to fetch more data\n        for comment in comment_stream:\n            if comment is None:\n                break\n            print(comment)\n\n    To bypass the internal exponential backoff, try the following. This approach is\n    useful if you are monitoring a subreddit with infrequent activity, and you want to\n    consistently learn about new items from the stream as soon as possible, rather than\n    up to a delay of just over sixteen seconds.\n\n    .. code-block:: python\n\n        subreddit = reddit.subreddit(\"test\")\n        for comment in subreddit.stream.comments(pause_after=0):\n            if comment is None:\n                continue\n            print(comment)\n\n    \"\"\"\n    before_attribute = None\n    exponential_counter = ExponentialCounter(max_counter=16)\n    seen_attributes = BoundedSet(301)\n    without_before_counter = 0\n    responses_without_new = 0\n    valid_pause_after = pause_after is not None\n    while True:\n        found = False\n        newest_attribute = None\n        limit = 100\n        if before_attribute is None:\n            limit -= without_before_counter\n            without_before_counter = (without_before_counter + 1) % 30\n        if not exclude_before:\n            function_kwargs[\"params\"] = {\"before\": before_attribute}\n        for item in reversed(list(function(limit=limit, **function_kwargs))):\n            attribute = getattr(item, attribute_name)\n            if attribute in seen_attributes:\n                continue\n            found = True\n            seen_attributes.add(attribute)\n            newest_attribute = attribute\n            if not skip_existing:\n                yield item\n        before_attribute = newest_attribute\n        skip_existing = False\n        if valid_pause_after and pause_after < 0:\n            yield None\n        elif found:\n            exponential_counter.reset()\n            responses_without_new = 0\n        else:\n            responses_without_new += 1\n            if valid_pause_after and responses_without_new > pause_after:\n                exponential_counter.reset()\n                responses_without_new = 0\n                yield None\n            else:\n                time.sleep(exponential_counter.counter())"
+      }
+    ],
+    "unresolved": [
+      "praw/models/util.py:function: counter"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.5,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "praw.models.util.ExponentialCounter._base"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 3,
+    "returned_files": 1,
+    "unresolved_locations": 1,
+    "returned_code_chars": 5563
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21048,
+    "completion_tokens": 1407,
+    "total_tokens": 22455,
+    "seconds": 51.51319861412048,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 77.34838247299194,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

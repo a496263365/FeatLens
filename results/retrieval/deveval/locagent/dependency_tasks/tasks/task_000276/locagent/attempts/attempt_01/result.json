@@ -1,0 +1,116 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 276,
+  "namespace": "jinja2.idtracking.Symbols.find_ref",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 13794,
+      "input_estimate_after": 13794,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nsrc/jinja2/idtracking.py\nline: 68\nclass: Symbols\nfunction: find_ref\n\nsrc/jinja2/idtracking.py\nline: 77\nfunction: Symbols.ref\n\nsrc/jinja2/idtracking.py\nline: 139\nfunction: Symbols.branch_update\n\nsrc/jinja2/idtracking.py\nline: 140\nfunction: Symbols.dump_stores\n\nsrc/jinja2/compiler.py\nline: 67\nimports: src/jinja2/idtracking.py:Symbols\n```",
+  "final_locations": {
+    "files": [
+      "src/jinja2/idtracking.py",
+      "src/jinja2/compiler.py"
+    ],
+    "entities": [
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols",
+        "kind": "class",
+        "symbol": "jinja2.idtracking.Symbols",
+        "start": 30,
+        "end": 171,
+        "code": "class Symbols:\n    def __init__(\n        self, parent: t.Optional[\"Symbols\"] = None, level: t.Optional[int] = None\n    ) -> None:\n        if level is None:\n            if parent is None:\n                level = 0\n            else:\n                level = parent.level + 1\n\n        self.level: int = level\n        self.parent = parent\n        self.refs: t.Dict[str, str] = {}\n        self.loads: t.Dict[str, t.Any] = {}\n        self.stores: t.Set[str] = set()\n\n    def analyze_node(self, node: nodes.Node, **kwargs: t.Any) -> None:\n        visitor = RootVisitor(self)\n        visitor.visit(node, **kwargs)\n\n    def _define_ref(\n        self, name: str, load: t.Optional[t.Tuple[str, t.Optional[str]]] = None\n    ) -> str:\n        ident = f\"l_{self.level}_{name}\"\n        self.refs[name] = ident\n        if load is not None:\n            self.loads[ident] = load\n        return ident\n\n    def find_load(self, target: str) -> t.Optional[t.Any]:\n        if target in self.loads:\n            return self.loads[target]\n\n        if self.parent is not None:\n            return self.parent.find_load(target)\n\n        return None\n\n    def find_ref(self, name: str) -> t.Optional[str]:\n        pass\n\n\n\n\n\n\n\n    def ref(self, name: str) -> str:\n        rv = self.find_ref(name)\n        if rv is None:\n            raise AssertionError(\n                \"Tried to resolve a name to a reference that was\"\n                f\" unknown to the frame ({name!r})\"\n            )\n        return rv\n\n    def copy(self) -> \"Symbols\":\n        rv = object.__new__(self.__class__)\n        rv.__dict__.update(self.__dict__)\n        rv.refs = self.refs.copy()\n        rv.loads = self.loads.copy()\n        rv.stores = self.stores.copy()\n        return rv\n\n    def store(self, name: str) -> None:\n        self.stores.add(name)\n\n        # If we have not see the name referenced yet, we need to figure\n        # out what to set it to.\n        if name not in self.refs:\n            # If there is a parent scope we check if the name has a\n            # reference there.  If it does it means we might have to alias\n            # to a variable there.\n            if self.parent is not None:\n                outer_ref = self.parent.find_ref(name)\n                if outer_ref is not None:\n                    self._define_ref(name, load=(VAR_LOAD_ALIAS, outer_ref))\n                    return\n\n            # Otherwise we can just set it to undefined.\n            self._define_ref(name, load=(VAR_LOAD_UNDEFINED, None))\n\n    def declare_parameter(self, name: str) -> str:\n        self.stores.add(name)\n        return self._define_ref(name, load=(VAR_LOAD_PARAMETER, None))\n\n    def load(self, name: str) -> None:\n        if self.find_ref(name) is None:\n            self._define_ref(name, load=(VAR_LOAD_RESOLVE, name))\n\n    def branch_update(self, branch_symbols: t.Sequence[\"Symbols\"]) -> None:\n        stores: t.Dict[str, int] = {}\n        for branch in branch_symbols:\n            for target in branch.stores:\n                if target in self.stores:\n                    continue\n                stores[target] = stores.get(target, 0) + 1\n\n        for sym in branch_symbols:\n            self.refs.update(sym.refs)\n            self.loads.update(sym.loads)\n            self.stores.update(sym.stores)\n\n        for name, branch_count in stores.items():\n            if branch_count == len(branch_symbols):\n                continue\n\n            target = self.find_ref(name)  # type: ignore\n            assert target is not None, \"should not happen\"\n\n            if self.parent is not None:\n                outer_target = self.parent.find_ref(name)\n                if outer_target is not None:\n                    self.loads[target] = (VAR_LOAD_ALIAS, outer_target)\n                    continue\n            self.loads[target] = (VAR_LOAD_RESOLVE, name)\n\n    def dump_stores(self) -> t.Dict[str, str]:\n        rv: t.Dict[str, str] = {}\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for name in sorted(node.stores):\n                if name not in rv:\n                    rv[name] = self.find_ref(name)  # type: ignore\n\n            node = node.parent\n\n        return rv\n\n    def dump_param_targets(self) -> t.Set[str]:\n        rv = set()\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for target, (instr, _) in self.loads.items():\n                if instr == VAR_LOAD_PARAMETER:\n                    rv.add(target)\n\n            node = node.parent\n\n        return rv"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols.ref",
+        "kind": "function",
+        "symbol": "jinja2.idtracking.Symbols.ref",
+        "start": 77,
+        "end": 84,
+        "code": "    def ref(self, name: str) -> str:\n        rv = self.find_ref(name)\n        if rv is None:\n            raise AssertionError(\n                \"Tried to resolve a name to a reference that was\"\n                f\" unknown to the frame ({name!r})\"\n            )\n        return rv"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols.branch_update",
+        "kind": "function",
+        "symbol": "jinja2.idtracking.Symbols.branch_update",
+        "start": 120,
+        "end": 145,
+        "code": "    def branch_update(self, branch_symbols: t.Sequence[\"Symbols\"]) -> None:\n        stores: t.Dict[str, int] = {}\n        for branch in branch_symbols:\n            for target in branch.stores:\n                if target in self.stores:\n                    continue\n                stores[target] = stores.get(target, 0) + 1\n\n        for sym in branch_symbols:\n            self.refs.update(sym.refs)\n            self.loads.update(sym.loads)\n            self.stores.update(sym.stores)\n\n        for name, branch_count in stores.items():\n            if branch_count == len(branch_symbols):\n                continue\n\n            target = self.find_ref(name)  # type: ignore\n            assert target is not None, \"should not happen\"\n\n            if self.parent is not None:\n                outer_target = self.parent.find_ref(name)\n                if outer_target is not None:\n                    self.loads[target] = (VAR_LOAD_ALIAS, outer_target)\n                    continue\n            self.loads[target] = (VAR_LOAD_RESOLVE, name)"
+      },
+      {
+        "file": "src/jinja2/idtracking.py",
+        "name": "Symbols.dump_stores",
+        "kind": "function",
+        "symbol": "jinja2.idtracking.Symbols.dump_stores",
+        "start": 147,
+        "end": 158,
+        "code": "    def dump_stores(self) -> t.Dict[str, str]:\n        rv: t.Dict[str, str] = {}\n        node: t.Optional[\"Symbols\"] = self\n\n        while node is not None:\n            for name in sorted(node.stores):\n                if name not in rv:\n                    rv[name] = self.find_ref(name)  # type: ignore\n\n            node = node.parent\n\n        return rv"
+      },
+      {
+        "file": "src/jinja2/compiler.py",
+        "name": "_make_binop.visitor",
+        "kind": "function",
+        "symbol": "jinja2.compiler._make_binop.visitor",
+        "start": 61,
+        "end": 76,
+        "code": "    def visitor(self: \"CodeGenerator\", node: nodes.BinExpr, frame: Frame) -> None:\n        if (\n            self.environment.sandboxed\n            and op in self.environment.intercepted_binops  # type: ignore\n        ):\n            self.write(f\"environment.call_binop(context, {op!r}, \")\n            self.visit(node.left, frame)\n            self.write(\", \")\n            self.visit(node.right, frame)\n        else:\n            self.write(\"(\")\n            self.visit(node.left, frame)\n            self.write(f\" {op} \")\n            self.visit(node.right, frame)\n\n        self.write(\")\")"
+      }
+    ],
+    "unresolved": [
+      "src/jinja2/idtracking.py:function: find_ref",
+      "imports: src/jinja2/idtracking.py:Symbols"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6666666666666666,
+    "exact_entity_dr": 0.0,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "jinja2.idtracking.Symbols.parent",
+      "jinja2.idtracking.Symbols.refs"
+    ],
+    "exact_hit_dependencies": [],
+    "returned_entities": 5,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 6739
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 45409,
+    "completion_tokens": 1662,
+    "total_tokens": 47071,
+    "seconds": 60.053539514541626,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 72.25696039199829,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,130 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 314,
+  "namespace": "boto.dynamodb2.items.Item.prepare_partial",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 6716,
+      "input_estimate_after": 6716,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the evidence available, I can identify the following reusable dependencies for implementing the `prepare_partial` method:\n\n```\nboto/dynamodb2/items.py\nclass: Item\nfunction: _determine_alterations\nline: 117\n\nboto/dynamodb2/items.py\nclass: Item\nfunction: _is_storable\nline: 305\n\nboto/dynamodb2/items.py\nclass: Item\nfunction: build_expects\nline: 253\n\nboto/dynamodb2/items.py\nclass: Item\nfunction: prepare_full\nline: 314\n\nboto/dynamodb2/items.py\nclass: Item\nfunction: partial_save\nline: 369\n```",
+  "final_locations": {
+    "files": [
+      "boto/dynamodb2/items.py"
+    ],
+    "entities": [
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item",
+        "kind": "class",
+        "symbol": "boto.dynamodb2.items.Item",
+        "start": 9,
+        "end": 473,
+        "code": "class Item(object):\n    \"\"\"\n    An object representing the item data within a DynamoDB table.\n\n    An item is largely schema-free, meaning it can contain any data. The only\n    limitation is that it must have data for the fields in the ``Table``'s\n    schema.\n\n    This object presents a dictionary-like interface for accessing/storing\n    data. It also tries to intelligently track how data has changed throughout\n    the life of the instance, to be as efficient as possible about updates.\n\n    Empty items, or items that have no data, are considered falsey.\n\n    \"\"\"\n    def __init__(self, table, data=None, loaded=False):\n        \"\"\"\n        Constructs an (unsaved) ``Item`` instance.\n\n        To persist the data in DynamoDB, you'll need to call the ``Item.save``\n        (or ``Item.partial_save``) on the instance.\n\n        Requires a ``table`` parameter, which should be a ``Table`` instance.\n        This is required, as DynamoDB's API is focus around all operations\n        being table-level. It's also for persisting schema around many objects.\n\n        Optionally accepts a ``data`` parameter, which should be a dictionary\n        of the fields & values of the item. Alternatively, an ``Item`` instance\n        may be provided from which to extract the data.\n\n        Optionally accepts a ``loaded`` parameter, which should be a boolean.\n        ``True`` if it was preexisting data loaded from DynamoDB, ``False`` if\n        it's new data from the user. Default is ``False``.\n\n        Example::\n\n            >>> users = Table('users')\n            >>> user = Item(users, data={\n            ...     'username': 'johndoe',\n            ...     'first_name': 'John',\n            ...     'date_joined': 1248o61592,\n            ... })\n\n            # Change existing data.\n            >>> user['first_name'] = 'Johann'\n            # Add more data.\n            >>> user['last_name'] = 'Doe'\n            # Delete data.\n            >>> del user['date_joined']\n\n            # Iterate over all the data.\n            >>> for field, val in user.items():\n            ...     print \"%s: %s\" % (field, val)\n            username: johndoe\n            first_name: John\n            date_joined: 1248o61592\n\n        \"\"\"\n        self.table = table\n        self._loaded = loaded\n        self._orig_data = {}\n        self._data = data\n        self._dynamizer = table._dynamizer\n\n        if isinstance(self._data, Item):\n            self._data = self._data._data\n        if self._data is None:\n            self._data = {}\n\n        if self._loaded:\n            self._orig_data = deepcopy(self._data)\n\n    def __getitem__(self, key):\n        return self._data.get(key, None)\n\n    def __setitem__(self, key, value):\n        self._data[key] = value\n\n    def __delitem__(self, key):\n        if not key in self._data:\n            return\n\n        del self._data[key]\n\n    def keys(self):\n        return self._data.keys()\n\n    def values(self):\n        return self._data.values()\n\n    def items(self):\n        return self._data.items()\n\n    def get(self, key, default=None):\n        return self._data.get(key, default)\n\n    def __iter__(self):\n        for key in self._data:\n            yield self._data[key]\n\n    def __contains__(self, key):\n        return key in self._data\n\n    def __bool__(self):\n        return bool(self._data)\n\n    __nonzero__ = __bool__\n\n    def _determine_alterations(self):\n        \"\"\"\n        Checks the ``-orig_data`` against the ``_data`` to determine what\n        changes to the data are present.\n\n        Returns a dictionary containing the keys ``adds``, ``changes`` &\n        ``deletes``, containing the updated data.\n        \"\"\"\n        alterations = {\n            'adds': {},\n            'changes': {},\n            'deletes': [],\n        }\n\n        orig_keys = set(self._orig_data.keys())\n        data_keys = set(self._data.keys())\n\n        # Run through keys we know are in both for changes.\n        for key in orig_keys.intersection(data_keys):\n            if self._data[key] != self._orig_data[key]:\n                if self._is_storable(self._data[key]):\n                    alterations['changes'][key] = self._data[key]\n                else:\n                    alterations['deletes'].append(key)\n\n        # Run through additions.\n        for key in data_keys.difference(orig_keys):\n            if self._is_storable(self._data[key]):\n                alterations['adds'][key] = self._data[key]\n\n        # Run through deletions.\n        for key in orig_keys.difference(data_keys):\n            alterations['deletes'].append(key)\n\n        return alterations\n\n    def needs_save(self, data=None):\n        \"\"\"\n        Returns whether or not the data has changed on the ``Item``.\n\n        Optionally accepts a ``data`` argument, which accepts the output from\n        ``self._determine_alterations()`` if you've already called it. Typically\n        unnecessary to do. Default is ``None``.\n\n        Example:\n\n            >>> user.needs_save()\n            False\n            >>> user['first_name'] = 'Johann'\n            >>> user.needs_save()\n            True\n\n        \"\"\"\n        if data is None:\n            data = self._determine_alterations()\n\n        needs_save = False\n\n        for kind in ['adds', 'changes', 'deletes']:\n            if len(data[kind]):\n                needs_save = True\n                break\n\n        return needs_save\n\n    def mark_clean(self):\n        \"\"\"\n        Marks an ``Item`` instance as no longer needing to be saved.\n\n        Example:\n\n            >>> user.needs_save()\n            False\n            >>> user['first_name'] = 'Johann'\n            >>> user.needs_save()\n            True\n            >>> user.mark_clean()\n            >>> user.needs_save()\n            False\n\n        \"\"\"\n        self._orig_data = deepcopy(self._data)\n\n    def mark_dirty(self):\n        \"\"\"\n        DEPRECATED: Marks an ``Item`` instance as needing to be saved.\n\n        This method is no longer necessary, as the state tracking on ``Item``\n        has been improved to automatically detect proper state.\n        \"\"\"\n        return\n\n    def load(self, data):\n        \"\"\"\n        This is only useful when being handed raw data from DynamoDB directly.\n        If you have a Python datastructure already, use the ``__init__`` or\n        manually set the data instead.\n\n        Largely internal, unless you know what you're doing or are trying to\n        mix the low-level & high-level APIs.\n        \"\"\"\n        self._data = {}\n\n        for field_name, field_value in data.get('Item', {}).items():\n            self[field_name] = self._dynamizer.decode(field_value)\n\n        self._loaded = True\n        self._orig_data = deepcopy(self._data)\n\n    def get_keys(self):\n        \"\"\"\n        Returns a Python-style dict of the keys/values.\n\n        Largely internal.\n        \"\"\"\n        key_fields = self.table.get_key_fields()\n        key_data = {}\n\n        for key in key_fields:\n            key_data[key] = self[key]\n\n        return key_data\n\n    def get_raw_keys(self):\n        \"\"\"\n        Returns a DynamoDB-style dict of the keys/values.\n\n        Largely internal.\n        \"\"\"\n        raw_key_data = {}\n\n        for key, value in self.get_keys().items():\n            raw_key_data[key] = self._dynamizer.encode(value)\n\n        return raw_key_data\n\n    def build_expects(self, fields=None):\n        \"\"\"\n        Builds up a list of expecations to hand off to DynamoDB on save.\n\n        Largely internal.\n        \"\"\"\n        expects = {}\n\n        if fields is None:\n            fields = list(self._data.keys()) + list(self._orig_data.keys())\n\n        # Only uniques.\n        fields = set(fields)\n\n        for key in fields:\n            expects[key] = {\n                'Exists': True,\n            }\n            value = None\n\n            # Check for invalid keys.\n            if not key in self._orig_data and not key in self._data:\n                raise ValueError(\"Unknown key %s provided.\" % key)\n\n            # States:\n            # * New field (only in _data)\n            # * Unchanged field (in both _data & _orig_data, same data)\n            # * Modified field (in both _data & _orig_data, different data)\n            # * Deleted field (only in _orig_data)\n            orig_value = self._orig_data.get(key, NEWVALUE)\n            current_value = self._data.get(key, NEWVALUE)\n\n            if orig_value == current_value:\n                # Existing field unchanged.\n                value = current_value\n            else:\n                if key in self._data:\n                    if not key in self._orig_data:\n                        # New field.\n                        expects[key]['Exists'] = False\n                    else:\n                        # Existing field modified.\n                        value = orig_value\n                else:\n                   # Existing field deleted.\n                    value = orig_value\n\n            if value is not None:\n                expects[key]['Value'] = self._dynamizer.encode(value)\n\n        return expects\n\n    def _is_storable(self, value):\n        # We need to prevent ``None``, empty string & empty set from\n        # heading to DDB, but allow false-y values like 0 & False make it.\n        if not value:\n            if not value in (0, 0.0, False):\n                return False\n\n        return True\n\n    def prepare_full(self):\n        \"\"\"\n        Runs through all fields & encodes them to be handed off to DynamoDB\n        as part of an ``save`` (``put_item``) call.\n\n        Largely internal.\n        \"\"\"\n        # This doesn't save on its own. Rather, we prepare the datastructure\n        # and hand-off to the table to handle creation/update.\n        final_data = {}\n\n        for key, value in self._data.items():\n            if not self._is_storable(value):\n                continue\n\n            final_data[key] = self._dynamizer.encode(value)\n\n        return final_data\n\n    def prepare_partial(self):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def partial_save(self):\n        \"\"\"\n        Saves only the changed data to DynamoDB.\n\n        Extremely useful for high-volume/high-write data sets, this allows\n        you to update only a handful of fields rather than having to push\n        entire items. This prevents many accidental overwrite situations as\n        well as saves on the amount of data to transfer over the wire.\n\n        Returns ``True`` on success, ``False`` if no save was performed or\n        the write failed.\n\n        Example::\n\n            >>> user['last_name'] = 'Doh!'\n            # Only the last name field will be sent to DynamoDB.\n            >>> user.partial_save()\n\n        \"\"\"\n        key = self.get_keys()\n        # Build a new dict of only the data we're changing.\n        final_data, fields = self.prepare_partial()\n\n        if not final_data:\n            return False\n\n        # Remove the key(s) from the ``final_data`` if present.\n        # They should only be present if this is a new item, in which\n        # case we shouldn't be sending as part of the data to update.\n        for fieldname, value in key.items():\n            if fieldname in final_data:\n                del final_data[fieldname]\n\n                try:\n                    # It's likely also in ``fields``, so remove it there too.\n                    fields.remove(fieldname)\n                except KeyError:\n                    pass\n\n        # Build expectations of only the fields we're planning to update.\n        expects = self.build_expects(fields=fields)\n        returned = self.table._update_item(key, final_data, expects=expects)\n        # Mark the object as clean.\n        self.mark_clean()\n        return returned\n\n    def save(self, overwrite=False):\n        \"\"\"\n        Saves all data to DynamoDB.\n\n        By default, this attempts to ensure that none of the underlying\n        data has changed. If any fields have changed in between when the\n        ``Item`` was constructed & when it is saved, this call will fail so\n        as not to cause any data loss.\n\n        If you're sure possibly overwriting data is acceptable, you can pass\n        an ``overwrite=True``. If that's not acceptable, you may be able to use\n        ``Item.partial_save`` to only write the changed field data.\n\n        Optionally accepts an ``overwrite`` parameter, which should be a\n        boolean. If you provide ``True``, the item will be forcibly overwritten\n        within DynamoDB, even if another process changed the data in the\n        meantime. (Default: ``False``)\n\n        Returns ``True`` on success, ``False`` if no save was performed.\n\n        Example::\n\n            >>> user['last_name'] = 'Doh!'\n            # All data on the Item is sent to DynamoDB.\n            >>> user.save()\n\n            # If it fails, you can overwrite.\n            >>> user.save(overwrite=True)\n\n        \"\"\"\n        if not self.needs_save() and not overwrite:\n            return False\n\n        final_data = self.prepare_full()\n        expects = None\n\n        if overwrite is False:\n            # Build expectations about *all* of the data.\n            expects = self.build_expects()\n\n        returned = self.table._put_item(final_data, expects=expects)\n        # Mark the object as clean.\n        self.mark_clean()\n        return returned\n\n    def delete(self):\n        \"\"\"\n        Deletes the item's data to DynamoDB.\n\n        Returns ``True`` on success.\n\n        Example::\n\n            # Buh-bye now.\n            >>> user.delete()\n\n        \"\"\"\n        key_data = self.get_keys()\n        return self.table.delete_item(**key_data)"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item._determine_alterations",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item._determine_alterations",
+        "start": 117,
+        "end": 151,
+        "code": "    def _determine_alterations(self):\n        \"\"\"\n        Checks the ``-orig_data`` against the ``_data`` to determine what\n        changes to the data are present.\n\n        Returns a dictionary containing the keys ``adds``, ``changes`` &\n        ``deletes``, containing the updated data.\n        \"\"\"\n        alterations = {\n            'adds': {},\n            'changes': {},\n            'deletes': [],\n        }\n\n        orig_keys = set(self._orig_data.keys())\n        data_keys = set(self._data.keys())\n\n        # Run through keys we know are in both for changes.\n        for key in orig_keys.intersection(data_keys):\n            if self._data[key] != self._orig_data[key]:\n                if self._is_storable(self._data[key]):\n                    alterations['changes'][key] = self._data[key]\n                else:\n                    alterations['deletes'].append(key)\n\n        # Run through additions.\n        for key in data_keys.difference(orig_keys):\n            if self._is_storable(self._data[key]):\n                alterations['adds'][key] = self._data[key]\n\n        # Run through deletions.\n        for key in orig_keys.difference(data_keys):\n            alterations['deletes'].append(key)\n\n        return alterations"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item._is_storable",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item._is_storable",
+        "start": 305,
+        "end": 312,
+        "code": "    def _is_storable(self, value):\n        # We need to prevent ``None``, empty string & empty set from\n        # heading to DDB, but allow false-y values like 0 & False make it.\n        if not value:\n            if not value in (0, 0.0, False):\n                return False\n\n        return True"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.build_expects",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.build_expects",
+        "start": 253,
+        "end": 303,
+        "code": "    def build_expects(self, fields=None):\n        \"\"\"\n        Builds up a list of expecations to hand off to DynamoDB on save.\n\n        Largely internal.\n        \"\"\"\n        expects = {}\n\n        if fields is None:\n            fields = list(self._data.keys()) + list(self._orig_data.keys())\n\n        # Only uniques.\n        fields = set(fields)\n\n        for key in fields:\n            expects[key] = {\n                'Exists': True,\n            }\n            value = None\n\n            # Check for invalid keys.\n            if not key in self._orig_data and not key in self._data:\n                raise ValueError(\"Unknown key %s provided.\" % key)\n\n            # States:\n            # * New field (only in _data)\n            # * Unchanged field (in both _data & _orig_data, same data)\n            # * Modified field (in both _data & _orig_data, different data)\n            # * Deleted field (only in _orig_data)\n            orig_value = self._orig_data.get(key, NEWVALUE)\n            current_value = self._data.get(key, NEWVALUE)\n\n            if orig_value == current_value:\n                # Existing field unchanged.\n                value = current_value\n            else:\n                if key in self._data:\n                    if not key in self._orig_data:\n                        # New field.\n                        expects[key]['Exists'] = False\n                    else:\n                        # Existing field modified.\n                        value = orig_value\n                else:\n                   # Existing field deleted.\n                    value = orig_value\n\n            if value is not None:\n                expects[key]['Value'] = self._dynamizer.encode(value)\n\n        return expects"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.prepare_full",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.prepare_full",
+        "start": 314,
+        "end": 331,
+        "code": "    def prepare_full(self):\n        \"\"\"\n        Runs through all fields & encodes them to be handed off to DynamoDB\n        as part of an ``save`` (``put_item``) call.\n\n        Largely internal.\n        \"\"\"\n        # This doesn't save on its own. Rather, we prepare the datastructure\n        # and hand-off to the table to handle creation/update.\n        final_data = {}\n\n        for key, value in self._data.items():\n            if not self._is_storable(value):\n                continue\n\n            final_data[key] = self._dynamizer.encode(value)\n\n        return final_data"
+      },
+      {
+        "file": "boto/dynamodb2/items.py",
+        "name": "Item.partial_save",
+        "kind": "function",
+        "symbol": "boto.dynamodb2.items.Item.partial_save",
+        "start": 369,
+        "end": 413,
+        "code": "    def partial_save(self):\n        \"\"\"\n        Saves only the changed data to DynamoDB.\n\n        Extremely useful for high-volume/high-write data sets, this allows\n        you to update only a handful of fields rather than having to push\n        entire items. This prevents many accidental overwrite situations as\n        well as saves on the amount of data to transfer over the wire.\n\n        Returns ``True`` on success, ``False`` if no save was performed or\n        the write failed.\n\n        Example::\n\n            >>> user['last_name'] = 'Doh!'\n            # Only the last name field will be sent to DynamoDB.\n            >>> user.partial_save()\n\n        \"\"\"\n        key = self.get_keys()\n        # Build a new dict of only the data we're changing.\n        final_data, fields = self.prepare_partial()\n\n        if not final_data:\n            return False\n\n        # Remove the key(s) from the ``final_data`` if present.\n        # They should only be present if this is a new item, in which\n        # case we shouldn't be sending as part of the data to update.\n        for fieldname, value in key.items():\n            if fieldname in final_data:\n                del final_data[fieldname]\n\n                try:\n                    # It's likely also in ``fields``, so remove it there too.\n                    fields.remove(fieldname)\n                except KeyError:\n                    pass\n\n        # Build expectations of only the fields we're planning to update.\n        expects = self.build_expects(fields=fields)\n        returned = self.table._update_item(key, final_data, expects=expects)\n        # Mark the object as clean.\n        self.mark_clean()\n        return returned"
+      }
+    ],
+    "unresolved": [
+      "boto/dynamodb2/items.py:function: _determine_alterations",
+      "boto/dynamodb2/items.py:function: _is_storable",
+      "boto/dynamodb2/items.py:function: build_expects",
+      "boto/dynamodb2/items.py:function: prepare_full",
+      "boto/dynamodb2/items.py:function: partial_save"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.75,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "boto.dynamodb2.items.Item._data",
+      "boto.dynamodb2.items.Item._determine_alterations",
+      "boto.dynamodb2.items.Item._dynamizer"
+    ],
+    "exact_hit_dependencies": [
+      "boto.dynamodb2.items.Item._determine_alterations"
+    ],
+    "returned_entities": 6,
+    "returned_files": 1,
+    "unresolved_locations": 5,
+    "returned_code_chars": 18987
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 22000,
+    "completion_tokens": 2201,
+    "total_tokens": 24201,
+    "seconds": 106.74366068840027,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 163.86079144477844,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

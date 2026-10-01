@@ -1,0 +1,136 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 1103,
+  "namespace": "praw.models.listing.generator.ListingGenerator._extract_sublist",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 3952,
+      "input_estimate_after": 3952,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I need to identify reusable dependencies for implementing the `_extract_sublist` function. The function needs to handle different listing types, specifically checking for `FlairListing` and `ModNoteListing` when the input is a list, and handling dictionary listings.\n\nFrom the evidence:\n1. The function is in `praw/models/listing/generator.py` and is part of the `ListingGenerator` class\n2. It's called from `_next_batch` method which gets data from `self._reddit.get()`\n3. The function needs to handle:\n   - Lists containing `FlairListing` or `ModNoteListing` (returns second element)\n   - Dictionaries with specific listing types\n   - Raise ValueError for unrecognized dictionary listings\n\nKey reusable dependencies to locate:\n\n1. **The `Listing` base class and its subclasses** - To understand the structure of listings\n2. **The `FlairListing` and `ModNoteListing` classes** - Specific listing types mentioned\n3. **The `PRAWBase` class** - Base class for listings\n4. **The `_reddit._objector.objectify` method** - Used in Listing to objectify data\n5. **Other listing types** - To understand dictionary key patterns\n\n```\npraw/models/listing/listing.py\nline: 7\nclass: Listing\nline: 28\nclass: FlairListing\nline: 39\nclass: ModNoteListing\n\npraw/models/listing/generator.py\nline: 86\nfunction: ListingGenerator._next_batch\nline: -1\nclass: ListingGenerator\n\npraw/models/reddit/base.py\nline: -1\nclass: Reddit\nfunction: get\n\npraw/objector.py\nline: -1\nclass: Objector\nfunction: objectify\n\npraw/models/listing/listing.py\nline: 10\nvariable: Listing.AFTER_PARAM\nline: 11\nvariable: Listing.CHILD_ATTRIBUTE\n```",
+  "final_locations": {
+    "files": [
+      "praw/models/listing/listing.py",
+      "praw/models/listing/generator.py",
+      "praw/models/reddit/base.py",
+      "praw/objector.py"
+    ],
+    "entities": [
+      {
+        "file": "praw/models/listing/listing.py",
+        "name": "Listing",
+        "kind": "class",
+        "symbol": "praw.models.listing.listing.Listing",
+        "start": 7,
+        "end": 25,
+        "code": "class Listing(PRAWBase):\n    \"\"\"A listing is a collection of :class:`.RedditBase` instances.\"\"\"\n\n    AFTER_PARAM = \"after\"\n    CHILD_ATTRIBUTE = \"children\"\n\n    def __getitem__(self, index: int) -> Any:\n        \"\"\"Return the item at position index in the list.\"\"\"\n        return getattr(self, self.CHILD_ATTRIBUTE)[index]\n\n    def __len__(self) -> int:\n        \"\"\"Return the number of items in the Listing.\"\"\"\n        return len(getattr(self, self.CHILD_ATTRIBUTE))\n\n    def __setattr__(self, attribute: str, value: Any):\n        \"\"\"Objectify the ``CHILD_ATTRIBUTE`` attribute.\"\"\"\n        if attribute == self.CHILD_ATTRIBUTE:\n            value = self._reddit._objector.objectify(value)\n        super().__setattr__(attribute, value)"
+      },
+      {
+        "file": "praw/models/listing/listing.py",
+        "name": "FlairListing",
+        "kind": "class",
+        "symbol": "praw.models.listing.listing.FlairListing",
+        "start": 28,
+        "end": 36,
+        "code": "class FlairListing(Listing):\n    \"\"\"Special Listing for handling flair lists.\"\"\"\n\n    CHILD_ATTRIBUTE = \"users\"\n\n    @property\n    def after(self) -> Optional[Any]:\n        \"\"\"Return the next attribute or ``None``.\"\"\"\n        return getattr(self, \"next\", None)"
+      },
+      {
+        "file": "praw/models/listing/listing.py",
+        "name": "ModNoteListing",
+        "kind": "class",
+        "symbol": "praw.models.listing.listing.ModNoteListing",
+        "start": 39,
+        "end": 50,
+        "code": "class ModNoteListing(Listing):\n    \"\"\"Special Listing for handling :class:`.ModNote` lists.\"\"\"\n\n    AFTER_PARAM = \"before\"\n    CHILD_ATTRIBUTE = \"mod_notes\"\n\n    @property\n    def after(self) -> Optional[Any]:\n        \"\"\"Return the next attribute or None.\"\"\"\n        if not getattr(self, \"has_next_page\", True):\n            return None\n        return getattr(self, \"end_cursor\", None)"
+      },
+      {
+        "file": "praw/models/listing/generator.py",
+        "name": "ListingGenerator._next_batch",
+        "kind": "function",
+        "symbol": "praw.models.listing.generator.ListingGenerator._next_batch",
+        "start": 86,
+        "end": 102,
+        "code": "    def _next_batch(self):\n        if self._exhausted:\n            raise StopIteration()\n\n        self._listing = self._reddit.get(self.url, params=self.params)\n        self._listing = self._extract_sublist(self._listing)\n        self._list_index = 0\n\n        if not self._listing:\n            raise StopIteration()\n\n        if self._listing.after and self._listing.after != self.params.get(\n            self._listing.AFTER_PARAM\n        ):\n            self.params[self._listing.AFTER_PARAM] = self._listing.after\n        else:\n            self._exhausted = True"
+      },
+      {
+        "file": "praw/models/listing/generator.py",
+        "name": "ListingGenerator",
+        "kind": "class",
+        "symbol": "praw.models.listing.generator.ListingGenerator",
+        "start": 12,
+        "end": 102,
+        "code": "class ListingGenerator(PRAWBase, Iterator):\n    \"\"\"Instances of this class generate :class:`.RedditBase` instances.\n\n    .. warning::\n\n        This class should not be directly utilized. Instead, you will find a number of\n        methods that return instances of the class here_.\n\n    .. _here: https://praw.readthedocs.io/en/latest/search.html?q=ListingGenerator\n\n    \"\"\"\n\n    def __init__(\n        self,\n        reddit: \"praw.Reddit\",\n        url: str,\n        limit: int = 100,\n        params: Optional[Dict[str, Union[str, int]]] = None,\n    ):\n        \"\"\"Initialize a :class:`.ListingGenerator` instance.\n\n        :param reddit: An instance of :class:`.Reddit`.\n        :param url: A URL returning a Reddit listing.\n        :param limit: The number of content entries to fetch. If ``limit`` is ``None``,\n            then fetch as many entries as possible. Most of Reddit's listings contain a\n            maximum of 1000 items, and are returned 100 at a time. This class will\n            automatically issue all necessary requests (default: ``100``).\n        :param params: A dictionary containing additional query string parameters to\n            send with the request.\n\n        \"\"\"\n        super().__init__(reddit, _data=None)\n        self._exhausted = False\n        self._listing = None\n        self._list_index = None\n        self.limit = limit\n        self.params = deepcopy(params) if params else {}\n        self.params[\"limit\"] = limit or 1024\n        self.url = url\n        self.yielded = 0\n\n    def __iter__(self) -> Iterator[Any]:\n        \"\"\"Permit :class:`.ListingGenerator` to operate as an iterator.\"\"\"\n        return self\n\n    def __next__(self) -> Any:\n        \"\"\"Permit :class:`.ListingGenerator` to operate as a generator.\"\"\"\n        if self.limit is not None and self.yielded >= self.limit:\n            raise StopIteration()\n\n        if self._listing is None or self._list_index >= len(self._listing):\n            self._next_batch()\n\n        self._list_index += 1\n        self.yielded += 1\n        return self._listing[self._list_index - 1]\n\n    def _extract_sublist(self, listing):\n        pass\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    def _next_batch(self):\n        if self._exhausted:\n            raise StopIteration()\n\n        self._listing = self._reddit.get(self.url, params=self.params)\n        self._listing = self._extract_sublist(self._listing)\n        self._list_index = 0\n\n        if not self._listing:\n            raise StopIteration()\n\n        if self._listing.after and self._listing.after != self.params.get(\n            self._listing.AFTER_PARAM\n        ):\n            self.params[self._listing.AFTER_PARAM] = self._listing.after\n        else:\n            self._exhausted = True"
+      },
+      {
+        "file": "praw/objector.py",
+        "name": "Objector",
+        "kind": "class",
+        "symbol": "praw.objector.Objector",
+        "start": 14,
+        "end": 280,
+        "code": "class Objector:\n    \"\"\"The objector builds :class:`.RedditBase` objects.\"\"\"\n\n    @classmethod\n    def check_error(cls, data: Union[List[Any], Dict[str, Dict[str, str]]]):\n        \"\"\"Raise an error if the argument resolves to an error object.\"\"\"\n        error = cls.parse_error(data)\n        if error:\n            raise error\n\n    @classmethod\n    def parse_error(\n        cls, data: Union[List[Any], Dict[str, Dict[str, str]]]\n    ) -> Optional[RedditAPIException]:\n        \"\"\"Convert JSON response into an error object.\n\n        :param data: The dict to be converted.\n\n        :returns: An instance of :class:`.RedditAPIException`, or ``None`` if ``data``\n            doesn't fit this model.\n\n        \"\"\"\n        if isinstance(data, list):\n            # Fetching a Submission returns a list (of two items). Although it's handled\n            # manually in `Submission._fetch()`, assume it's a possibility here.\n            return None\n\n        errors = data.get(\"json\", {}).get(\"errors\")\n        if errors is None:\n            return None\n        if len(errors) < 1:\n            # See `Collection._fetch()`.\n            raise ClientException(\"successful error response\", data)\n        return RedditAPIException(errors)\n\n    def __init__(self, reddit: \"praw.Reddit\", parsers: Optional[Dict[str, Any]] = None):\n        \"\"\"Initialize an :class:`.Objector` instance.\n\n        :param reddit: An instance of :class:`.Reddit`.\n\n        \"\"\"\n        self.parsers = {} if parsers is None else parsers\n        self._reddit = reddit\n\n    def _objectify_dict(self, data):\n        \"\"\"Create :class:`.RedditBase` objects from dicts.\n\n        :param data: The structured data, assumed to be a dict.\n\n        :returns: An instance of :class:`.RedditBase`.\n\n        \"\"\"\n        if {\"messages\", \"modActions\"}.issubset(data) and {\n            \"conversations\",\n            \"conversation\",\n        }.intersection(data):\n            # fetched conversation\n            data.update(\n                data.pop(\"conversation\")\n                if \"conversation\" in data\n                else data.pop(\"conversations\")\n            )\n            parser = self.parsers[\"ModmailConversation\"]\n            parser._convert_conversation_objects(data, self._reddit)\n        elif {\"messages\", \"modActions\"}.issubset(data) or {\n            \"legacyFirstMessageId\",\n            \"state\",\n        }.issubset(data):\n            # not fetched conversation i.e., from conversations()\n            del data[\"objIds\"]  # delete objIds since it could be missing data\n            parser = self.parsers[\"ModmailConversation\"]\n        elif {\"conversationIds\", \"conversations\", \"messages\"}.issubset(data):\n            # modmail conversations\n            conversations = []\n            for conversation_id in data[\"conversationIds\"]:\n                conversation = data[\"conversations\"][conversation_id]\n                # set if the numMessages is same as number of messages in objIds\n                if conversation[\"numMessages\"] == len(\n                    [obj for obj in conversation[\"objIds\"] if obj[\"key\"] == \"messages\"]\n                ):\n                    conversation[\"messages\"] = [\n                        self.objectify(data[\"messages\"][obj_id[\"id\"]])\n                        for obj_id in conversation[\"objIds\"]\n                    ]\n                conversations.append(conversation)\n            data[\"conversations\"] = conversations\n            data = snake_case_keys(data)\n            parser = self.parsers[\"ModmailConversations-list\"]\n        elif {\"actionTypeId\", \"author\", \"date\"}.issubset(data):\n            # Modmail mod action\n            data = snake_case_keys(data)\n            parser = self.parsers[\"ModmailAction\"]\n        elif {\"bodyMarkdown\", \"isInternal\"}.issubset(data):\n            # Modmail message\n            data = snake_case_keys(data)\n            parser = self.parsers[\"ModmailMessage\"]\n        elif {\"kind\", \"short_name\", \"violation_reason\"}.issubset(data):\n            # This is a Rule\n            parser = self.parsers[\"rule\"]\n        elif {\"isAdmin\", \"isDeleted\"}.issubset(data):\n            # Modmail author\n            data = snake_case_keys(data)\n            # Prevent clobbering base-36 id\n            del data[\"id\"]\n            data[\"is_subreddit_mod\"] = data.pop(\"is_mod\")\n            parser = self.parsers[self._reddit.config.kinds[\"redditor\"]]\n        elif {\"banStatus\", \"muteStatus\", \"recentComments\"}.issubset(data):\n            # Modmail user\n            data = snake_case_keys(data)\n            data[\"created_string\"] = data.pop(\"created\")\n            parser = self.parsers[self._reddit.config.kinds[\"redditor\"]]\n        elif {\"displayName\", \"id\", \"type\"}.issubset(data):\n            # Modmail subreddit\n            data = snake_case_keys(data)\n            parser = self.parsers[self._reddit.config.kinds[data[\"type\"]]]\n        elif {\"date\", \"id\", \"name\"}.issubset(data) or {\n            \"id\",\n            \"name\",\n            \"permissions\",\n        }.issubset(data):\n            parser = self.parsers[self._reddit.config.kinds[\"redditor\"]]\n        elif {\"text\", \"url\"}.issubset(data):\n            if \"color\" in data or \"linkUrl\" in data:\n                parser = self.parsers[\"Button\"]\n            else:\n                parser = self.parsers[\"MenuLink\"]\n        elif {\"children\", \"text\"}.issubset(data):\n            parser = self.parsers[\"Submenu\"]\n        elif {\"height\", \"url\", \"width\"}.issubset(data):\n            parser = self.parsers[\"Image\"]\n        elif {\"isSubscribed\", \"name\", \"subscribers\"}.issubset(data):\n            # discards icon and subscribed information\n            return self._reddit.subreddit(data[\"name\"])\n        elif {\"authorFlairType\", \"name\"}.issubset(data):\n            # discards flair information\n            return self._reddit.redditor(data[\"name\"])\n        elif {\"parent_id\"}.issubset(data):\n            parser = self.parsers[self._reddit.config.kinds[\"comment\"]]\n        elif \"collection_id\" in data.keys():\n            parser = self.parsers[\"Collection\"]\n        elif {\"moderators\", \"moderatorIds\", \"allUsersLoaded\", \"subredditId\"}.issubset(\n            data\n        ):\n            data = snake_case_keys(data)\n            moderators = []\n            for mod_id in data[\"moderator_ids\"]:\n                mod = snake_case_keys(data[\"moderators\"][mod_id])\n                mod[\"mod_permissions\"] = list(mod[\"mod_permissions\"].keys())\n                moderators.append(mod)\n            data[\"moderators\"] = moderators\n            parser = self.parsers[\"moderator-list\"]\n        elif \"username\" in data.keys():\n            data[\"name\"] = data.pop(\"username\")\n            parser = self.parsers[self._reddit.config.kinds[\"redditor\"]]\n        elif {\"mod_permissions\", \"name\", \"sr\", \"subscribers\"}.issubset(data):\n            data[\"display_name\"] = data[\"sr\"]\n            parser = self.parsers[self._reddit.config.kinds[\"subreddit\"]]\n        elif {\"drafts\", \"subreddits\"}.issubset(data):  # Draft list\n            subreddit_parser = self.parsers[self._reddit.config.kinds[\"subreddit\"]]\n            user_subreddit_parser = self.parsers[\"UserSubreddit\"]\n            subreddits = {\n                subreddit[\"name\"]: user_subreddit_parser.parse(subreddit, self._reddit)\n                if subreddit[\"display_name_prefixed\"].startswith(\"u/\")\n                else subreddit_parser.parse(subreddit, self._reddit)\n                for subreddit in data.pop(\"subreddits\")\n            }\n            for draft in data[\"drafts\"]:\n                if draft[\"subreddit\"]:\n                    draft[\"subreddit\"] = subreddits[draft[\"subreddit\"]]\n                draft[\"modified\"] = datetime.fromtimestamp(\n                    draft[\"modified\"] / 1000\n                ).astimezone()\n            parser = self.parsers[\"DraftList\"]\n        elif {\"mod_action_data\", \"user_note_data\"}.issubset(data):\n            data[\"moderator\"] = self._reddit.redditor(data[\"operator\"])\n            data[\"subreddit\"] = self._reddit.subreddit(data[\"subreddit\"])\n            data[\"user\"] = self._reddit.redditor(data[\"user\"])\n            # move these sub dict values into the main dict for simplicity\n            data.update(data[\"mod_action_data\"])\n            del data[\"mod_action_data\"]\n            data.update(data[\"user_note_data\"])\n            del data[\"user_note_data\"]\n            parser = self.parsers[\"mod_note\"]\n        elif (\n            \"created\" in data\n            and isinstance(data[\"created\"], dict)\n            and {\"mod_action_data\", \"user_note_data\"}.issubset(data[\"created\"])\n        ):\n            data = data[\"created\"]\n            return self._objectify_dict(data)\n        else:\n            if \"user\" in data:\n                parser = self.parsers[self._reddit.config.kinds[\"redditor\"]]\n                data[\"user\"] = parser.parse({\"name\": data[\"user\"]}, self._reddit)\n            return data\n        return parser.parse(data, self._reddit)\n\n    def objectify(\n        self, data: Optional[Union[Dict[str, Any], List[Any], bool]]\n    ) -> Optional[Union[RedditBase, Dict[str, Any], List[Any], bool]]:\n        \"\"\"Create :class:`.RedditBase` objects from data.\n\n        :param data: The structured data.\n\n        :returns: An instance of :class:`.RedditBase`, or ``None`` if given ``data`` is\n            ``None``.\n\n        \"\"\"\n        # pylint: disable=too-many-return-statements\n        if data is None:  # 204 no content\n            return None\n        if isinstance(data, list):\n            return [self.objectify(item) for item in data]\n        if isinstance(data, bool):  # Reddit.username_available\n            return data\n        if \"json\" in data and \"errors\" in data[\"json\"]:\n            errors = data[\"json\"][\"errors\"]\n            if len(errors) > 0:\n                raise RedditAPIException(errors)\n        if \"kind\" in data and (\n            \"shortName\" in data or data[\"kind\"] in (\"menu\", \"moderators\")\n        ):\n            # This is a widget\n            parser = self.parsers.get(data[\"kind\"], self.parsers[\"widget\"])\n            return parser.parse(data, self._reddit)\n        if {\"kind\", \"data\"}.issubset(data) and data[\"kind\"] in self.parsers:\n            parser = self.parsers[data[\"kind\"]]\n            if data[\"kind\"] == \"ModeratedList\":\n                return parser.parse(data, self._reddit)\n            else:\n                return parser.parse(data[\"data\"], self._reddit)\n        if \"json\" in data and \"data\" in data[\"json\"]:\n            if \"websocket_url\" in data[\"json\"][\"data\"]:\n                return data\n            if \"things\" in data[\"json\"][\"data\"]:  # Submission.reply\n                return self.objectify(data[\"json\"][\"data\"][\"things\"])\n            if \"rules\" in data[\"json\"][\"data\"]:\n                return self.objectify(loads(data[\"json\"][\"data\"][\"rules\"]))\n            if \"drafts_count\" in data[\"json\"][\"data\"] and all(\n                [key not in data[\"json\"][\"data\"] for key in [\"name\", \"url\"]]\n            ):  # Draft\n                data[\"json\"][\"data\"].pop(\"drafts_count\")\n                return self.parsers[\"Draft\"].parse(data[\"json\"][\"data\"], self._reddit)\n            if \"url\" in data[\"json\"][\"data\"]:  # Subreddit.submit\n                # The URL is the URL to the submission, so it's removed.\n                del data[\"json\"][\"data\"][\"url\"]\n                parser = self.parsers[self._reddit.config.kinds[\"submission\"]]\n                if data[\"json\"][\"data\"][\"id\"].startswith(\n                    f\"{self._reddit.config.kinds['submission']}_\"\n                ):\n                    # With polls, Reddit returns a fullname but calls it an \"id\". This\n                    # fixes this by coercing the fullname into an id.\n                    data[\"json\"][\"data\"][\"id\"] = data[\"json\"][\"data\"][\"id\"].split(\n                        \"_\", 1\n                    )[1]\n            else:\n                parser = self.parsers[\"LiveUpdateEvent\"]\n            return parser.parse(data[\"json\"][\"data\"], self._reddit)\n        if {\"is_public_link\", \"title\", \"body\"}.issubset(data):\n            parser = self.parsers[\"Draft\"]\n            return parser.parse(data, self._reddit)\n        if \"rules\" in data:\n            return self.objectify(data[\"rules\"])\n        elif isinstance(data, dict):\n            return self._objectify_dict(data)\n\n        return data"
+      }
+    ],
+    "unresolved": [
+      "praw/models/listing/generator.py:line: -1",
+      "praw/models/reddit/base.py:line: -1",
+      "praw/models/reddit/base.py:class: Reddit",
+      "praw/models/reddit/base.py:function: get",
+      "praw/objector.py:line: -1",
+      "praw/objector.py:function: objectify",
+      "praw/models/listing/listing.py:variable: Listing.AFTER_PARAM",
+      "praw/models/listing/listing.py:variable: Listing.CHILD_ATTRIBUTE"
+    ]
+  },
+  "final_stage": {
+    "dr": 0.6666666666666666,
+    "exact_entity_dr": 0.6666666666666666,
+    "dependency_count": 3,
+    "hit_dependencies": [
+      "praw.models.listing.listing.FlairListing",
+      "praw.models.listing.listing.ModNoteListing"
+    ],
+    "exact_hit_dependencies": [
+      "praw.models.listing.listing.FlairListing",
+      "praw.models.listing.listing.ModNoteListing"
+    ],
+    "returned_entities": 6,
+    "returned_files": 4,
+    "unresolved_locations": 8,
+    "returned_code_chars": 16836
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 18487,
+    "completion_tokens": 682,
+    "total_tokens": 19169,
+    "seconds": 41.16639041900635,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 54.56376051902771,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

@@ -1,0 +1,1856 @@
+{
+    "features": [
+        {
+            "cluster_id": 0,
+            "feature_id": 1,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 42,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the database .",
+                    "func_file": "state",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, dbname):\n        \"\"\"Set up a connection to the state DB.\"\"\"\n        try:\n            self.conn = sqlite3.connect(dbname)\n            self.cursor = self.conn.cursor()\n            self._create_table()\n        except sqlite3.Error:\n            raise threatingestor.exceptions.IngestorError(\"State database seems broken\")",
+                    "func_fullName": "threatingestor.state.State.__init__(self, dbname)"
+                },
+                {
+                    "func_id": 43,
+                    "func_name": "_create_table",
+                    "func_desc": "Create table if it doesn t exist .",
+                    "func_file": "state",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _create_table(self):\n        \"\"\"Create table if it doesn't already exist.\"\"\"\n        self.cursor.execute('CREATE TABLE IF NOT EXISTS states (name text UNIQUE, state text)')\n        self.conn.commit()",
+                    "func_fullName": "threatingestor.state.State._create_table(self)"
+                },
+                {
+                    "func_id": 13,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new MySQL plugin .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, host, database, table, user=None, password='', port=3306,\n                 artifact_types=None, filter_string=None, allowed_sources=None):\n        \"\"\"MySQL operator.\"\"\"\n        super(Plugin, self).__init__(artifact_types, filter_string, allowed_sources)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.Hash,\n            threatingestor.artifacts.IPAddress,\n            threatingestor.artifacts.URL,\n            threatingestor.artifacts.YARASignature,\n            threatingestor.artifacts.Task,\n        ]\n\n        # Connect to SQL and set up the tables if they aren't already.\n        self.table = table\n        self.host = host\n        self.database = database\n        self.user = user\n        self.password = password\n        self.port = port\n\n        self._create_table()",
+                    "func_fullName": "threatingestor.operators.mysql.Plugin.__init__(self, host, database, table, user, password, port, artifact_types, filter_string, allowed_sources)"
+                },
+                {
+                    "func_id": 14,
+                    "func_name": "_create_table",
+                    "func_desc": "Create the table defined in the config if it does not already exist .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _create_table(self):\n        \"\"\"Create the table defined in the config if it does not already exist.\"\"\"\n        query = f\"\"\"\n            CREATE TABLE IF NOT EXISTS `{self.table}` (\n                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,\n                `artifact` TEXT,\n                `artifact_type` VARCHAR(50),\n                `reference_link` TExT,\n                `reference_text` TEXT,\n                `created_date` DATETIME DEFAULT CURRENT_TIMESTAMP,\n                `state` TEXT\n            ) \n        \"\"\"\n        # See note in process() on why we connect to SQL here.\n        self.sql = pymysql.connect(host=self.host, port=self.port, user=self.user,\n                                   password=self.password, database=self.database)\n        self.cursor = self.sql.cursor()\n        self.cursor.execute(query)\n        self.sql.commit()\n        self.cursor.close()",
+                    "func_fullName": "threatingestor.operators.mysql.Plugin._create_table(self)"
+                },
+                {
+                    "func_id": 131,
+                    "func_name": "list_view",
+                    "func_desc": "List all tables in a table .",
+                    "func_file": "webapp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def list_view(table):\n    cursor.execute('SELECT name FROM sqlite_master WHERE type=\"table\"')\n    tables = [e[0] for e in cursor.fetchall()]\n\n    if table == 'index':\n        return tables\n\n    elif table and table in tables:\n        cursor.execute(f'SELECT * FROM {table}')\n\n        data = []\n        columns = [c[0] for c in cursor.description]\n        for row in cursor.fetchall():\n            data.append({k: v for k, v in zip(columns, row)})\n\n        return data\n\n    elif table:\n        return f\"No table {table}\"\n\n    else:\n        return tables",
+                    "func_fullName": "threatingestor.extras.webapp.list_view(table)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 2,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 44,
+                    "func_name": "save_state",
+                    "func_desc": "Create or update a state record .",
+                    "func_file": "state",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def save_state(self, name, state):\n        \"\"\"Create or update a state record.\"\"\"\n        logger.debug(f\"Updating state for '{name}' to '{state}'\")\n        self.cursor.execute('INSERT OR REPLACE INTO states (name, state) values (?, ?)', (name, state))\n        self.conn.commit()",
+                    "func_fullName": "threatingestor.state.State.save_state(self, name, state)"
+                },
+                {
+                    "func_id": 45,
+                    "func_name": "get_state",
+                    "func_desc": "Return the state string for a given plugin .",
+                    "func_file": "state",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_state(self, name):\n        \"\"\"Return the state string for a given plugin.\"\"\"\n        logger.debug(f\"Getting state for '{name}'\")\n        self.cursor.execute('SELECT state FROM states WHERE name=?', (name,))\n        res = self.cursor.fetchone()\n        return res[0] if res else res",
+                    "func_fullName": "threatingestor.state.State.get_state(self, name)"
+                },
+                {
+                    "func_id": 147,
+                    "func_name": "run_once",
+                    "func_desc": "Run each source once passing artifacts to each operator .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run_once(self):\n        \"\"\"Run each source once, passing artifacts to each operator.\"\"\"\n        # Track some statistics about artifacts in a summary object.\n        summary = collections.Counter()\n\n        for source in self.sources:\n            # Run the source to collect artifacts.\n            logger.debug(f\"Running source '{source}'\")\n            try:\n                with self.statsd.timer(f'source.{source}'):\n                    saved_state, artifacts = self.sources[source].run(self.statedb.get_state(source))\n\n            except Exception:\n                self.statsd.incr(f'error.source.{source}')\n                logger.exception(f\"Unknown error in source '{source}'\")\n                continue\n\n            # Save the source state.\n            self.statedb.save_state(source, saved_state)\n\n            # Reject whitelisted artifacts\n            artifacts = [\n                artifact\n                for artifact in artifacts\n                if not self._is_whitelisted(artifact)\n            ]\n\n            # Process artifacts with each operator.\n            for operator in self.operators:\n                logger.debug(f\"Processing {len(artifacts)} artifacts from source '{source}' with operator '{operator}'\")\n                try:\n                    with self.statsd.timer(f'operator.{operator}'):\n                        self.operators[operator].process(artifacts)\n\n                except Exception:\n                    self.statsd.incr(f'error.operator.{operator}')\n                    logger.exception(f\"Unknown error in operator '{operator}'\")\n                    continue\n\n            # Record stats and update the summary.\n            types = artifact_types(artifacts)\n            summary.update(types)\n            for artifact_type in types:\n                self.statsd.incr(f'source.{source}.{artifact_type}', types[artifact_type])\n                self.statsd.incr(f'artifacts.{artifact_type}', types[artifact_type])\n\n        # Log the summary.\n        logger.log('NOTIFY', f\"New artifacts: {dict(summary)}\")",
+                    "func_fullName": "threatingestor.__init__.Ingestor.run_once(self)"
+                },
+                {
+                    "func_id": 149,
+                    "func_name": "artifact_types",
+                    "func_desc": "Return a dictionary with counts of each artifact type .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def artifact_types(artifact_list):\n    \"\"\"Return a dictionary with counts of each artifact type.\"\"\"\n    types = {}\n    for artifact in artifact_list:\n        artifact_type = artifact.__class__.__name__.lower()\n        if artifact_type in types:\n            types[artifact_type] += 1\n        else:\n            types[artifact_type] = 1\n\n    return types",
+                    "func_fullName": "threatingestor.__init__.artifact_types(artifact_list)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 3,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 46,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the language language .",
+                    "func_file": "whitelist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, paths: List[str]):\n        self.paths = paths\n        self.values: Set[str] = set()\n        self._load_paths()",
+                    "func_fullName": "threatingestor.whitelist.Whitelist.__init__(self, paths)"
+                },
+                {
+                    "func_id": 48,
+                    "func_name": "_load_path",
+                    "func_desc": "Load a list of sequence numbers from a JSON file .",
+                    "func_file": "whitelist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _load_path(self, path: str):\n        if Path(path).is_file():\n            try:\n                with open(path) as f:\n                    data = json.load(f)\n                    list_ = data.get(\"list\", [])\n                    self.values.update(list_)\n            except json.decoder.JSONDecodeError:\n                logger.exception(f\"Couldn't load {path} as a JSON file\")",
+                    "func_fullName": "threatingestor.whitelist.Whitelist._load_path(self, path)"
+                },
+                {
+                    "func_id": 49,
+                    "func_name": "_load_paths",
+                    "func_desc": "Load all the paths in the SETTINGS .",
+                    "func_file": "whitelist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _load_paths(self):\n        for path in self.paths:\n            self._load_path(path)",
+                    "func_fullName": "threatingestor.whitelist.Whitelist._load_paths(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 4,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 47,
+                    "func_name": "contains",
+                    "func_desc": "Checks if the given value is a potential language .",
+                    "func_file": "whitelist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def contains(self, value: str) -> bool:\n        return value in self.values",
+                    "func_fullName": "threatingestor.whitelist.Whitelist.contains(self, value)"
+                },
+                {
+                    "func_id": 145,
+                    "func_name": "_is_whitelisted",
+                    "func_desc": "Check if an artifact is whitelisted .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _is_whitelisted(self, artifact) -> bool:\n        if self.whitelist.contains(str(artifact)):\n            logger.debug(\n                f\"Reject {str(artifact)} from further processing because it is whitelisted.\"\n            )\n            return True\n        return False",
+                    "func_fullName": "threatingestor.__init__.Ingestor._is_whitelisted(self, artifact)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 5,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 50,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new License object .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, artifact, source_name, reference_link=None, reference_text=None):\n        self.artifact = artifact\n        self.source_name = source_name\n        self.reference_link = reference_link or ''\n        self.reference_text = reference_text or ''",
+                    "func_fullName": "threatingestor.artifacts.Artifact.__init__(self, artifact, source_name, reference_link, reference_text)"
+                },
+                {
+                    "func_id": 76,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new LicenseSession object .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, url, local_path):\n        self.name = name\n        self.url = url\n        self.local_path = local_path",
+                    "func_fullName": "threatingestor.sources.git.Plugin.__init__(self, name, url, local_path)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 6,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 51,
+                    "func_name": "match",
+                    "func_desc": "Return True if the pattern matches the deobfuscated artifact .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, pattern):\n        \"\"\"Return True if regex pattern matches the deobfuscated artifact, else False.\n\n        May be overridden or extended by child classes.\n        \"\"\"\n        regex = re.compile(pattern)\n        return True if regex.search(self.__str__()) else False",
+                    "func_fullName": "threatingestor.artifacts.Artifact.match(self, pattern)"
+                },
+                {
+                    "func_id": 53,
+                    "func_name": "_stringify",
+                    "func_desc": "Return str representation of the artifact .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _stringify(self):\n        \"\"\"Return str representation of the artifact.\n\n        May be overridden in child classes.\n        \"\"\"\n        return self.artifact",
+                    "func_fullName": "threatingestor.artifacts.Artifact._stringify(self)"
+                },
+                {
+                    "func_id": 54,
+                    "func_name": "__str__",
+                    "func_desc": "Returns a string representation of the object .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __str__(self):\n        return self._stringify()",
+                    "func_fullName": "threatingestor.artifacts.Artifact.__str__(self)"
+                },
+                {
+                    "func_id": 65,
+                    "func_name": "deobfuscated",
+                    "func_desc": "Named method for clarity same as str",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def deobfuscated(self):\n        \"\"\"Named method for clarity, same as str(my_url_object).\"\"\"\n        return self.__str__()",
+                    "func_fullName": "threatingestor.artifacts.URL.deobfuscated(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 7,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 52,
+                    "func_name": "format_message",
+                    "func_desc": "Format message for warning .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Optionally extend in child classes to add support for more\n        specific interpolations.\n\n        Supported variables:\n\n        * {artifact}\n        * {reference_text}\n        * {reference_link}\n        \"\"\"\n        return message.format(\n            artifact=str(self),\n            reference_text=self.reference_text,\n            reference_link=self.reference_link,\n            **kwargs\n        )",
+                    "func_fullName": "threatingestor.artifacts.Artifact.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 74,
+                    "func_name": "format_message",
+                    "func_desc": "Format the message with the correct email and domain .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"\n        Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {email}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n\n        return super(Email, self).format_message(message, email=str(self))",
+                    "func_fullName": "threatingestor.artifacts.Email.format_message(self, message, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 8,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 55,
+                    "func_name": "_match_expression",
+                    "func_desc": "Process pattern as a valid condition expression . Returns True if the pattern matches the expression .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _match_expression(self, pattern):\n        \"\"\"Process pattern as a condition expression.\n\n        Raises ValueError if not a valid expression, else returns the\n        truthiness of the expression.\n        \"\"\"\n        NOT = 'not '\n        conditions = [c.strip().lower() for c in pattern.split(',')]\n        for condition in conditions:\n            if condition.lstrip(NOT) not in URL.__dict__:\n                raise ValueError('not a condition expression')\n            else:\n                result = URL.__dict__[condition.lstrip(NOT)](self)\n                if condition.startswith(NOT) and result:\n                    return False\n                elif not condition.startswith(NOT) and not result:\n                    return False\n        return True",
+                    "func_fullName": "threatingestor.artifacts.URL._match_expression(self, pattern)"
+                },
+                {
+                    "func_id": 56,
+                    "func_name": "match",
+                    "func_desc": "Match on some predefined conditions or a regex pattern .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def match(self, pattern):\n        \"\"\"Filter on some predefined conditions or a regex pattern.\n\n        If pattern can be parsed as one of the conditions below, it returns the\n        truthiness of the resulting expression; otherwise it is treated as regex.\n\n        Valid conditions:\n\n        * is_obfuscated\n        * is_ipv4\n        * is_ipv6\n        * is_ip\n        * is_domain\n        * not {any above condition}\n        * {any comma-separated list of above conditions}\n\n        For example:\n\n        * is_obfuscated, not is_ip\n        * not is_obfuscated, is_domain\n        \"\"\"\n        try:\n            return self._match_expression(pattern)\n        except ValueError:\n            # not a valid condition expression, treat as regex instead\n            return super(URL, self).match(pattern)",
+                    "func_fullName": "threatingestor.artifacts.URL.match(self, pattern)"
+                },
+                {
+                    "func_id": 115,
+                    "func_name": "run",
+                    "func_desc": "Runs the sequence of action - specific action for the given sequence of feature - related elements .",
+                    "func_file": "image",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        saved_state = datetime.datetime.utcnow().isoformat()[:-7] + \"Z\"\n\n        if os.path.exists(f\"/tmp/{tmp_file}\"):\n            data = cv2.imread(f\"/tmp/{tmp_file}\")\n        else:\n            # No image is present\n            try:\n                data = cv2.imread(self.img)\n            except TypeError:\n                pass\n\n        try:\n            # Helps with preprocessing by converting to a grayscale\n            grayscale_img = cv2.cvtColor(data, cv2.COLOR_BGR2GRAY)\n\n            # Creates a binary image by using the proper threshold from cv and inverts the binary\n            invert_img = cv2.bitwise_not(cv2.threshold(grayscale_img, 130, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1])\n\n            # Helps with cleanup\n            process_iter = cv2.dilate(cv2.erode(invert_img, np.ones((2,2), np.uint8), iterations=1), np.ones((2,2), np.uint8), iterations=1)\n\n            # Converts image data to a string\n            img_data = pytesseract.image_to_string(process_iter)\n\n            artifact_list = []\n\n            title = \"Image: {0}\".format(self.img)\n            description = 'URL: {u}\\nTask autogenerated by ThreatIngestor from source: {s}'\n            description = description.format(s=self.name, u=list(iocextract.extract_urls(img_data)))\n            artifact = threatingestor.artifacts.Task(title, self.name, reference_link=str(list(iocextract.extract_urls(img_data))), reference_text=description)\n            artifact_list.append(artifact)\n\n            os.remove(f\"/tmp/{tmp_file}\")\n                \n        except cv2.error:\n            raise FileNotFoundError\n\n        return saved_state, artifact_list",
+                    "func_fullName": "threatingestor.sources.image.Plugin.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 9,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 57,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {url}\n        * {defanged}\n        * {domain}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(URL, self).format_message(message, url=str(self),\n                                               domain=self.domain(),\n                                               defanged=iocextract.defang_data(str(self)))",
+                    "func_fullName": "threatingestor.artifacts.URL.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 66,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {ipaddress}\n        * {defanged}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(IPAddress, self).format_message(message, ipaddress=str(self),\n                                                     defanged=iocextract.defang_data(str(self)))",
+                    "func_fullName": "threatingestor.artifacts.IPAddress.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 70,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {domain}\n        * {defanged}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(Domain, self).format_message(message, domain=str(self),\n                                                  defanged=iocextract.defang_data(str(self)))",
+                    "func_fullName": "threatingestor.artifacts.Domain.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 73,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {yarasignature}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(YARASignature, self).format_message(message, yarasignature=str(self))",
+                    "func_fullName": "threatingestor.artifacts.YARASignature.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 75,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {task}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(Task, self).format_message(message, task=str(self))",
+                    "func_fullName": "threatingestor.artifacts.Task.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 89,
+                    "func_name": "__init__",
+                    "func_desc": "Set up JSON path expressions .",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, paths, reference=None, **kwargs):\n        \"\"\"Set up JSON path expressions.\n\n        Extend in child class.\n        \"\"\"\n        self.name = name\n        # Parse paths into path expressions.\n        self.path_expressions = [jsonpath_rw.parse(path) for path in paths]\n        # Try to parse reference as a path, fall back to name.\n        self.reference = jsonpath_rw.parse(reference) if reference else None",
+                    "func_fullName": "threatingestor.sources.abstract_json.AbstractPlugin.__init__(self, name, paths, reference, kwargs)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 10,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 58,
+                    "func_name": "_stringify",
+                    "func_desc": "Always returns deobfuscated URL .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _stringify(self):\n        \"\"\"Always returns deobfuscated URL.\"\"\"\n        return iocextract.refang_data(self.artifact)",
+                    "func_fullName": "threatingestor.artifacts.URL._stringify(self)"
+                },
+                {
+                    "func_id": 59,
+                    "func_name": "is_obfuscated",
+                    "func_desc": "Boolean is the URL of the node in the archive is an obfuscated URL .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_obfuscated(self):\n        \"\"\"Boolean: is an obfuscated URL?\"\"\"\n        stringlike = self._stringify()\n        if stringlike != self.artifact:\n            # don't treat \"example.com\" as obfuscated\n            if stringlike != 'http://' + self.artifact:\n                return True\n        return False",
+                    "func_fullName": "threatingestor.artifacts.URL.is_obfuscated(self)"
+                },
+                {
+                    "func_id": 60,
+                    "func_name": "is_ipv4",
+                    "func_desc": "Boolean - True if URL network location is an IPv4 address False otherwise",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_ipv4(self):\n        \"\"\"Boolean: URL network location is an IPv4 address, not a domain?\"\"\"\n        parsed = urlparse(iocextract.refang_data(self.artifact))\n\n        try:\n            ipaddress.IPv4Address(parsed.netloc.split(':')[0].replace('[', '').replace(']', '').replace(',', '.'))\n        except ValueError:\n            return False\n\n        return True",
+                    "func_fullName": "threatingestor.artifacts.URL.is_ipv4(self)"
+                },
+                {
+                    "func_id": 61,
+                    "func_name": "is_ipv6",
+                    "func_desc": "Boolean - if URL network location is an IPv6 address not a domain?",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_ipv6(self):\n        \"\"\"Boolean: URL network location is an IPv6 address, not a domain?\"\"\"\n        # fix urlparse exception\n        parsed = urlparse(iocextract.refang_data(self.artifact))\n\n        # Handle RFC 2732 IPv6 URLs with and without port, as well as non-RFC IPv6 URLs\n        if ']:' in parsed.netloc:\n            ipv6 = ':'.join(parsed.netloc.split(':')[:-1])\n        else:\n            ipv6 = parsed.netloc\n\n        try:\n            ipaddress.IPv6Address(ipv6.replace('[', '').replace(']', ''))\n        except ValueError:\n            return False\n\n        return True",
+                    "func_fullName": "threatingestor.artifacts.URL.is_ipv6(self)"
+                },
+                {
+                    "func_id": 62,
+                    "func_name": "is_ip",
+                    "func_desc": "Boolean indicating if the URL network location is an IP address or not .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_ip(self):\n        \"\"\"Boolean: URL network location is an IP address, not a domain?\"\"\"\n        return self.is_ipv4() or self.is_ipv6()",
+                    "func_fullName": "threatingestor.artifacts.URL.is_ip(self)"
+                },
+                {
+                    "func_id": 63,
+                    "func_name": "domain",
+                    "func_desc": "Deobfuscated domain .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def domain(self):\n        \"\"\"Deobfuscated domain; undefined behavior if self.is_ip().\"\"\"\n        return urlparse(self._stringify()).netloc.split(':')[0]",
+                    "func_fullName": "threatingestor.artifacts.URL.domain(self)"
+                },
+                {
+                    "func_id": 64,
+                    "func_name": "is_domain",
+                    "func_desc": "Boolean - return True if this URL is a valid domain .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def is_domain(self):\n        \"\"\"Boolean: URL network location might be a valid domain?\"\"\"\n        try:\n            # can't have non-ascii\n            self.domain().encode('ascii')\n        except UnicodeEncodeError:\n            return False\n        return not self.is_ip() and len(self.domain()) > 3 and '.' in self.domain()[1:-1] and \\\n               all([x.isalnum() or x in '-.' for x in self.domain()]) and \\\n               self.domain()[self.domain().rfind('.')+1:].isalpha() and len(self.domain()[self.domain().rfind('.')+1:]) > 1",
+                    "func_fullName": "threatingestor.artifacts.URL.is_domain(self)"
+                },
+                {
+                    "func_id": 110,
+                    "func_name": "process_element",
+                    "func_desc": "Process a single source element and return a list of Artifacts .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def process_element(self, content, reference_link, include_nonobfuscated=False):\n        \"\"\"Take a single source content/url and return a list of Artifacts.\n\n        This is the main work block of Source plugins, which handles\n        IOC extraction and artifact creation.\n\n        :param content: String content to extract from.\n        :param reference_link: Reference link to attach to all artifacts.\n        :param include_nonobfuscated: Include non-defanged URLs in output?\n        \"\"\"\n        logger.debug(f\"Processing in source '{self.name}'\")\n\n        # Truncate content to a reasonable length for reference_text.\n        reference_text = content[:TRUNCATE_LENGTH] + ('...' if len(content) > TRUNCATE_LENGTH else '')\n\n        # Initialize an empty list and a map of counters to track each artifact type.\n        artifact_list = []\n        artifact_type_count = {\n            'domain': 0,\n            'hash': 0,\n            'ipaddress': 0,\n            'task': 0,\n            'url': 0,\n            'yarasignature': 0,\n            'email': 0,\n        }\n\n        # Collect URLs and domains.\n        scraped = itertools.chain(\n            iocextract.extract_unencoded_urls(content),\n            # Decode encoded URLs, since we can't operate on encoded ones.\n            iocextract.extract_encoded_urls(content, refang=True),\n        )\n        for url in scraped:\n            # Dump anything with ellipses, these get through the regex.\n            if u'\\u2026' in url:\n                continue\n\n            artifact = threatingestor.artifacts.URL(url, self.name,\n                                                    reference_link=reference_link,\n                                                    reference_text=reference_text)\n\n            # Dump URLs that appear to have the same domain as reference_url.\n            try:\n                if artifact.domain() == urlparse(reference_link).netloc:\n                    continue\n            except ValueError:\n                # Error parsing reference_link as a URL. Ignoring.\n                pass\n\n            if artifact.is_obfuscated() or include_nonobfuscated:\n                # Do URL collection.\n                artifact_list.append(artifact)\n                artifact_type_count['url'] += 1\n\n                # Do domain collection in the same pass.\n                # Note: domains will always be a subset of URLs. There is no\n                # domain extraction.\n                if artifact.is_domain():\n                    artifact_list.append(\n                            threatingestor.artifacts.Domain(artifact.domain(), self.name,\n                                                            reference_link=reference_link,\n                                                            reference_text=reference_text))\n                    artifact_type_count['domain'] += 1\n\n        # Collect IPs.\n        scraped = iocextract.extract_ips(content)\n        for ip in scraped:\n            artifact = threatingestor.artifacts.IPAddress(ip, self.name,\n                                                          reference_link=reference_link,\n                                                          reference_text=reference_text)\n\n            try:\n                ipaddress = artifact.ipaddress()\n                if ipaddress.is_private or ipaddress.is_loopback or ipaddress.is_reserved:\n                    # Skip private, loopback, reserved IPs.\n                    continue\n\n            except ValueError:\n                # Skip invalid IPs.\n                continue\n\n            artifact_list.append(artifact)\n            artifact_type_count['ipaddress'] += 1\n\n        # Collect YARA rules.\n        scraped = iocextract.extract_yara_rules(content)\n        for rule in scraped:\n            artifact = threatingestor.artifacts.YARASignature(rule, self.name,\n                                                              reference_link=reference_link,\n                                                              reference_text=reference_text)\n\n            artifact_list.append(artifact)\n            artifact_type_count['yarasignature'] += 1\n\n        # Collect hashes.\n        scraped = iocextract.extract_hashes(content)\n        for hash_ in scraped:\n            artifact = threatingestor.artifacts.Hash(hash_, self.name,\n                                                     reference_link=reference_link,\n                                                     reference_text=reference_text)\n\n            artifact_list.append(artifact)\n            artifact_type_count['hash'] += 1\n\n        # Collect emails.\n        scraped = itertools.chain(iocextract.extract_emails(content))\n\n        for email in scraped:\n            artifact_list.append(threatingestor.artifacts.Email(email, self.name, reference_link=reference_link, reference_text=reference_text))\n            \n            artifact_type_count['email'] += 1\n\n        # Generate generic task.\n        title = f\"Manual Task: {reference_link}\"\n        description = f\"URL: {reference_link}\\nTask autogenerated by ThreatIngestor from source: {self.name}\"\n        artifact = threatingestor.artifacts.Task(title, self.name,\n                                                 reference_link=reference_link,\n                                                 reference_text=description)\n        artifact_list.append(artifact)\n        artifact_type_count['task'] += 1\n\n        logger.debug(f\"Found {len(artifact_list)} total artifacts\")\n        logger.debug(f\"Type breakdown: {artifact_type_count}\")\n        return artifact_list",
+                    "func_fullName": "threatingestor.sources.__init__.Source.process_element(self, content, reference_link, include_nonobfuscated)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 11,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 67,
+                    "func_name": "_stringify",
+                    "func_desc": "Always returns deobfuscated IP .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _stringify(self):\n        \"\"\"Always returns deobfuscated IP.\"\"\"\n        return self.artifact.replace('[', '').replace(']', '').split('/')[0].split(':')[0].split(' ')[0]",
+                    "func_fullName": "threatingestor.artifacts.IPAddress._stringify(self)"
+                },
+                {
+                    "func_id": 68,
+                    "func_name": "version",
+                    "func_desc": "Returns 4 6 or None .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def version(self):\n        \"\"\"Returns 4, 6, or None.\"\"\"\n        try:\n            return ipaddress.IPv4Address(self._stringify()).version\n        except ValueError:\n            try:\n                return ipaddress.IPv6Address(self._stringify()).version\n            except ValueError:\n                return None",
+                    "func_fullName": "threatingestor.artifacts.IPAddress.version(self)"
+                },
+                {
+                    "func_id": 69,
+                    "func_name": "ipaddress",
+                    "func_desc": "Return an ipaddress object based on the version of the sequence sequence feature .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def ipaddress(self):\n        \"\"\"Return ipaddress.IPv4Address or ipaddress.IPv6Address object, or raise ValueError.\"\"\"\n        version = self.version\n        if version == 4:\n            return ipaddress.IPv4Address(self._stringify())\n        elif version == 6:\n            return ipaddress.IPv6Address(self._stringify())\n        else:\n            raise ValueError(u\"Invalid IP address '{ip}'\".format(ip=self.artifact))",
+                    "func_fullName": "threatingestor.artifacts.IPAddress.ipaddress(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 12,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 71,
+                    "func_name": "format_message",
+                    "func_desc": "Allow string interpolation with artifact contents .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def format_message(self, message, **kwargs):\n        \"\"\"Allow string interpolation with artifact contents.\n\n        Supported variables:\n\n        * {hash}\n        * {hash_type}\n        * All supported variables from Artifact.format_message\n        \"\"\"\n        return super(Hash, self).format_message(message, hash=str(self),\n                                                hash_type=self.hash_type() or 'hash')",
+                    "func_fullName": "threatingestor.artifacts.Hash.format_message(self, message, kwargs)"
+                },
+                {
+                    "func_id": 72,
+                    "func_name": "hash_type",
+                    "func_desc": "Return the hash type as a string or None .",
+                    "func_file": "artifacts",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def hash_type(self):\n        \"\"\"Return the hash type as a string, or None.\"\"\"\n        if len(self.artifact) == 32:\n            return self.MD5\n        elif len(self.artifact) == 40:\n            return self.SHA1\n        elif len(self.artifact) == 64:\n            return self.SHA256\n        elif len(self.artifact) == 128:\n            return self.SHA512\n        else:\n            return None",
+                    "func_fullName": "threatingestor.artifacts.Hash.hash_type(self)"
+                },
+                {
+                    "func_id": 113,
+                    "func_name": "tmp_name",
+                    "func_desc": "Generate a random name for a node .",
+                    "func_file": "image",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def tmp_name():\n    return \"\".join(random.choice(string.ascii_lowercase) for _ in range(5))",
+                    "func_fullName": "threatingestor.sources.image.tmp_name()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 13,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 116,
+                    "func_name": "__init__",
+                    "func_desc": "Read a config file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, filename):\n        \"\"\"Read a config file.\"\"\"\n        self.filename = filename\n        with io.open(self.filename, 'r') as f:\n            try:\n                self.config = yaml.safe_load(f.read())\n            except yaml.error.YAMLError:\n                raise IngestorError(\"YAML error in config\")",
+                    "func_fullName": "threatingestor.config.Config.__init__(self, filename)"
+                },
+                {
+                    "func_id": 93,
+                    "func_name": "run",
+                    "func_desc": "Runs the action of the parsing process .",
+                    "func_file": "sitemap",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        # Configures sitemap parsing\n        response = requests.get(self.url)\n        xml = BeautifulSoup(response.text, \"lxml-xml\")\n\n        urls = xml.find_all(\"url\")\n        text = \"\"\n        artifacts = []\n\n        for u in urls:\n            if saved_state and xml.find(\"lastmod\") and saved_state <= str(u.findNext(\"lastmod\").text).split(\"T\", 1)[0]:\n                continue\n\n            # Extracts only the 'loc' tag from the xml\n            if xml.find(\"loc\"):\n                loc = u.findNext(\"loc\").text\n                response = requests.get(loc)\n                soup = BeautifulSoup(response.text, 'html.parser')\n            else:\n                continue\n\n            if response.status_code >= 400:\n                continue\n\n            [x.unwrap() for x in soup.find_all('strong')]\n            [x.unwrap() for x in soup.find_all('b')]\n            [x.unwrap() for x in soup.find_all('em')]\n            [x.unwrap() for x in soup.find_all('i')]\n            soup = BeautifulSoup(soup.decode(), 'html.parser')\n\n            if self.filter is not None:\n                # Regex input via config.yml\n                # Example: security|threat|malware\n                xml_query = re.compile(r\"{0}\".format(self.filter)).findall(str(self.filter.split('|')))\n\n                # Iterates over the regex output to locate all provided keywords\n                for x in xml_query:\n                    # Uses a path instead of a keyword\n                    if self.path is not None:\n                        if self.path in loc:\n                            text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n                            artifacts += self.process_element(content=text, reference_link=str(loc), include_nonobfuscated=True)\n\n                    # Only filters using a keyword\n                    if self.path is None:\n                        if x in loc:\n                            text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n                            artifacts += self.process_element(content=text, reference_link=str(loc), include_nonobfuscated=True)\n\n            elif self.filter is None and self.path is not None:\n                # Filters only by path in XML loc, no set filter\n                # Default: /path/name/*\n\n                if self.path in loc:\n                    text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n                    artifacts += self.process_element(content=text, reference_link=str(loc), include_nonobfuscated=True)\n            \n            else:\n                # Locates all blog links within the sitemap\n                if \"blog\" in loc:\n                    text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n                    artifacts += self.process_element(content=text, reference_link=str(loc), include_nonobfuscated=True)\n\n            if xml.find(\"lastmod\"):\n                saved_state = str(u.findNext(\"lastmod\").text).split(\"T\", 1)[0]\n            else:\n                saved_state = str(datetime.date.today())\n\n        return saved_state, artifacts",
+                    "func_fullName": "threatingestor.sources.sitemap.Plugin.run(self, saved_state)"
+                },
+                {
+                    "func_id": 128,
+                    "func_name": "process",
+                    "func_desc": "Handle a file event .",
+                    "func_file": "fswatcher",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def process(self, event):\n        \"\"\"Handle a file event.\"\"\"\n        with io.open(event.src_path, 'r') as rule_source:\n            rule_content = rule_source.read()\n            self.queue.write_one({\n                'filename': event.src_path,\n                'rules': rule_content,\n            })",
+                    "func_fullName": "threatingestor.extras.fswatcher.FSWatcher.process(self, event)"
+                },
+                {
+                    "func_id": 129,
+                    "func_name": "on_modified",
+                    "func_desc": "Process the language file modified event .",
+                    "func_file": "fswatcher",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def on_modified(self, event):\n        self.process(event)",
+                    "func_fullName": "threatingestor.extras.fswatcher.FSWatcher.on_modified(self, event)"
+                },
+                {
+                    "func_id": 130,
+                    "func_name": "on_created",
+                    "func_desc": "Process the created language file .",
+                    "func_file": "fswatcher",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def on_created(self, event):\n        self.process(event)",
+                    "func_fullName": "threatingestor.extras.fswatcher.FSWatcher.on_created(self, event)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 14,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 117,
+                    "func_name": "_load_plugin",
+                    "func_desc": "Load a plugin class .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _load_plugin(plugin_type, plugin):\n        \"\"\"Returns plugin class or raises an exception.\n\n        :raises: threatingestor.exceptions.PluginError\n        \"\"\"\n        try:\n            module = importlib.import_module('.'.join([plugin_type, plugin]))\n            return module.Plugin\n        except (ImportError, AttributeError):\n            raise PluginError(\"No valid plugin '{p}' in '{t}'\".format(p=plugin, t=plugin_type))",
+                    "func_fullName": "threatingestor.config.Config._load_plugin(plugin_type, plugin)"
+                },
+                {
+                    "func_id": 124,
+                    "func_name": "credentials",
+                    "func_desc": "Return a dictionary with the specified credentials .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def credentials(self, credential_name):\n        \"\"\"Return a dictionary with the specified credentials.\"\"\"\n        for credential in self.config['credentials']:\n            for key, value in credential.items():\n                if key == NAME and value == credential_name:\n                    return credential\n        return {}",
+                    "func_fullName": "threatingestor.config.Config.credentials(self, credential_name)"
+                },
+                {
+                    "func_id": 125,
+                    "func_name": "sources",
+                    "func_desc": "Return a list of tuples of name Source class and kwargs .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sources(self):\n        \"\"\"Return a list of (name, Source class, {kwargs}) tuples.\n\n        :raises: threatingestor.exceptions.PluginError\n        \"\"\"\n        sources = []\n\n        for source in self.config['sources']:\n            kwargs = {}\n            for key, value in source.items():\n                if key not in INTERNAL_OPTIONS:\n                    kwargs[key] = value\n\n                elif key == 'credentials':\n                    # Grab these named credentials\n                    credential_name = value\n                    for credential_key, credential_value in self.credentials(credential_name).items():\n                        if credential_key != NAME:\n                            kwargs[credential_key] = credential_value\n\n            # load and initialize the plugin\n            logger.debug(f\"Found source '{source[NAME]}'\")\n            sources.append((source[NAME], self._load_plugin(SOURCE, source['module']), kwargs))\n\n        logger.debug(f\"Found {len(sources)} total sources\")\n        return sources",
+                    "func_fullName": "threatingestor.config.Config.sources(self)"
+                },
+                {
+                    "func_id": 126,
+                    "func_name": "operators",
+                    "func_desc": "Return a list of all operators in the system .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def operators(self):\n        \"\"\"Return a list of (name, Operator class, {kwargs}) tuples.\n\n        :raises: threatingestor.exceptions.PluginError\n        \"\"\"\n        operators = []\n        for operator in self.config['operators']:\n            kwargs = {}\n            for key, value in operator.items():\n                if key not in INTERNAL_OPTIONS:\n                    if key == ARTIFACT_TYPES:\n                        # parse out special artifact_types option\n                        artifact_types = []\n                        for artifact in value:\n                            try:\n                                artifact_types.append(threatingestor.artifacts.STRING_MAP[artifact.lower().strip()])\n                            except KeyError:\n                                # ignore invalid artifact types\n                                pass\n                        kwargs[key] = artifact_types\n\n                    elif key == FILTER_STRING:\n                        # pass in special filter_string option\n                        kwargs['filter_string'] = value\n\n                    elif key == NAME:\n                        # exclude name key from operator kwargs, since it's not used\n                        pass\n\n                    else:\n                        kwargs[key] = value\n\n                elif key == 'credentials':\n                    # Grab these named credentials\n                    credential_name = value\n                    for credential_key, credential_value in self.credentials(credential_name).items():\n                        if credential_key != NAME:\n                            kwargs[credential_key] = credential_value\n\n            # load and initialize the plugin\n            logger.debug(f\"Found operator '{operator[NAME]}'\")\n            operators.append((operator[NAME], self._load_plugin(OPERATOR, operator['module']), kwargs))\n\n        logger.debug(f\"Found {len(operators)} total operators\")\n        return operators",
+                    "func_fullName": "threatingestor.config.Config.operators(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 15,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 118,
+                    "func_name": "daemon",
+                    "func_desc": "Returns True if we are daemonizing .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def daemon(self):\n        \"\"\"Returns boolean, are we daemonizing?\"\"\"\n        return self.config['general']['daemon']",
+                    "func_fullName": "threatingestor.config.Config.daemon(self)"
+                },
+                {
+                    "func_id": 120,
+                    "func_name": "sleep",
+                    "func_desc": "Returns number of seconds to sleep between iterations if daemonizing .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def sleep(self):\n        \"\"\"Returns number of seconds to sleep between iterations, if daemonizing.\"\"\"\n        return self.config['general']['sleep']",
+                    "func_fullName": "threatingestor.config.Config.sleep(self)"
+                },
+                {
+                    "func_id": 146,
+                    "func_name": "run",
+                    "func_desc": "Run once or forever depending on config .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self):\n        \"\"\"Run once, or forever, depending on config.\"\"\"\n        if self.config.daemon():\n            logger.debug(\"Running forever, in a loop\")\n            self.run_forever()\n        else:\n            logger.debug(\"Running once, to completion\")\n            with self.statsd.timer('run_once'):\n                self.run_once()",
+                    "func_fullName": "threatingestor.__init__.Ingestor.run(self)"
+                },
+                {
+                    "func_id": 148,
+                    "func_name": "run_forever",
+                    "func_desc": "Run forever .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run_forever(self):\n        \"\"\"Run forever, sleeping for the configured interval between each run.\"\"\"\n        while True:\n            with self.statsd.timer('run_once'):\n                self.run_once()\n\n            logger.debug(f\"Sleeping for {self.config.sleep()} seconds\")\n            time.sleep(self.config.sleep())",
+                    "func_fullName": "threatingestor.__init__.Ingestor.run_forever(self)"
+                },
+                {
+                    "func_id": 150,
+                    "func_name": "main",
+                    "func_desc": "CLI entry point .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def main():\n    \"\"\"CLI entry point, uses sys.argv directly.\"\"\"\n    if len(sys.argv) < 2:\n        logger.error(\"You must specify a config file\")\n        sys.exit(1)\n\n    app = Ingestor(sys.argv[1])\n    app.run()",
+                    "func_fullName": "threatingestor.__init__.main()"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 16,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 119,
+                    "func_name": "state_path",
+                    "func_desc": "Returns path of state . db file .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def state_path(self):\n        \"\"\"Returns path of state.db file.\"\"\"\n        return self.config['general']['state_path']",
+                    "func_fullName": "threatingestor.config.Config.state_path(self)"
+                },
+                {
+                    "func_id": 121,
+                    "func_name": "statsd",
+                    "func_desc": "Returns statsd config dictionary .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def statsd(self):\n        \"\"\"Returns statsd config dictionary.\"\"\"\n        return self.config.get('statsd', {})",
+                    "func_fullName": "threatingestor.config.Config.statsd(self)"
+                },
+                {
+                    "func_id": 122,
+                    "func_name": "notifiers",
+                    "func_desc": "Returns the notifiers config dictionary .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def notifiers(self):\n        \"\"\"Returns notifiers config dictionary.\"\"\"\n        return self.config.get('notifiers', {})",
+                    "func_fullName": "threatingestor.config.Config.notifiers(self)"
+                },
+                {
+                    "func_id": 123,
+                    "func_name": "logging",
+                    "func_desc": "Returns logging config dictionary .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def logging(self):\n        \"\"\"Returns logging config dictionary.\"\"\"\n        return self.config.get('logging', {})",
+                    "func_fullName": "threatingestor.config.Config.logging(self)"
+                },
+                {
+                    "func_id": 127,
+                    "func_name": "whitelists",
+                    "func_desc": "Returns the whitelist list .",
+                    "func_file": "config",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def whitelists(self):\n        \"\"\"Returns whitelist list.\"\"\"\n        return self.config.get(\"whitelists\", [])",
+                    "func_fullName": "threatingestor.config.Config.whitelists(self)"
+                },
+                {
+                    "func_id": 144,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object with the base attributes .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, config_file):\n        # Load config.\n        try:\n            logger.debug(f\"Reading config from '{config_file}'\")\n            self.config = config.Config(config_file)\n        except (OSError, threatingestor.exceptions.IngestorError):\n            # Error loading config.\n            logger.exception(\"Couldn't read config\")\n            sys.exit(1)\n\n        # Configure logging with optional notifiers.\n        logger.configure(**self.config.logging())\n        try:\n            logger.level(\"NOTIFY\", no=35, color=\"<yellow>\", icon=\"\\U0001F514\")\n        except TypeError:\n            # logger raises TypeError if NOTIFY is already defined\n            pass\n\n        if notifiers:\n            notifier_config = self.config.notifiers()\n            notifier = notifiers.get_notifier(notifier_config.get('provider'))\n\n            if notifier:\n                logger.debug(f\"Adding notification handler '{notifier_config.get('provider')}'\")\n                # Notifier 'provider_name' is set and valid.\n                handler = NotificationHandler(**notifier_config)\n                logger.add(handler, level=\"NOTIFY\")\n\n        logger.debug(\"Log handler reconfigured\")\n\n        # Configure statsd.\n        try:\n            self.statsd = statsd.StatsClient(**self.config.statsd())\n            self.statsd.incr('start')\n        except TypeError:\n            logger.exception(\"Couldn't initialize statsd client; bad config?\")\n            sys.exit(1)\n\n        # Load state DB.\n        try:\n            logger.debug(f\"Opening state database '{self.config.state_path()}'\")\n            self.statedb = threatingestor.state.State(self.config.state_path())\n        except (OSError, IOError, threatingestor.exceptions.IngestorError):\n            # Error loading state DB.\n            logger.exception(\"Error reading state database\")\n            sys.exit(1)\n\n        # Instantiate plugins.\n        try:\n            logger.debug(\"Initializing sources\")\n            self.sources = {name: source(**kwargs)\n                            for name, source, kwargs in self.config.sources()}\n\n            logger.debug(\"Initializing operators\")\n            self.operators = {name: operator(**kwargs)\n                              for name, operator, kwargs in self.config.operators()}\n\n            logger.debug(\"Initializing whitelists\")\n            self.whitelist = threatingestor.whitelist.Whitelist(self.config.whitelists())\n\n        except (TypeError, ConnectionError, threatingestor.exceptions.PluginError):\n            logger.warning(\"Twitter config format has recently changed. See https://github.com/InQuest/ThreatIngestor/releases/tag/v1.0.0b5\")\n            logger.exception(\"Error initializing plugins\")\n            sys.exit(1)",
+                    "func_fullName": "threatingestor.__init__.Ingestor.__init__(self, config_file)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 17,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 0,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the plugin with the given parameters .",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, artifact_types=None, filter_string=None, allowed_sources=None, **kwargs):\n        # kwargs are used to dynamically form message body\n        self.kwargs = kwargs\n\n        super(AbstractPlugin, self).__init__(artifact_types=artifact_types,\n                                     filter_string=filter_string,\n                                     allowed_sources=allowed_sources)\n\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.URL,\n        ]",
+                    "func_fullName": "threatingestor.operators.abstract_json.AbstractPlugin.__init__(self, artifact_types, filter_string, allowed_sources, kwargs)"
+                },
+                {
+                    "func_id": 3,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a plugin object .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, url, token, secret_key, state, artifact_types=None, filter_string=None, allowed_sources=None, use_https=False):\n        \"\"\"ThreatKB operator.\"\"\"\n        self.state = state\n        self.api = threatkb.ThreatKB(url, token, secret_key, use_https=use_https)\n\n        super(Plugin, self).__init__(artifact_types, filter_string, allowed_sources)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.IPAddress,\n            threatingestor.artifacts.YARASignature,\n        ]",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.__init__(self, url, token, secret_key, state, artifact_types, filter_string, allowed_sources, use_https)"
+                },
+                {
+                    "func_id": 18,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize plugin with given parameters .",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, api_key, api_secret_key, access_token, access_token_secret, status, **kwargs):\n        self.api = twitter.Twitter(auth=twitter.OAuth(access_token, access_token_secret, api_key, api_secret_key))\n        self.status = status\n\n        # Validate status, for better error handling.\n        if not isinstance(self.status, str):\n            raise threatingestor.exceptions.IngestorError(f\"Invalid 'status' config: {self.status}\")\n\n        super(Plugin, self).__init__(kwargs.get('artifact_types'),\n                                     kwargs.get('filter_string'),\n                                     kwargs.get('allowed_sources'))\n        self.artifact_types = kwargs.get('artifact_types') or [\n            threatingestor.artifacts.URL,\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.Hash,\n            threatingestor.artifacts.IPAddress,\n        ]",
+                    "func_fullName": "threatingestor.operators.twitter.Plugin.__init__(self, api_key, api_secret_key, access_token, access_token_secret, status, kwargs)"
+                },
+                {
+                    "func_id": 102,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object with the name api_key api_secret_key access_token bearer_token and optional kwargs .",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, api_key, api_secret_key, access_token, access_token_secret, bearer_token, defanged_only=True, **kwargs):\n        self.name = name\n        self.bearer_token = bearer_token\n\n        \"\"\"\n        Depending on the endpoint being used, we need to modify the type of authentiation being used\n        How to identity the type of authentication = https://developer.twitter.com/en/docs/authentication/overview\n        \"\"\"\n        self.auth = {\n            \"OAuth\": twitter.Twitter(auth=twitter.OAuth(token=access_token,\n                                                        token_secret=access_token_secret,\n                                                        consumer_key=api_key,\n                                                        consumer_secret=api_secret_key),\n                                                        api_version=\"1.1\"),\n            \"OAuth2\": twitter.Twitter(auth=twitter.OAuth2(bearer_token=self.bearer_token), api_version=\"2\", format=\"\")\n        }\n\n        # Let the user decide whether to include non-obfuscated URLs or not.\n        self.include_nonobfuscated = not defanged_only\n\n        # Forward kwargs.\n        # NOTE: No validation is done here, so if the config is wrong, expect bad results.\n        self.kwargs = kwargs\n        self.endpoint = None",
+                    "func_fullName": "threatingestor.sources.twitter.Plugin.__init__(self, name, api_key, api_secret_key, access_token, access_token_secret, bearer_token, defanged_only, kwargs)"
+                },
+                {
+                    "func_id": 134,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the class",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self):\n        self.config = {}\n        self.queue = None",
+                    "func_fullName": "threatingestor.extras.queueworker.QueueWorker.__init__(self)"
+                },
+                {
+                    "func_id": 138,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the connection object .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, aws_access_key_id, aws_secret_access_key,\n                 aws_region, in_queue=None, out_queue=None):\n        \"\"\"Set up SQS connections.\n\n        :param aws_access_key_id: AWS access key ID.\n        :param aws_secret_access_key: AWS secret access key.\n        :param aws_region: AWS region string.\n        :param in_queue: Optional input queue name.\n        :param out_queue: Optional output queue name.\n        \"\"\"\n        self.in_queue = None\n        self.out_queue = None\n\n        if in_queue:\n            resource = boto3.resource('sqs', region_name=aws_region,\n                                      aws_access_key_id=aws_access_key_id,\n                                      aws_secret_access_key=aws_secret_access_key)\n            self.in_queue = resource.get_queue_by_name(QueueName=in_queue)\n\n        if out_queue:\n            client = boto3.client('sqs', region_name=aws_region,\n                                  aws_access_key_id=aws_access_key_id,\n                                  aws_secret_access_key=aws_secret_access_key)\n            self.out_queue = client.get_queue_url(QueueName=out_queue)['QueueUrl']",
+                    "func_fullName": "threatingestor.extras.queueworker.SQSInterface.__init__(self, aws_access_key_id, aws_secret_access_key, aws_region, in_queue, out_queue)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 18,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 1,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact\"\"\"\n        message_body = dict([(k, artifact.format_message(v)) for (k, v) in self.kwargs.items()])\n        self._put(message_body)",
+                    "func_fullName": "threatingestor.operators.abstract_json.AbstractPlugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 2,
+                    "func_name": "_put",
+                    "func_desc": "Put a new record in the language store .",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _put(self,content):\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.operators.abstract_json.AbstractPlugin._put(self, content)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 19,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 4,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        if isinstance(artifact, threatingestor.artifacts.Domain):\n            self.handle_domain(artifact)\n        elif isinstance(artifact, threatingestor.artifacts.IPAddress):\n            self.handle_ipaddress(artifact)\n        elif isinstance(artifact, threatingestor.artifacts.YARASignature):\n            self.handle_yarasignature(artifact)\n        elif isinstance(artifact, threatingestor.artifacts.Task):\n            self.handle_task(artifact)",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 5,
+                    "func_name": "handle_domain",
+                    "func_desc": "Handle a single domain .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_domain(self, domain):\n        \"\"\"Handle a single domain.\"\"\"\n        self.api.create('c2dns', {\n                'domain_name': str(domain),\n                'match_type': '',\n                'description': '{l}\\n\\n{t}'.format(l=domain.reference_link, t=domain.reference_text),\n                'references': '',\n                'expiration_type': '',\n                'state': {'state': self.state},\n                'tags': [],\n                'metadata_values': {},\n            })",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.handle_domain(self, domain)"
+                },
+                {
+                    "func_id": 6,
+                    "func_name": "handle_ipaddress",
+                    "func_desc": "Handle a single IP address .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_ipaddress(self, ipaddress):\n        \"\"\"Handle a single IP address.\"\"\"\n        self.api.create('c2ips', {\n                'ip': str(ipaddress),\n                'references': '',\n                'description': '{l}\\n\\n{t}'.format(l=ipaddress.reference_link, t=ipaddress.reference_text),\n                'expiration_type': '',\n                'state': {'state': self.state},\n                'asn': '',\n                'country': '',\n                'city': '',\n                'st': '',\n                'tags': [],\n                'metadata_values': {},\n            })",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.handle_ipaddress(self, ipaddress)"
+                },
+                {
+                    "func_id": 7,
+                    "func_name": "handle_yarasignature",
+                    "func_desc": "Handle a single YARA signature .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_yarasignature(self, yarasignature):\n        \"\"\"Handle a single YARA signature.\"\"\"\n        self.api.create('import', {\n                'autocommit': 1,\n                'import_text': str(yarasignature),\n                'shared_reference': yarasignature.reference_link,\n                'shared_state': self.state,\n                'extract_ip': False,\n                'extract_dns': False,\n            })",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.handle_yarasignature(self, yarasignature)"
+                },
+                {
+                    "func_id": 8,
+                    "func_name": "handle_task",
+                    "func_desc": "Handle a single Task .",
+                    "func_file": "threatkb",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_task(self, task):\n        \"\"\"Handle a single Task.\"\"\"\n        self.api.create('tasks', {\n                'title': str(task),\n                'description': task.reference_text,\n                'state': {'state': self.state},\n                'final_artifact': '',\n            })",
+                    "func_fullName": "threatingestor.operators.threatkb.Plugin.handle_task(self, task)"
+                },
+                {
+                    "func_id": 30,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        event = self._find_or_create_event(artifact)\n\n        if isinstance(artifact, threatingestor.artifacts.Domain):\n            event = self.handle_domain(artifact, event=event)\n        if isinstance(artifact, threatingestor.artifacts.Hash):\n            event = self.handle_hash(artifact, event=event)\n        elif isinstance(artifact, threatingestor.artifacts.IPAddress):\n            event = self.handle_ipaddress(artifact, event=event)\n        if isinstance(artifact, threatingestor.artifacts.URL):\n            event = self.handle_url(artifact, event=event)\n        elif isinstance(artifact, threatingestor.artifacts.YARASignature):\n            event = self.handle_yarasignature(artifact, event=event)\n\n        self._update_or_create_event(event)",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 35,
+                    "func_name": "handle_domain",
+                    "func_desc": "Handle a single domain .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_domain(self, domain, event: pymisp.MISPEvent):\n        \"\"\"Handle a single domain.\"\"\"\n        event.add_attribute(\"domain\", str(domain))\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_domain(self, domain, event)"
+                },
+                {
+                    "func_id": 36,
+                    "func_name": "handle_hash",
+                    "func_desc": "Handle a single hash .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_hash(self, hash_, event: pymisp.MISPEvent):\n        \"\"\"Handle a single hash.\"\"\"\n        if hash_.hash_type() == hash_.MD5:\n            event.add_attribute(\"md5\", str(hash_))\n        elif hash_.hash_type() == hash_.SHA1:\n            event.add_attribute(\"sha1\", str(hash_))\n        elif hash_.hash_type() == hash_.SHA256:\n            event.add_attribute(\"sha256\", str(hash_))\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_hash(self, hash_, event)"
+                },
+                {
+                    "func_id": 37,
+                    "func_name": "handle_ipaddress",
+                    "func_desc": "Handle a single IP address .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_ipaddress(self, ipaddress, event: pymisp.MISPEvent):\n        \"\"\"Handle a single IP address.\"\"\"\n        event.add_attribute(\"ip-dst\", str(ipaddress))\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_ipaddress(self, ipaddress, event)"
+                },
+                {
+                    "func_id": 38,
+                    "func_name": "handle_url",
+                    "func_desc": "Handle a single URL .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_url(self, url, event: pymisp.MISPEvent):\n        \"\"\"Handle a single URL.\"\"\"\n        event.add_attribute(\"url\", str(url))\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_url(self, url, event)"
+                },
+                {
+                    "func_id": 39,
+                    "func_name": "handle_yarasignature",
+                    "func_desc": "Handle a single YARA signature .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_yarasignature(self, yarasignature, event: pymisp.MISPEvent):\n        \"\"\"Handle a single YARA signature.\"\"\"\n        event.add_attribute(\"yara\", str(yarasignature))\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.handle_yarasignature(self, yarasignature, event)"
+                },
+                {
+                    "func_id": 41,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        with open(self.filename, 'a+', encoding='utf-8') as f:\n            writer = csv.writer(f)\n            artifact_type = artifact.__class__.__name__\n            writer.writerow([artifact_type, str(artifact),\n                    artifact.reference_link,\n                    artifact.reference_text])",
+                    "func_fullName": "threatingestor.operators.csv.Plugin.handle_artifact(self, artifact)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 20,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 9,
+                    "func_name": "__init__",
+                    "func_desc": "Beanstalk operator .",
+                    "func_file": "beanstalk",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, host, port, queue_name, artifact_types=None,\n            filter_string=None, allowed_sources=None, **kwargs):\n        \"\"\"Beanstalk operator.\"\"\"\n        self.queue = greenstalk.Client(host, port, use=queue_name)\n\n        super(Plugin, self).__init__(artifact_types=artifact_types,\n                                     filter_string=filter_string,\n                                     allowed_sources=allowed_sources,\n                                     **kwargs)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.URL,\n        ]",
+                    "func_fullName": "threatingestor.operators.beanstalk.Plugin.__init__(self, host, port, queue_name, artifact_types, filter_string, allowed_sources, kwargs)"
+                },
+                {
+                    "func_id": 94,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the beanstalk source .",
+                    "func_file": "beanstalk",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, host, port, queue_name, paths, reference=None):\n        \"\"\"Beanstalk source.\"\"\"\n        super(Plugin, self).__init__(name, paths, reference)\n        self.queue = greenstalk.Client(host, port, watch=queue_name)",
+                    "func_fullName": "threatingestor.sources.beanstalk.Plugin.__init__(self, name, host, port, queue_name, paths, reference)"
+                },
+                {
+                    "func_id": 141,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the connection to the Beanstalk .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, host, port, in_queue=None, out_queue=None):\n        \"\"\"Set up Beanstalk connections.\n\n        :param host: Beanstalk host.\n        :param port: Beanstalk port.\n        :param in_queue: Optional input queue name.\n        :param out_queue: Optional output queue name.\n        \"\"\"\n        self.in_queue = None\n        self.out_queue = None\n\n        if in_queue:\n            self.in_queue = greenstalk.Client(host, port, watch=in_queue)\n\n        if out_queue:\n            self.out_queue = greenstalk.Client(host, port, use=out_queue)",
+                    "func_fullName": "threatingestor.extras.queueworker.BeanstalkInterface.__init__(self, host, port, in_queue, out_queue)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 21,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 10,
+                    "func_name": "_put",
+                    "func_desc": "Send a sequence of content to a Beanstalk queue .",
+                    "func_file": "beanstalk",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _put(self, content):\n        \"\"\"Send content to a Beanstalk queue.\"\"\"\n        return self.queue.put(\n            json.dumps(content)\n        )",
+                    "func_fullName": "threatingestor.operators.beanstalk.Plugin._put(self, content)"
+                },
+                {
+                    "func_id": 12,
+                    "func_name": "_put",
+                    "func_desc": "Send content to an SQS queue .",
+                    "func_file": "sqs",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _put(self, content):\n        \"\"\"Send content to an SQS queue.\"\"\"\n        return self.sqs.send_message(\n                QueueUrl=self.queue_url,\n                DelaySeconds=0,\n                MessageBody=json.dumps(content)\n        )",
+                    "func_fullName": "threatingestor.operators.sqs.Plugin._put(self, content)"
+                },
+                {
+                    "func_id": 95,
+                    "func_name": "get_objects",
+                    "func_desc": "Get a list of all jobs in the queue .",
+                    "func_file": "beanstalk",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_objects(self, saved_state):\n        job_list = []\n\n        # Just do one job at a time, so we don't have to worry about batching\n        # or TTL timeouts.\n        try:\n            batch_count = 0\n            while batch_count < BATCH_SIZE:\n                message = self.queue.reserve(timeout=1)\n                job = json.loads(message.body)\n                job_list.append(job)\n\n                # Let the queue know that the message is processed.\n                self.queue.delete(message)\n                batch_count += 1\n\n        except greenstalk.TimedOutError:\n            # No more jobs.\n            pass\n\n        # Return the job list.\n        return saved_state, job_list",
+                    "func_fullName": "threatingestor.sources.beanstalk.Plugin.get_objects(self, saved_state)"
+                },
+                {
+                    "func_id": 97,
+                    "func_name": "get_objects",
+                    "func_desc": "Get the list of objects from the queue .",
+                    "func_file": "sqs",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_objects(self, saved_state):\n        content_list = []\n        for message in self.queue.receive_messages():\n            # Process a message.\n            job = json.loads(message.body)\n            content_list.append(job)\n\n            # Let the queue know that the message is processed.\n            message.delete()\n\n        return saved_state, content_list",
+                    "func_fullName": "threatingestor.sources.sqs.Plugin.get_objects(self, saved_state)"
+                },
+                {
+                    "func_id": 135,
+                    "func_name": "read_config",
+                    "func_desc": "Read from a config YAML file and set up queues .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def read_config(self, filename):\n        \"\"\"Read from a config YAML file and set up queues.\"\"\"\n        with io.open(filename, 'r') as f:\n            self.config = yaml.safe_load(f.read())\n\n        if self.config.get('module').lower() == 'sqs':\n            self.queue = SQSInterface(\n                self.config['aws_access_key_id'],\n                self.config['aws_secret_access_key'],\n                self.config['aws_region'],\n                in_queue=self.config.get('in_queue'),\n                out_queue=self.config.get('out_queue'))\n        elif self.config.get('module').lower() == 'beanstalk':\n            self.queue = BeanstalkInterface(\n                self.config['host'],\n                self.config['port'],\n                in_queue=self.config.get('in_queue'),\n                out_queue=self.config.get('out_queue'))\n        else:\n            raise threatingestor.exceptions.IngestorError('Invalid self.config.')",
+                    "func_fullName": "threatingestor.extras.queueworker.QueueWorker.read_config(self, filename)"
+                },
+                {
+                    "func_id": 139,
+                    "func_name": "read_one",
+                    "func_desc": "Read one or zero messages from the queue .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def read_one(self):\n        \"\"\"Read one or zero messages from the queue.\n\n        :returns: Message body or None.\n        \"\"\"\n        if not self.in_queue:\n            return\n\n        messages = self.in_queue.receive_messages(\n            MaxNumberOfMessages=1,\n            WaitTimeSeconds=20)\n        if not messages:\n            return\n\n        job = json.loads(messages[0].body)\n        messages[0].delete()\n        return job",
+                    "func_fullName": "threatingestor.extras.queueworker.SQSInterface.read_one(self)"
+                },
+                {
+                    "func_id": 140,
+                    "func_name": "write_one",
+                    "func_desc": "Write one message to the queue if it exists .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def write_one(self, content):\n        \"\"\"Write one message to the queue, if it exists.\"\"\"\n        if not self.out_queue or not content:\n            return\n\n        return self.out_queue.send_message(\n            QueueUrl=self.out_queue,\n            DelaySeconds=0,\n            MessageBody=json.dumps(content)\n        )",
+                    "func_fullName": "threatingestor.extras.queueworker.SQSInterface.write_one(self, content)"
+                },
+                {
+                    "func_id": 142,
+                    "func_name": "read_one",
+                    "func_desc": "Read one or zero messages from the queue .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def read_one(self):\n        \"\"\"Read one or zero messages from the queue.\n\n        :returns: Message body or None.\n        \"\"\"\n        if not self.in_queue:\n            return\n\n        message = self.in_queue.reserve()\n        job = json.loads(message.body)\n        self.in_queue.delete(message)\n        return job",
+                    "func_fullName": "threatingestor.extras.queueworker.BeanstalkInterface.read_one(self)"
+                },
+                {
+                    "func_id": 143,
+                    "func_name": "write_one",
+                    "func_desc": "Write one message to the queue if it exists .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def write_one(self, content):\n        \"\"\"Write one message to the queue, if it exists.\"\"\"\n        if not self.out_queue or not content:\n            return\n\n        self.out_queue.put(json.dumps(content))",
+                    "func_fullName": "threatingestor.extras.queueworker.BeanstalkInterface.write_one(self, content)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 22,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 11,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the SQS operator .",
+                    "func_file": "sqs",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, aws_access_key_id, aws_secret_access_key, aws_region, queue_name,\n            artifact_types=None, filter_string=None, allowed_sources=None, **kwargs):\n        \"\"\"SQS operator.\"\"\"\n        self.sqs = boto3.client('sqs', region_name=aws_region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)\n        self.queue_url = self.sqs.get_queue_url(QueueName=queue_name)['QueueUrl']\n\n        super(Plugin, self).__init__(artifact_types=artifact_types,\n                                     filter_string=filter_string,\n                                     allowed_sources=allowed_sources,\n                                     **kwargs)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.URL,\n        ]",
+                    "func_fullName": "threatingestor.operators.sqs.Plugin.__init__(self, aws_access_key_id, aws_secret_access_key, aws_region, queue_name, artifact_types, filter_string, allowed_sources, kwargs)"
+                },
+                {
+                    "func_id": 96,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the SQS source .",
+                    "func_file": "sqs",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, aws_access_key_id, aws_secret_access_key,\n            aws_region, queue_name, paths, reference=None):\n        \"\"\"SQS source.\"\"\"\n        super(Plugin, self).__init__(name, paths, reference)\n        self.sqs = boto3.resource('sqs', region_name=aws_region, aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)\n        self.queue = self.sqs.get_queue_by_name(QueueName=queue_name)",
+                    "func_fullName": "threatingestor.sources.sqs.Plugin.__init__(self, name, aws_access_key_id, aws_secret_access_key, aws_region, queue_name, paths, reference)"
+                },
+                {
+                    "func_id": 99,
+                    "func_name": "run",
+                    "func_desc": "Run the algorithm",
+                    "func_file": "rss",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        feed = feedparser.parse(self.url)\n\n        artifacts = []\n\n        for item in list(reversed(feed['items'])):\n            # Only new items\n            published_parsed = item.get('published_parsed') or item.get('updated_parsed')\n\n            if published_parsed and published_parsed <= _parse_date(saved_state or '0001-01-01'):\n                continue\n\n            try:\n                soup = bs4.BeautifulSoup(item['content'][0]['value'], 'html.parser')\n            except KeyError:\n                try:\n                    soup = bs4.BeautifulSoup(item['summary'], 'html.parser')\n                except KeyError:\n                    # Can't find any feed content, just skip this entry\n                    continue\n\n            # do some preprocessing to remove common obfuscation methods\n            [x.unwrap() for x in soup.find_all('strong')]\n            [x.unwrap() for x in soup.find_all('b')]\n            [x.unwrap() for x in soup.find_all('em')]\n            [x.unwrap() for x in soup.find_all('i')]\n            soup = bs4.BeautifulSoup(soup.decode(), 'html.parser')\n\n            text = ''\n\n            if self.filter is not None:\n\n                rss_query = re.compile(r\"{0}\".format(self.filter)).findall(str(self.filter.split('|')))\n\n                for r in rss_query:\n                    if self.feed_type == 'afterioc':\n                        text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n\n                        if r in text:\n                            artifacts += self.process_element(text, item.get('link') or self.url, include_nonobfuscated=True)\n                    elif self.feed_type == 'clean':\n                        text = soup.get_text(separator=' ')\n\n                        if r in text:\n                            artifacts += self.process_element(text, item.get('link') or self.url, include_nonobfuscated=True)\n                    else:\n                        # Default: self.feed_type == 'messy'.\n                        text = soup.get_text(separator=' ')\n                        artifacts += self.process_element(text, item.get('link') or self.url)\n\n            else:\n\n                if self.feed_type == 'afterioc':\n                    text = soup.get_text(separator=' ').split('Indicators of Compromise')[-1]\n                    artifacts += self.process_element(text, item.get('link') or self.url, include_nonobfuscated=True)\n                elif self.feed_type == 'clean':\n                    text = soup.get_text(separator=' ')\n                    artifacts += self.process_element(text, item.get('link') or self.url, include_nonobfuscated=True)\n                else:\n                    # Default: self.feed_type == 'messy'.\n                    text = soup.get_text(separator=' ')\n                    artifacts += self.process_element(text, item.get('link') or self.url)\n\n            saved_state = item.get('published') or item.get('updated')\n\n        return saved_state, artifacts",
+                    "func_fullName": "threatingestor.sources.rss.Plugin.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 23,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 15,
+                    "func_name": "_insert_artifact",
+                    "func_desc": "Insert the given artifact into the table .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _insert_artifact(self, artifact):\n        \"\"\"Insert the given artifact into the table.\"\"\"\n        type_name = artifact.__class__.__name__.lower()\n        query = f\"\"\"\n            INSERT IGNORE INTO `{self.table}` (\n                `artifact`,\n                `artifact_type`,\n                `reference_link`,\n                `reference_text`,\n                `state`\n            )\n            VALUES (%s, %s, %s, %s, NULL)\n        \"\"\"\n        self.cursor.execute(query, (\n            str(artifact),\n            type_name,\n            artifact.reference_link,\n            artifact.reference_text\n        ))\n        self.sql.commit()",
+                    "func_fullName": "threatingestor.operators.mysql.Plugin._insert_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 17,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        self._insert_artifact(artifact)",
+                    "func_fullName": "threatingestor.operators.mysql.Plugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 28,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        self._insert_artifact(artifact)",
+                    "func_fullName": "threatingestor.operators.sqlite.Plugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 27,
+                    "func_name": "_insert_artifact",
+                    "func_desc": "Insert the given artifact into its corresponding table .",
+                    "func_file": "sqlite",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _insert_artifact(self, artifact):\n        \"\"\"Insert the given artifact into its corresponding table.\"\"\"\n        type_name = artifact.__class__.__name__.lower()\n        query = f\"\"\"\n            INSERT OR IGNORE INTO `{type_name}` (\n                `artifact`,\n                `reference_link`,\n                `reference_text`,\n                `created_date`,\n                `state`\n            )\n            VALUES (?, ?, ?, datetime('now', 'utc'), NULL)\n        \"\"\"\n        self.cursor.execute(query, (\n            str(artifact),\n            artifact.reference_link,\n            artifact.reference_text\n        ))\n        self.sql.commit()",
+                    "func_fullName": "threatingestor.operators.sqlite.Plugin._insert_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 31,
+                    "func_name": "_update_or_create_event",
+                    "func_desc": "Update or create an event for the artifact .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _update_or_create_event(self, event):\n        \"\"\"Update or create an event for the artifact.\"\"\"\n        event_dict = event.to_dict()\n        attributes = event_dict.get(\"Attribute\", [])\n        if not attributes:\n            return\n        # If an event doesn't have \"date\" field, it is not created int MISP\n        if event_dict.get(\"date\") is None:\n            self.api.add_event(event)\n        else:\n            self.api.update_event(event)",
+                    "func_fullName": "threatingestor.operators.misp.Plugin._update_or_create_event(self, event)"
+                },
+                {
+                    "func_id": 101,
+                    "func_name": "run",
+                    "func_desc": "Returns a list of artifacts and the saved state of the n - recent comments .",
+                    "func_file": "virustotal",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        \"\"\"\n        Returns a list of artifacts and the saved state\n        \"\"\"\n\n        headers = {\n            \"x-apikey\": self.api_key,\n            \"accept\": \"application/json\"\n        }\n\n        # Collects the 10 most recent comments from a specific user on VT\n        response = requests.get(f\"https://www.virustotal.com/api/v3/users/{self.user}/comments?limit={self.limit}\", headers=headers)\n\n        artifacts = []\n        \n        for comment in response.json()['data']:\n            if saved_state and int(saved_state) <= int(comment['attributes']['date']):\n                continue\n\n            saved_state = comment['attributes']['date']\n            artifacts += self.process_element(content=comment['attributes']['text'], reference_link=comment['links']['self'])\n\n        return saved_state, artifacts",
+                    "func_fullName": "threatingestor.sources.virustotal.Plugin.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 24,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 16,
+                    "func_name": "process",
+                    "func_desc": "Override process to better handle SQL cursor .",
+                    "func_file": "mysql",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def process(self, artifacts):\n        \"\"\"Override parent method to better handle SQL cursor.\"\"\"\n        # Connect to MySQL and call the parent method.\n        # Note: We do this here and in _create_table rather than in the constructor\n        # because it seems the SQL connection is prone to timeouts, and\n        # establishing the connection here is the most efficient way to avoid that.\n        self.sql = pymysql.connect(host=self.host, port=self.port, user=self.user,\n                                   password=self.password, database=self.database)\n        self.cursor = self.sql.cursor()\n        super(Plugin, self).process(artifacts)\n\n        # Close the connection\n        self.cursor.close()",
+                    "func_fullName": "threatingestor.operators.mysql.Plugin.process(self, artifacts)"
+                },
+                {
+                    "func_id": 109,
+                    "func_name": "run",
+                    "func_desc": "Run the action on the given token store .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        \"\"\"Run and return ``(saved_state, list(Artifact))``.\n\n        Override this method in child classes.\n\n        The method signature and return values must remain consistent.\n\n        The method should attempt to pick up where we left off using\n        ``saved_state``, if supported. If ``saved_state`` is ``None``, you can\n        assume this is a first run. If state is maintained by the remote\n        resource (e.g. as it is with SQS), ``saved_state`` should always be\n        ``None``.\n        \"\"\"\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.sources.__init__.Source.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 25,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 19,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Operate on a single artifact .",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Operate on a single artifact.\"\"\"\n        status = artifact.format_message(self.status)\n\n        # If artifact.reference_link is a tweet permalink, quote-tweet it.\n        quote_tweet = None\n        if TWEET_URL.match(artifact.reference_link):\n            quote_tweet = artifact.reference_link\n\n        self._tweet(status, quote_tweet=quote_tweet)",
+                    "func_fullName": "threatingestor.operators.twitter.Plugin.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 20,
+                    "func_name": "_tweet",
+                    "func_desc": "Send content to Twitter as a status update .",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _tweet(self, status, quote_tweet=None):\n        \"\"\"Send content to Twitter as a status update.\"\"\"\n        try:\n            return self.api.statuses.update(status=status,\n                                            attachment_url=quote_tweet,\n                                            tweet_mode='extended')\n        except twitter.api.TwitterHTTPError as e:\n            logger.warning(f\"Twitter API Error: {e}\")\n            return None",
+                    "func_fullName": "threatingestor.operators.twitter.Plugin._tweet(self, status, quote_tweet)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 26,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 21,
+                    "func_name": "__init__",
+                    "func_desc": "Override this constructor in child classes .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, artifact_types=None, filter_string=None, allowed_sources=None):\n        \"\"\"Override this constructor in child classes.\n\n        The arguments above (artifact_types, filter_string, allowed_sources)\n        should be accepted explicity as above, in all child classes.\n\n        Additional arguments should be added: url, auth, etc, whatever is\n        needed to set up the object.\n\n        Each operator should default self.artifact_types to a list of Artifacts\n        supported by the plugin, and allow passing in artifact_types to\n        overwrite that default.\n\n        Example:\n\n        >>> self.artifact_types = artifact_types or [\n        ...     artifacts.IPAddress,\n        ...     artifacts.Domain,\n        ... ]\n\n        It's recommended to call this __init__ method via super from all child\n        classes. Remember to do so *before* setting any default artifact_types.\n        \"\"\"\n        self.artifact_types = artifact_types or []\n        self.filter_string = filter_string or ''\n        self.allowed_sources = allowed_sources or []",
+                    "func_fullName": "threatingestor.operators.__init__.Operator.__init__(self, artifact_types, filter_string, allowed_sources)"
+                },
+                {
+                    "func_id": 86,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for a Header .",
+                    "func_file": "github_gist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, user=\"\", username=\"\", token=\"\"):\n        self.name = name\n        self.user = user\n\n        if username and token:\n            self.auth = (username, token)\n        else:\n            self.auth = None",
+                    "func_fullName": "threatingestor.sources.github_gist.Plugin.__init__(self, name, user, username, token)"
+                },
+                {
+                    "func_id": 105,
+                    "func_name": "__init__",
+                    "func_desc": "Constructor for the Header class .",
+                    "func_file": "github",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, search, num_of_days=10, username=\"\", token=\"\"):\n        self.name = name\n        self.search = search\n        self.num_of_days = num_of_days\n\n        if username and token:\n            self.auth = (username, token)\n        else:\n            self.auth = None",
+                    "func_fullName": "threatingestor.sources.github.Plugin.__init__(self, name, search, num_of_days, username, token)"
+                },
+                {
+                    "func_id": 108,
+                    "func_name": "__init__",
+                    "func_desc": "Override this constructor in child classes .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, *args, **kwargs):\n        \"\"\"Override this constructor in child classes.\n\n        The first argument must always be ``name``.\n\n        Other argumentss should be url, auth, etc, whatever is needed to set\n        up the object.\n        \"\"\"\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.sources.__init__.Source.__init__(self, name, args, kwargs)"
+                },
+                {
+                    "func_id": 114,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize the object with name and img .",
+                    "func_file": "image",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, img=\"\"):\n        self.name = name\n        self.img = img\n\n        if \"http\" in img:\n            with open(f\"/tmp/{tmp_file}\", \"wb\") as i:\n                i.write(requests.get(str(self.img)).content)",
+                    "func_fullName": "threatingestor.sources.image.Plugin.__init__(self, name, img)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 27,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 22,
+                    "func_name": "handle_artifact",
+                    "func_desc": "Override with the same signature .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def handle_artifact(self, artifact):\n        \"\"\"Override with the same signature.\n\n        :param artifact: A single ``Artifact`` object.\n        :returns: None (always ignored)\n        \"\"\"\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.operators.__init__.Operator.handle_artifact(self, artifact)"
+                },
+                {
+                    "func_id": 23,
+                    "func_name": "_artifact_is_allowed",
+                    "func_desc": "Returns True iff this artifact is allowed by this plugin s filters .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _artifact_is_allowed(self, artifact):\n        \"\"\"Returns True iff this artifact is allowed by this plugin's filters.\"\"\"\n        # Must be in allowed_types.\n        if not any(isinstance(artifact, t) for t in self.artifact_types):\n            return False\n\n        # Must match the filter string.\n        if not artifact.match(self.filter_string):\n            return False\n\n        # Must be in allowed_sources, if set.\n        if self.allowed_sources and not any(\n                [re.compile(p).search(artifact.source_name)\n                 for p in self.allowed_sources]):\n            return False\n\n        return True",
+                    "func_fullName": "threatingestor.operators.__init__.Operator._artifact_is_allowed(self, artifact)"
+                },
+                {
+                    "func_id": 24,
+                    "func_name": "process",
+                    "func_desc": "Process all applicable artifacts .",
+                    "func_file": "__init__",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def process(self, artifacts):\n        \"\"\"Process all applicable artifacts.\"\"\"\n        for artifact in artifacts:\n            if self._artifact_is_allowed(artifact):\n                self.handle_artifact(artifact)",
+                    "func_fullName": "threatingestor.operators.__init__.Operator.process(self, artifacts)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 28,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 25,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new plugin .",
+                    "func_file": "sqlite",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, filename, artifact_types=None, filter_string=None, allowed_sources=None):\n        \"\"\"SQLite3 operator.\"\"\"\n        super(Plugin, self).__init__(artifact_types, filter_string, allowed_sources)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.Hash,\n            threatingestor.artifacts.IPAddress,\n            threatingestor.artifacts.URL,\n            threatingestor.artifacts.YARASignature,\n            threatingestor.artifacts.Task,\n        ]\n\n        # Connect to SQL and set up the tables if they aren't already.\n        self.sql = sqlite3.connect(filename)\n        self.cursor = self.sql.cursor()\n\n        self._create_tables()",
+                    "func_fullName": "threatingestor.operators.sqlite.Plugin.__init__(self, filename, artifact_types, filter_string, allowed_sources)"
+                },
+                {
+                    "func_id": 26,
+                    "func_name": "_create_tables",
+                    "func_desc": "Create tables for each supported artifact type .",
+                    "func_file": "sqlite",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _create_tables(self):\n        \"\"\"Create tables for each supported artifact type.\"\"\"\n        for artifact_type in self.artifact_types:\n            type_name = artifact_type.__name__.lower()\n            query = f\"\"\"\n                CREATE TABLE IF NOT EXISTS `{type_name}` (\n                    `artifact` TEXT PRIMARY KEY,\n                    `reference_link` TExT,\n                    `reference_text` TEXT,\n                    `created_date` TEXT,\n                    `state` TEXT\n                )\n            \"\"\"\n            self.cursor.execute(query)\n        self.sql.commit()",
+                    "func_fullName": "threatingestor.operators.sqlite.Plugin._create_tables(self)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 29,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 29,
+                    "func_name": "__init__",
+                    "func_desc": "MISP operator .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, url, key, ssl=True, tags=None, artifact_types=None, filter_string=None, allowed_sources=None):\n        \"\"\"MISP operator.\"\"\"\n        self.api = pymisp.ExpandedPyMISP(url, key, ssl)\n        if tags:\n            self.tags = tags\n        else:\n            self.tags = ['type:OSINT']\n        self.event_info = 'ThreatIngestor Event: {source_name}'\n\n        super(Plugin, self).__init__(\n            artifact_types, filter_string, allowed_sources\n        )\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.Hash,\n            threatingestor.artifacts.IPAddress,\n            threatingestor.artifacts.URL,\n            threatingestor.artifacts.YARASignature,\n        ]",
+                    "func_fullName": "threatingestor.operators.misp.Plugin.__init__(self, url, key, ssl, tags, artifact_types, filter_string, allowed_sources)"
+                },
+                {
+                    "func_id": 40,
+                    "func_name": "__init__",
+                    "func_desc": "CSV operator .",
+                    "func_file": "csv",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, filename, artifact_types=None, filter_string=None, allowed_sources=None):\n        \"\"\"CSV operator.\"\"\"\n        self.filename = filename\n\n        super(Plugin, self).__init__(artifact_types, filter_string, allowed_sources)\n        self.artifact_types = artifact_types or [\n            threatingestor.artifacts.Domain,\n            threatingestor.artifacts.Hash,\n            threatingestor.artifacts.IPAddress,\n            threatingestor.artifacts.URL,\n        ]",
+                    "func_fullName": "threatingestor.operators.csv.Plugin.__init__(self, filename, artifact_types, filter_string, allowed_sources)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 30,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 32,
+                    "func_name": "_find_or_create_event",
+                    "func_desc": "Find or create an event for the given artifact .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _find_or_create_event(self, artifact):\n        \"\"\"Find or create an event for the artifact.\"\"\"\n        event = self._find_event(artifact)\n        if event is not None:\n            return event\n\n        return self._create_event(artifact)",
+                    "func_fullName": "threatingestor.operators.misp.Plugin._find_or_create_event(self, artifact)"
+                },
+                {
+                    "func_id": 33,
+                    "func_name": "_find_event",
+                    "func_desc": "Find an event which has the same refetrence link return an Event object .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _find_event(self, artifact):\n        \"\"\"Find an event which has the same refetrence link, return an Event object.\"\"\"\n        events = self.api.search(\n            \"events\",\n            limit=1,\n            type_attribute=\"link\",\n            value=artifact.reference_link,\n            pythonify=True\n        )\n        if len(events) == 1:\n            return events[0]\n\n        return None",
+                    "func_fullName": "threatingestor.operators.misp.Plugin._find_event(self, artifact)"
+                },
+                {
+                    "func_id": 34,
+                    "func_name": "_create_event",
+                    "func_desc": "Create an event in MISP return an Event object .",
+                    "func_file": "misp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _create_event(self, artifact):\n        \"\"\"Create an event in MISP, return an Event object.\"\"\"\n        event = pymisp.MISPEvent()\n        event.info = self.event_info.format(source_name=artifact.source_name)\n\n        # Add tags.\n        for tag in self.tags:\n            event.add_tag(tag)\n\n        # Add references.\n        if artifact.reference_link != \"\":\n            event.add_attribute(\"link\", artifact.reference_link)\n        if artifact.reference_text != \"\":\n            event.add_attribute(\"text\", artifact.reference_text)\n        if artifact.source_name != \"\":\n            event.add_attribute(\"other\",  f'source:{artifact.source_name}')\n\n        return event",
+                    "func_fullName": "threatingestor.operators.misp.Plugin._create_event(self, artifact)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 31,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 77,
+                    "func_name": "run",
+                    "func_desc": "Runs the action of the action_of_processing_action .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        # Initialize.\n        new_hash = saved_state\n        all_filenames = []\n\n        if saved_state:\n            # Pull and diff to get filenames.\n            try:\n                _git_pull(self.local_path)\n                new_hash = _git_latest_hash(self.local_path)\n                all_filenames = _git_diff_names(self.local_path, saved_state).splitlines()\n            except (OSError, subprocess.CalledProcessError):\n                logger.exception(f\"Error with git pull from '{self.local_path}'\")\n\n        else:\n            # First run, we try cloning the repo and look at all files.\n            try:\n                _git_clone(self.url, self.local_path)\n                new_hash = _git_latest_hash(self.local_path)\n                all_filenames = _git_ls_files(self.local_path).splitlines()\n\n            except subprocess.CalledProcessError:\n                # Clone failed, maybe the repo already exists?\n                # If so, update the saved state so we can pull on the next run.\n                try:\n                    new_hash = _git_latest_hash(self.local_path)\n\n                except (OSError, subprocess.CalledProcessError):\n                    # That also failed, so this is just a generic error.\n                    logger.exception(f\"Error with git clone of '{self.url}' to '{self.local_path}'\")\n\n            except OSError:\n                logger.exception(f\"Error with git clone of '{self.url}' to '{self.local_path}'\")\n\n        # If not modified or any errors, return immediately.\n        if saved_state == new_hash:\n            return saved_state, []\n\n        # Otherwise, process YARA files.\n        artifact_list = []\n        for filename in all_filenames:\n            if any([filename.endswith(x) for x in YARA_FILE_EXTS]):\n                try:\n                    with io.open(os.path.join(self.local_path, filename), 'r', encoding='utf-8', errors='ignore') as f:\n                        artifact_list += self.process_element(f.read(), self.url, include_nonobfuscated=True)\n                except OSError:\n                    # The file was most likely deleted.\n                    pass\n\n        return new_hash, artifact_list",
+                    "func_fullName": "threatingestor.sources.git.Plugin.run(self, saved_state)"
+                },
+                {
+                    "func_id": 78,
+                    "func_name": "_git_cmd",
+                    "func_desc": "Call a git command .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_cmd(args):\n    \"\"\"Call a git command.\n\n    :raises: subprocess.CalledProcessError\n    \"\"\"\n    git_cmdline = ['git'] + args\n    return subprocess.check_output(git_cmdline).decode('utf-8')",
+                    "func_fullName": "threatingestor.sources.git._git_cmd(args)"
+                },
+                {
+                    "func_id": 79,
+                    "func_name": "_git_cmd_chdir",
+                    "func_desc": "Execute git command in a directory and return its output .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_cmd_chdir(path, args):\n    cwd = os.getcwd()\n    os.chdir(path)\n    output = _git_cmd(args)\n    os.chdir(cwd)\n    return output",
+                    "func_fullName": "threatingestor.sources.git._git_cmd_chdir(path, args)"
+                },
+                {
+                    "func_id": 80,
+                    "func_name": "_git_clone",
+                    "func_desc": "Clone a remote repository into a local path .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_clone(remote, local_path):\n    return _git_cmd(['clone', '--', remote, local_path])",
+                    "func_fullName": "threatingestor.sources.git._git_clone(remote, local_path)"
+                },
+                {
+                    "func_id": 81,
+                    "func_name": "_git_latest_hash",
+                    "func_desc": "Return the latest hash of the git repo .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_latest_hash(local_path):\n    return _git_cmd_chdir(local_path, ['rev-parse', 'HEAD']).strip()",
+                    "func_fullName": "threatingestor.sources.git._git_latest_hash(local_path)"
+                },
+                {
+                    "func_id": 82,
+                    "func_name": "_git_pull",
+                    "func_desc": "Pulls the local repo into the remote repository .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_pull(local_path):\n    return _git_cmd_chdir(local_path, ['pull'])",
+                    "func_fullName": "threatingestor.sources.git._git_pull(local_path)"
+                },
+                {
+                    "func_id": 83,
+                    "func_name": "_git_diff_names",
+                    "func_desc": "Return a list of files that should be deleted from the local repo .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_diff_names(local_path, prev_hash):\n    return _git_cmd_chdir(local_path, ['diff', '--name-only', prev_hash])",
+                    "func_fullName": "threatingestor.sources.git._git_diff_names(local_path, prev_hash)"
+                },
+                {
+                    "func_id": 84,
+                    "func_name": "_git_ls_files",
+                    "func_desc": "List files in a git repository .",
+                    "func_file": "git",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def _git_ls_files(local_path):\n    return _git_cmd_chdir(local_path, ['ls-files'])",
+                    "func_fullName": "threatingestor.sources.git._git_ls_files(local_path)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 32,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 85,
+                    "func_name": "user_set",
+                    "func_desc": "Returns the URL to search for gists for a user .",
+                    "func_file": "github_gist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def user_set(user):\n    GIST_SEARCH_URL = \"https://api.github.com/users/{0}/gists\".format(user)\n    return GIST_SEARCH_URL",
+                    "func_fullName": "threatingestor.sources.github_gist.user_set(user)"
+                },
+                {
+                    "func_id": 87,
+                    "func_name": "_gist_search",
+                    "func_desc": "Returns a list of Gist objects .",
+                    "func_file": "github_gist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _gist_search(self, params):\n        \"\"\"Returns a list of gist results.\"\"\"\n        \n        # Iterates through pages of results from query.\n        response = requests.get(user_set(self.user), params=params, auth=self.auth)\n\n        gist_list = []\n\n        for gist in response.json():\n            gist_list.append(gist)\n\n        return gist_list",
+                    "func_fullName": "threatingestor.sources.github_gist.Plugin._gist_search(self, params)"
+                },
+                {
+                    "func_id": 88,
+                    "func_name": "run",
+                    "func_desc": "Returns a list of artifacts and the saved state .",
+                    "func_file": "github_gist",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        \"\"\"Returns a list of artifacts and the saved state\"\"\"\n\n        params = { \"per_page\": \"100\" }\n\n        saved_state = datetime.datetime.utcnow().isoformat()[:-7] + 'Z'\n        gist_list = self._gist_search(params)\n\n        artifact_list = []\n        \n        for gist in gist_list:\n            title = \"Gist Owner: {0}\".format(self.user)\n            description = 'URL: {u}\\nTask autogenerated by ThreatIngestor from source: {s}'\n            description = description.format(s=self.name, u=gist['html_url'])\n            artifact = threatingestor.artifacts.Task(title, self.name, reference_link=gist['html_url'], reference_text=description)\n\n            artifact_list.append(artifact)\n\n        return saved_state, artifact_list",
+                    "func_fullName": "threatingestor.sources.github_gist.Plugin.run(self, saved_state)"
+                },
+                {
+                    "func_id": 132,
+                    "func_name": "html_view",
+                    "func_desc": "Returns HTML for the index or list of index .",
+                    "func_file": "webapp",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "def html_view(table):\n    if table:\n        return LIST_HTML\n    else:\n        return INDEX_HTML",
+                    "func_fullName": "threatingestor.extras.webapp.html_view(table)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 33,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 90,
+                    "func_name": "get_objects",
+                    "func_desc": "Produce an iterable of objects containing raw content of the current node .",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def get_objects(self, saved_state):\n        \"\"\"Produce an iterable of dict or list objectcs containing raw content to process.\n\n        Override in child class.\"\"\"\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.sources.abstract_json.AbstractPlugin.get_objects(self, saved_state)"
+                },
+                {
+                    "func_id": 91,
+                    "func_name": "run",
+                    "func_desc": "Run and return the saved state and artifact list .",
+                    "func_file": "abstract_json",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        \"\"\"Run and return (saved_state, list(Artifact))\"\"\"\n        artifact_list = []\n\n        saved_state, content_list = self.get_objects(saved_state)\n        for content in content_list:\n            # Iterate over each piece of \"content\", extracting from every path of interest.\n            for path_expression in self.path_expressions:\n                matches = path_expression.find(content)\n\n                # Try to get a single reference, fall back to name again.\n                try:\n                    reference = self.reference.find(content)[0].value\n                except (IndexError, AttributeError):\n                    reference = self.name\n\n                # Extract artifacts.\n                for match in matches:\n                    artifact_list += self.process_element(match.value, reference, include_nonobfuscated=True)\n\n        return saved_state, artifact_list",
+                    "func_fullName": "threatingestor.sources.abstract_json.AbstractPlugin.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 34,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 92,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "sitemap",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, url, filter=None, path=None):\n        self.name = name\n        self.url = url\n        self.filter = filter\n        self.path = path",
+                    "func_fullName": "threatingestor.sources.sitemap.Plugin.__init__(self, name, url, filter, path)"
+                },
+                {
+                    "func_id": 98,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "rss",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, url, feed_type, filter=None):\n        self.name = name\n        self.url = url\n        self.feed_type = feed_type\n        self.filter = filter",
+                    "func_fullName": "threatingestor.sources.rss.Plugin.__init__(self, name, url, feed_type, filter)"
+                },
+                {
+                    "func_id": 100,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new language language .",
+                    "func_file": "virustotal",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, user, api_key, limit=10):\n        self.name = name\n        self.user = user\n        self.api_key = api_key\n        self.limit = limit",
+                    "func_fullName": "threatingestor.sources.virustotal.Plugin.__init__(self, name, user, api_key, limit)"
+                },
+                {
+                    "func_id": 111,
+                    "func_name": "__init__",
+                    "func_desc": "Initialize a new SEO .",
+                    "func_file": "web",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def __init__(self, name, url):\n        self.name = name\n        self.url = url",
+                    "func_fullName": "threatingestor.sources.web.Plugin.__init__(self, name, url)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 35,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 103,
+                    "func_name": "run",
+                    "func_desc": "Run the sequence of words in the sequence .",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        # Modify kwargs to insert since_id.\n        if saved_state:\n            self.kwargs['since_id'] = saved_state\n\n        artifacts = []\n\n        def bearer_oauth2(r):\n            r.headers['Authorization'] = f\"Bearer {self.bearer_token}\"\n            r.headers['User-Agent'] = \"InQuestThreatIngestor\"\n            return r\n\n        if self.kwargs.get('list_id'):\n            list_url = f\"https://api.twitter.com/2/lists/{self.kwargs.get('list_id')}/tweets\"\n            self.endpoint = requests.get(url=list_url, auth=bearer_oauth2, params=\"tweet.fields=lang,author_id\")\n\n            for tweet in self.endpoint.json()['data']:\n                artifacts += self.process_element(content=tweet['text'], reference_link=tweet['id'], include_nonobfuscated=self.include_nonobfuscated)\n\n        if self.kwargs.get('username') or self.kwargs.get('user_id'):\n            try:\n                # Get the id of the username\n                user_id = self.kwargs.get('user_id') or self.auth['OAuth2'].users.by.username._username(_username=self.kwargs.get('username'))[\"data\"][\"id\"]\n                self.endpoint = self.auth['OAuth2'].users._id.tweets(_id=user_id)\n            except twitter.api.TwitterHTTPError as e:\n                # API error; log and return early\n                logger.warning(f\"Twitter API Error: {e}\")\n                return saved_state, []\n\n            for tweet in self.endpoint['data']:\n                saved_state = tweet['id']\n                artifacts += self.process_element(content=tweet['text'], reference_link=tweet['id'], include_nonobfuscated=self.include_nonobfuscated)\n        \n        if self.kwargs.get('query'):\n            try:\n                self.endpoint = self.auth['OAuth2'].tweets.search.recent(query=self.kwargs.get('query'))\n            except twitter.api.TwitterHTTPError as e:\n                # API error; log and return early\n                logger.warning(f\"Twitter API Error: {e}\")\n                return saved_state, []\n\n            for tweet in self.endpoint['data']:\n                saved_state = tweet['id']\n                artifacts += self.process_element(content=tweet['text'], reference_link=tweet['id'], include_nonobfuscated=self.include_nonobfuscated)\n\n        # No endpoint specified, return early\n        if not self.endpoint:\n            return saved_state, []\n\n        return saved_state, artifacts",
+                    "func_fullName": "threatingestor.sources.twitter.Plugin.run(self, saved_state)"
+                },
+                {
+                    "func_id": 104,
+                    "func_name": "bearer_oauth2",
+                    "func_desc": "Set Authorization header to Bearer OAuth2",
+                    "func_file": "twitter",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "        def bearer_oauth2(r):\n            r.headers['Authorization'] = f\"Bearer {self.bearer_token}\"\n            r.headers['User-Agent'] = \"InQuestThreatIngestor\"\n            return r",
+                    "func_fullName": "threatingestor.sources.twitter.Plugin.run.bearer_oauth2(r)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 36,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 106,
+                    "func_name": "_repository_search",
+                    "func_desc": "Returns a list of repository results .",
+                    "func_file": "github",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def _repository_search(self, params):\n        \"\"\"Returns a list of repository results.\"\"\"\n        \n        # Iterates through pages of results from query.\n        response = requests.get(REPO_SEARCH_URL, params=params, auth=self.auth)\n\n        repo_list = []\n\n        while True:\n            for repo in response.json().get('items', []):\n                repo_list.append(repo)\n\n            if not response.links.get('next'):\n                break\n\n            response = requests.get(\n                response.links.get('next')[\"url\"], auth=self.auth)\n\n        return repo_list",
+                    "func_fullName": "threatingestor.sources.github.Plugin._repository_search(self, params)"
+                },
+                {
+                    "func_id": 107,
+                    "func_name": "run",
+                    "func_desc": "Runs the ThreatIngestor task .",
+                    "func_file": "github",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        \"\"\"Returns a list of artifacts and the saved state\"\"\"\n        # If no saved_state, search max 1 day ago.\n        if not saved_state:\n            saved_state = (datetime.datetime.utcnow() - datetime.timedelta(days=self.num_of_days)).isoformat()[:-7] + 'Z'\n\n        params = {\n            'q': \"{search} created:>={timestamp}\".format(\n                search=self.search,\n                timestamp=saved_state),\n            \"per_page\": \"100\"\n        }\n\n        saved_state = datetime.datetime.utcnow().isoformat()[:-7] + 'Z'\n        repo_list = self._repository_search(params)\n\n        artifact_list = []\n        \n        for repo in repo_list:\n            title = \"Manual Task: GitHub {u}\".format(u=repo['full_name'])\n            description = 'URL: {u}\\nTask autogenerated by ThreatIngestor from source: {s}'\n            description = description.format(s=self.name, u=repo['html_url'])\n            artifact = threatingestor.artifacts.Task(title, self.name, reference_link=repo['html_url'], reference_text=description)\n\n            artifact_list.append(artifact)\n\n        return saved_state, artifact_list",
+                    "func_fullName": "threatingestor.sources.github.Plugin.run(self, saved_state)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 37,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 112,
+                    "func_name": "run",
+                    "func_desc": "Runs the Nagios - API and returns the saved state and artifact list .",
+                    "func_file": "web",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run(self, saved_state):\n        # Read saved state and set HTTP headers.\n        headers = {}\n        \n        if saved_state:\n            # If both last modified and etag, set both.\n            # Otherwise just interpret the whole field as last modified.\n            last_modified = saved_state\n\n            if len(saved_state.split(';')) == 2:\n                last_modified, etag = saved_state.split(';')\n                headers['If-None-Match'] = etag\n\n            headers['If-Modified-Since'] = last_modified\n        \n        if not saved_state:\n            saved_state = \"\"\n\n        # Send head first to check 304.\n        response = requests.head(self.url, headers=headers)\n\n        # If not modified, return immediately\n        if \"304\" in saved_state or response.status_code == 304:\n            saved_state = ';'.join([str(response.headers.get('Last-Modified')), 'N/A', str(response.status_code)])\n            return saved_state, []\n\n        # Otherwise, do the full request.\n        response = requests.get(self.url, headers=headers)\n\n        # Form saved state.\n        last_modified = response.headers.get('Last-Modified')\n        etag = response.headers.get('Etag')\n\n        if etag:\n            saved_state = ';'.join([str(last_modified), etag, str(response.status_code)])\n        else:\n            saved_state = last_modified\n\n        # Process text.\n        artifact_list = self.process_element(response.text, self.url, include_nonobfuscated=True)\n\n        return saved_state, artifact_list",
+                    "func_fullName": "threatingestor.sources.web.Plugin.run(self, saved_state)"
+                },
+                {
+                    "func_id": 133,
+                    "func_name": "do_work",
+                    "func_desc": "Easy method to do the work of the nagios .",
+                    "func_file": "pasteprocessor",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_work(self, job):\n        \"\"\"\n        From a paste URL, get the raw contents.\n        \"\"\"\n        \n        try:\n            url = job['url']\n        except KeyError:\n            print(f\"Bad job: {job}\")\n            return\n\n        # Pastebin.com\n        if url.startswith(\"https://pastebin.com/raw/\"):\n            pass\n\n        elif url.startswith(\"https://pastebin.com/\"):\n            start, end = url.split['.com/']\n            url = '.com/raw/'.join([start, end])\n\n        # Gist\n        elif url.startswith(\"https://gist.github.com/\") and not 'raw' in url:\n            url = url + '/raw'\n\n        # Fetch and return\n        response = requests.get(url)\n\n        return {\n            'content': response.content,\n            'reference': response.url,\n        }",
+                    "func_fullName": "threatingestor.extras.pasteprocessor.PasteProcessor.do_work(self, job)"
+                }
+            ]
+        },
+        {
+            "cluster_id": 0,
+            "feature_id": 38,
+            "feature_desc": "gamma=0.1500; k=38; a=0.25; combined=0.662; stability(ARI)=0.916; sep=0.390",
+            "feature_flow": "",
+            "feature_notf": "",
+            "feature_func_list": [
+                {
+                    "func_id": 136,
+                    "func_name": "run_forever",
+                    "func_desc": "Do work forever .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def run_forever(self):\n        \"\"\"Do work forever.\n\n        Note: There is no sleep here! If anything fails, it might spin out of\n        control.\n        \"\"\"\n        while True:\n            content = self.do_work(self.queue.read_one())\n            self.queue.write_one(content)",
+                    "func_fullName": "threatingestor.extras.queueworker.QueueWorker.run_forever(self)"
+                },
+                {
+                    "func_id": 137,
+                    "func_name": "do_work",
+                    "func_desc": "Implement in child class .",
+                    "func_file": "queueworker",
+                    "func_flow": "",
+                    "func_notf": "",
+                    "func_code": "    def do_work(self, job):\n        \"\"\"Implement in child class.\n\n        One or zero jobs are passed in from the queue.\n        One or zero jobs are returned and sent to the queue.\n        \"\"\"\n        raise NotImplementedError()",
+                    "func_fullName": "threatingestor.extras.queueworker.QueueWorker.do_work(self, job)"
+                }
+            ]
+        }
+    ]
+}

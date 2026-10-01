@@ -1,0 +1,105 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 850,
+  "namespace": "mrjob.conf._fix_clear_tags",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 2590,
+      "input_estimate_after": 2590,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "```\nmrjob/conf.py\nline: 92\nclass: ClearedValue\n\nmrjob/runner.py\nfunction: MRJobRunner._fix_opts\n\nmrjob/conf.py\nfunction: _conf_object_at_path\n\nmrjob/conf.py\nfunction: _load_opts_from_mrjob_conf\n\nmrjob/conf.py\nline: 156\nfunction: _fix_clear_tags\n```",
+  "final_locations": {
+    "files": [
+      "mrjob/conf.py",
+      "mrjob/runner.py"
+    ],
+    "entities": [
+      {
+        "file": "mrjob/conf.py",
+        "name": "ClearedValue",
+        "kind": "class",
+        "symbol": "mrjob.conf.ClearedValue",
+        "start": 92,
+        "end": 108,
+        "code": "class ClearedValue(object):\n    \"\"\"Wrap a value tagged with !clear in mrjob.conf\"\"\"\n\n    def __init__(self, value):\n        self.value = value\n\n    def __eq__(self, other):\n        if isinstance(other, ClearedValue):\n            return self.value == other.value\n        else:\n            return False\n\n    def __hash__(self):\n        return hash(self.value)\n\n    def __repr__(self):\n        return '%s(%s)' % (self.__class__.__name__, repr(self.value))"
+      },
+      {
+        "file": "mrjob/runner.py",
+        "name": "MRJobRunner._fix_opts",
+        "kind": "function",
+        "symbol": "mrjob.runner.MRJobRunner._fix_opts",
+        "start": 376,
+        "end": 428,
+        "code": "    def _fix_opts(self, opts, source=None):\n        \"\"\"Take an options dictionary, and either return a sanitized\n        version of it, or raise an exception.\n\n        *source* is either a string describing where the opts came from\n        or None.\n\n        This ensures that opt dictionaries are really dictionaries\n        and handles deprecated options.\n        \"\"\"\n        if source is None:\n            source = 'defaults'  # defaults shouldn't trigger warnings\n\n        if not isinstance(opts, dict):\n            raise TypeError(\n                'options for %s (from %s) must be a dict' %\n                (self.alias, source))\n\n        deprecated_aliases = _deprecated_aliases(self.OPT_NAMES)\n\n        results = {}\n\n        for k, v in sorted(opts.items()):\n            # rewrite deprecated aliases\n            if k in deprecated_aliases:\n                if v is None:  # don't care\n                    continue\n\n                aliased_opt = deprecated_aliases\n\n                log.warning('Deprecated option %s (from %s) has been renamed'\n                            ' to %s and will be removed in v0.7.0' % (\n                                k, source, aliased_opt))\n\n                if opts.get(aliased_opt) is not None:\n                    return  # don't overwrite non-aliased opt\n\n                k = aliased_opt\n\n            if k in self.OPT_NAMES:\n                if v is None:\n                    fixed_v = None\n                elif isinstance(v, ClearedValue):\n                    # _fix_opt() doesn't need to know about !clear (see #2102)\n                    fixed_v = ClearedValue(self._fix_opt(k, v.value, source))\n                else:\n                    fixed_v = self._fix_opt(k, v, source)\n\n                results[k] = fixed_v\n            elif v:\n                log.warning('Unexpected option %s (from %s)' % (k, source))\n\n        return results"
+      },
+      {
+        "file": "mrjob/conf.py",
+        "name": "_conf_object_at_path",
+        "kind": "function",
+        "symbol": "mrjob.conf._conf_object_at_path",
+        "start": 216,
+        "end": 230,
+        "code": "def _conf_object_at_path(conf_path):\n    if conf_path is None:\n        return None\n\n    with open(conf_path) as f:\n        if yaml:\n            return _fix_clear_tags(_load_yaml_with_clear_tag(f))\n        else:\n            try:\n                return json.load(f)\n            except ValueError as e:\n                raise ValueError(\n                    'Could not read JSON from %s\\n  %s\\n\\n'\n                    'If your conf file is in YAML, you need to'\n                    ' `pip install PyYAML` to read it' % (conf_path, str(e)))"
+      },
+      {
+        "file": "mrjob/conf.py",
+        "name": "_load_opts_from_mrjob_conf",
+        "kind": "function",
+        "symbol": "mrjob.conf._load_opts_from_mrjob_conf",
+        "start": 263,
+        "end": 303,
+        "code": "def _load_opts_from_mrjob_conf(runner_alias, conf_path, already_loaded):\n    \"\"\"Helper for :py:func:`load_opts_from_mrjob_conf` for recursive use.\n    This doesn't expand or default *conf_path*.\n    \"\"\"\n    conf = _conf_object_at_path(conf_path)\n\n    if conf is None:\n        return [(None, {})]\n\n    # don't load same conf file twice\n    real_conf_path = os.path.realpath(conf_path)\n\n    if real_conf_path in already_loaded:\n        return []\n    else:\n        already_loaded.append(real_conf_path)\n\n    # get configs for our runner out of conf file\n    try:\n        values = conf['runners'][runner_alias] or {}\n    except (KeyError, TypeError, ValueError):\n        values = {}\n\n    inherited = []\n    if conf.get('include', None):\n        includes = conf['include']\n        if isinstance(includes, string_types):\n            includes = [includes]\n\n        # handle includes in reverse order so that include order takes\n        # precedence over inheritance\n        for include in reversed(includes):\n            # make include relative to (real) conf_path (see #1166)\n            # expand ~ *before* joining to dir of including file (see #1308)\n            include = os.path.join(os.path.dirname(real_conf_path),\n                                   expand_path(include))\n\n            inherited = _load_opts_from_mrjob_conf(\n                runner_alias, include, already_loaded) + inherited\n\n    return inherited + [(conf_path, values)]"
+      }
+    ],
+    "unresolved": []
+  },
+  "final_stage": {
+    "dr": 0.25,
+    "exact_entity_dr": 0.25,
+    "dependency_count": 4,
+    "hit_dependencies": [
+      "mrjob.conf.ClearedValue"
+    ],
+    "exact_hit_dependencies": [
+      "mrjob.conf.ClearedValue"
+    ],
+    "returned_entities": 4,
+    "returned_files": 2,
+    "unresolved_locations": 0,
+    "returned_code_chars": 4296
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 13704,
+    "completion_tokens": 1944,
+    "total_tokens": 15648,
+    "seconds": 62.28905367851257,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 122.85182523727417,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

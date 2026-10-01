@@ -1,0 +1,128 @@
+{
+  "method": "LocAgent native graph/tools with DevEval task and OpenAI-compatible transport adapter",
+  "task_id": 491,
+  "namespace": "sumy.summarizers.kl.KLSummarizer.compute_tf",
+  "model": "deepseek-v3.2",
+  "status": "budget_exhausted",
+  "stop_reason": "round_limit",
+  "max_calls": 5,
+  "context_total_limit": 32768,
+  "context_input_limit": 27648,
+  "context_forced": false,
+  "context_records": [
+    {
+      "reason": "round_limit",
+      "input_estimate_before": 5666,
+      "input_estimate_after": 5666,
+      "input_limit": 27648,
+      "total_limit": 32768,
+      "output_reserve": 4096,
+      "safety_margin": 1024,
+      "truncations": [],
+      "tokenizer": "cl100k_base estimate, not provider-exact"
+    }
+  ],
+  "final_text": "Based on the available evidence, I can identify reusable dependencies for implementing the `compute_tf` function in the KLSummarizer class. The function needs to compute normalized term frequencies for content words, and I can see several existing methods in the KLSummarizer that should be reused:\n\n```\nsumy/summarizers/kl.py\nline: 26-28\nfunction: KLSummarizer._get_all_words_in_doc\n\nsumy/summarizers/kl.py\nline: -1\nfunction: KLSummarizer._get_all_content_words_in_doc\n\nsumy/summarizers/kl.py\nline: 41-46\nfunction: KLSummarizer._compute_word_freq\n\nsumy/summarizers/kl.py\nline: 30-33\nfunction: KLSummarizer._get_content_words_in_sentence\n\nsumy/summarizers/_summarizer.py\nline: -1\nfunction: AbstractSummarizer.normalize_word\n```",
+  "final_locations": {
+    "files": [
+      "sumy/summarizers/kl.py",
+      "sumy/summarizers/_summarizer.py"
+    ],
+    "entities": [
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer",
+        "kind": "class",
+        "symbol": "sumy.summarizers.kl.KLSummarizer",
+        "start": 11,
+        "end": 147,
+        "code": "class KLSummarizer(AbstractSummarizer):\n    \"\"\"\n    Method that greedily adds sentences to a summary so long as it decreases the\n    KL Divergence.\n    Source: http://www.aclweb.org/anthology/N09-1041\n    \"\"\"\n\n    stop_words = frozenset()\n\n    def __call__(self, document, sentences_count):\n        sentences = document.sentences\n        ratings = self._compute_ratings(sentences)\n\n        return self._get_best_sentences(sentences, sentences_count, ratings)\n\n    @staticmethod\n    def _get_all_words_in_doc(sentences):\n        return [w for s in sentences for w in s.words]\n\n    def _get_content_words_in_sentence(self, sentence):\n        normalized_words = self._normalize_words(sentence.words)\n        normalized_content_words = self._filter_out_stop_words(normalized_words)\n        return normalized_content_words\n\n    def _normalize_words(self, words):\n        return [self.normalize_word(w) for w in words]\n\n    def _filter_out_stop_words(self, words):\n        return [w for w in words if w not in self.stop_words]\n\n    @staticmethod\n    def _compute_word_freq(list_of_words):\n        word_freq = {}\n        for w in list_of_words:\n            word_freq[w] = word_freq.get(w, 0) + 1\n        return word_freq\n\n    def _get_all_content_words_in_doc(self, sentences):\n        all_words = self._get_all_words_in_doc(sentences)\n        content_words = self._filter_out_stop_words(all_words)\n        normalized_content_words = self._normalize_words(content_words)\n        return normalized_content_words\n\n    def compute_tf(self, sentences):\n        pass\n\n\n\n\n\n\n\n\n\n\n    def _joint_freq(self, word_list_1, word_list_2):\n        # combined length of the word lists\n        total_len = len(word_list_1) + len(word_list_2)\n\n        # word frequencies within each list\n        wc1 = self._compute_word_freq(word_list_1)\n        wc2 = self._compute_word_freq(word_list_2)\n\n        # inputs the counts from the first list\n        joint = wc1.copy()\n\n        # adds in the counts of the second list\n        for k in wc2:\n            if k in joint:\n                joint[k] += wc2[k]\n            else:\n                joint[k] = wc2[k]\n\n        # divides total counts by the combined length\n        for k in joint:\n            joint[k] /= float(total_len)\n\n        return joint\n\n    @staticmethod\n    def _kl_divergence(summary_freq, doc_freq):\n        \"\"\"\n        Note: Could import scipy.stats and use scipy.stats.entropy(doc_freq, summary_freq)\n        but this gives equivalent value without the import\n        \"\"\"\n        sum_val = 0\n        for w in summary_freq:\n            frequency = doc_freq.get(w)\n            if frequency:  # missing or zero = no frequency\n                sum_val += frequency * math.log(frequency / summary_freq[w])\n\n        return sum_val\n\n    @staticmethod\n    def _find_index_of_best_sentence(kls):\n        \"\"\"\n        the best sentence is the one with the smallest kl_divergence\n        \"\"\"\n        return kls.index(min(kls))\n\n    def _compute_ratings(self, sentences):\n        word_freq = self.compute_tf(sentences)\n        ratings = {}\n        summary = []\n\n        # make it a list so that it can be modified\n        sentences_list = list(sentences)\n\n        # get all content words once for efficiency\n        sentences_as_words = [self._get_content_words_in_sentence(s) for s in sentences]\n\n        # Removes one sentence per iteration by adding to summary\n        while len(sentences_list) > 0:\n            # will store all the kls values for this pass\n            kls = []\n\n            # converts summary to word list\n            summary_as_word_list = self._get_all_words_in_doc(summary)\n\n            for s in sentences_as_words:\n                # calculates the joint frequency through combining the word lists\n                joint_freq = self._joint_freq(s, summary_as_word_list)\n\n                # adds the calculated kl divergence to the list in index = sentence used\n                kls.append(self._kl_divergence(joint_freq, word_freq))\n\n            # to consider and then add it into the summary\n            index_to_remove = self._find_index_of_best_sentence(kls)\n            best_sentence = sentences_list.pop(index_to_remove)\n            del sentences_as_words[index_to_remove]\n            summary.append(best_sentence)\n\n            # value is the iteration in which it was removed multiplied by -1 so that\n            # the first sentences removed (the most important) have highest values\n            ratings[best_sentence] = -1 * len(ratings)\n\n        return ratings"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer._get_all_words_in_doc",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer._get_all_words_in_doc",
+        "start": 27,
+        "end": 28,
+        "code": "    def _get_all_words_in_doc(sentences):\n        return [w for s in sentences for w in s.words]"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer._get_all_content_words_in_doc",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer._get_all_content_words_in_doc",
+        "start": 48,
+        "end": 52,
+        "code": "    def _get_all_content_words_in_doc(self, sentences):\n        all_words = self._get_all_words_in_doc(sentences)\n        content_words = self._filter_out_stop_words(all_words)\n        normalized_content_words = self._normalize_words(content_words)\n        return normalized_content_words"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer._compute_word_freq",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer._compute_word_freq",
+        "start": 42,
+        "end": 46,
+        "code": "    def _compute_word_freq(list_of_words):\n        word_freq = {}\n        for w in list_of_words:\n            word_freq[w] = word_freq.get(w, 0) + 1\n        return word_freq"
+      },
+      {
+        "file": "sumy/summarizers/kl.py",
+        "name": "KLSummarizer._get_content_words_in_sentence",
+        "kind": "function",
+        "symbol": "sumy.summarizers.kl.KLSummarizer._get_content_words_in_sentence",
+        "start": 30,
+        "end": 33,
+        "code": "    def _get_content_words_in_sentence(self, sentence):\n        normalized_words = self._normalize_words(sentence.words)\n        normalized_content_words = self._filter_out_stop_words(normalized_words)\n        return normalized_content_words"
+      },
+      {
+        "file": "sumy/summarizers/_summarizer.py",
+        "name": "AbstractSummarizer.normalize_word",
+        "kind": "function",
+        "symbol": "sumy.summarizers._summarizer.AbstractSummarizer.normalize_word",
+        "start": 31,
+        "end": 32,
+        "code": "    def normalize_word(word):\n        return to_unicode(word).lower()"
+      }
+    ],
+    "unresolved": [
+      "sumy/summarizers/kl.py:line: -1",
+      "sumy/summarizers/_summarizer.py:line: -1"
+    ]
+  },
+  "final_stage": {
+    "dr": 1.0,
+    "exact_entity_dr": 1.0,
+    "dependency_count": 2,
+    "hit_dependencies": [
+      "sumy.summarizers.kl.KLSummarizer._compute_word_freq",
+      "sumy.summarizers.kl.KLSummarizer._get_all_content_words_in_doc"
+    ],
+    "exact_hit_dependencies": [
+      "sumy.summarizers.kl.KLSummarizer._compute_word_freq",
+      "sumy.summarizers.kl.KLSummarizer._get_all_content_words_in_doc"
+    ],
+    "returned_entities": 6,
+    "returned_files": 2,
+    "unresolved_locations": 2,
+    "returned_code_chars": 5379
+  },
+  "usage": {
+    "calls": 5,
+    "successful_calls": 5,
+    "physical_requests": 5,
+    "failed_requests": 0,
+    "prompt_tokens": 21255,
+    "completion_tokens": 612,
+    "total_tokens": 21867,
+    "seconds": 125.5640778541565,
+    "unknown_usage_requests": 0,
+    "usage_scope": "Known returned usage only; failed/time-out request billing unknown",
+    "sdk_automatic_retries": 0,
+    "max_physical_attempts_per_logical_call": 2
+  },
+  "tool_errors": [],
+  "elapsed_seconds": 126.61513018608093,
+  "target_masked_before_graph": true,
+  "top15_truncation": false,
+  "repair_or_tests": false
+}

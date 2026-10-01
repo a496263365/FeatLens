@@ -72,7 +72,16 @@ Experimental outputs and scoring records used in the paper.
 - `results/ablation/deveval/`: ablation results for feature guidance, BM25, UniXcoder, and related graph processing conditions.
 - `results/cost/deveval/`: context length, token statistics, and cost records.
 
-`results/` contains the experimental evidence needed to verify the reported tables and recompute the metrics. Large graph files, ENRE reports, and full generation artifacts are distributed separately as the raw data archive. Full API request/response traces and temporary evaluator workspaces are intentionally omitted. New experiments should use separate output directories to avoid overwriting the archived records.
+`results/` contains compact experimental records. The complete sanitized package, including graph files, ENRE reports, and retained generation and evaluation artifacts, is available in [FeatLens_FSE_Replication.tar.zst](FeatLens_FSE_Replication.tar.zst) in this repository. Full API request/response traces and temporary evaluator workspaces are intentionally omitted. New experiments should use separate output directories to avoid overwriting the archived records.
+
+Download the archive using the file page's download button, or obtain it by cloning this repository. Extract it with GNU tar and Zstandard installed:
+
+```bash
+tar --zstd -xf FeatLens_FSE_Replication.tar.zst
+cd FeatLens_FSE_Replication
+```
+
+The archive expands into its own directory. Run the reproduction steps below from that extracted directory when using the complete data package.
 
 ### Root Files
 

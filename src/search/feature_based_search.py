@@ -257,17 +257,13 @@ def analyze_project(
                     _normalize_symbol(m) for m in target_feature_methods if _normalize_symbol(m) != target_method_norm
                 ]
 
-            target_method_sig = resolve_method_signature(target_method)
-            target_method_code = method_sig_to_code.get(target_method_sig, "")
-            if not target_method_code:
-                target_method_with_init = _maybe_insert_init_in_target_method(target_method_norm)
-                if target_method_with_init != target_method_norm:
-                    target_method_sig_with_init = resolve_method_signature(target_method_with_init)
-                    target_method_code = method_sig_to_code.get(target_method_sig_with_init, "")
-                    if target_method_code:
-                        target_method_sig = target_method_sig_with_init
             similar_methods = {}
-            target_code_tokens = tokenize_code(target_method_code) if target_method_code else []
+            # Only observable task intent/name may initialize similarity. Never
+            # use the held-out implementation, even to create a heuristic flag.
+            target_code_tokens = tokenize_code(
+                target_method_norm + ' ' + data['requirement']['Functionality']
+                + ' ' + data['requirement']['Arguments']
+            )
             if target_code_tokens:
                 target_code_scores = bm25_code.get_scores(target_code_tokens)
                 target_code_order = np.argsort(target_code_scores)

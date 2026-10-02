@@ -349,11 +349,25 @@ def process_graph_dir(
             print(f"Error reading GML for task {task_id}: {e}")
             continue
 
+        target = normalize_sig(task.get('namespace') or G.graph.get('target_method', ''))
+        def exclude_target(graph):
+            graph.remove_nodes_from([
+                n for n, attrs in graph.nodes(data=True)
+                if target and (
+                    normalize_sig(attrs.get('sig') or attrs.get('method_signature')) == target
+                    or normalize_sig(attrs.get('sig') or attrs.get('method_signature')).startswith(target + '.')
+                )
+            ])
+
+        exclude_target(G)
         original_node_ids = set(G.nodes())
 
         print(f"Processing Task {task_id}: Graph has {len(G.nodes)} nodes and {len(G.edges)} edges.")
 
         expanded_G = expand_graph(G, valid_nodes, adj, reverse_adj, method_map, id_to_qname, project_path)
+        # Exclusion after PageRank is too late: target code and its edges would
+        # already affect embeddings, restart scores and graph propagation.
+        exclude_target(expanded_G)
         print(f"  -> Expanded: {len(expanded_G.nodes)} nodes and {len(expanded_G.edges)} edges.")
 
         mid_gml_filename = f"task_{task_id}_mid.gml"
@@ -443,7 +457,7 @@ def process_graph_dir(
         total_score = sum(personalization.values())
         if total_score == 0:
             print("???")
-            personalization = {n: 1.0/len(node_ids) for n in node_ids}
+            personalization = {n: 1.0/len(node_ids) for n in node_ids} if node_ids else {}
 
         try:
             ppr_scores = nx.pagerank(expanded_G, alpha=0.85, personalization=personalization)

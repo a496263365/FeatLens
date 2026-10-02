@@ -91,6 +91,7 @@ def _edge_kind(attrs: Dict) -> str:
 def load_graph_and_group_by_file(
     graph_gml_path: str,
     project_path: str,
+    task=None,
 ) -> Tuple[Dict[str, List[Dict]], Dict[str, List[Tuple[str, str, str]]], Dict[str, Set[str]]]:
     """
     Load GML graph and return:
@@ -102,6 +103,7 @@ def load_graph_and_group_by_file(
         return defaultdict(list), defaultdict(list), defaultdict(set)
 
     G = nx.read_gml(graph_gml_path)
+    target = task.namespace if task is not None else G.graph.get('target_method', '')
     id_to_node = {}
     # Use method_signature as unique identifier (sig can duplicate for overloads e.g. two write(...))
     node_method_sigs = {}
@@ -113,6 +115,9 @@ def load_graph_and_group_by_file(
         method_sig = _unescape(attrs.get("method_signature")) or sig
         func_file = _unescape(attrs.get("func_file"))
         method_code = _unescape(attrs.get("method_code"))
+        name = str(sig or method_sig or '').split('(', 1)[0].lstrip('.')
+        if target and (name == target or name.startswith(target + '.')):
+            continue
         if not func_file:
             continue
         id_to_node[node_id] = {
@@ -296,7 +301,7 @@ def generate_completions(
         # Obtain the code-search results for this task in graph form
         graph_gml_path = os.path.join(graph_dir_path, f"task_{processed + 1}_rank.gml")
         file_to_nodes, file_to_relations, file_to_used_globals = load_graph_and_group_by_file(
-            graph_gml_path, project_path
+            graph_gml_path, project_path, task=task
         )
 
         context_code_in_prompt = assemble_graph_context_into_prompt(

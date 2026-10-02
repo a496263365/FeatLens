@@ -117,6 +117,9 @@ def load_graph_result(task: DevEvalTask, graph_gml_path: str) -> list[Dict[str, 
             func_file = html.unescape(func_file)
         if isinstance(method_code, str):
             method_code = html.unescape(method_code)
+        name = str(sig or attrs.get('method_signature') or '').split('(', 1)[0].lstrip('.')
+        if name == task.namespace or name.startswith(task.namespace + '.'):
+            continue
 
         context_code = {
             'method_signature': sig,

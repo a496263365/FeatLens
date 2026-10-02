@@ -72,16 +72,15 @@ Experimental outputs and scoring records used in the paper.
 - `results/ablation/deveval/`: ablation results for feature guidance, BM25, UniXcoder, and related graph processing conditions.
 - `results/cost/deveval/`: context length, token statistics, and cost records.
 
-`results/` contains compact experimental records. The complete sanitized package, including graph files, ENRE reports, and retained generation and evaluation artifacts, is available in [FeatLens_FSE_Replication.tar.zst](FeatLens_FSE_Replication.tar.zst) in this repository. Full API request/response traces and temporary evaluator workspaces are intentionally omitted. New experiments should use separate output directories to avoid overwriting the archived records.
+`results/` contains compact experimental records. The full `results/` directory, including graph files, ENRE reports, and retained generation and evaluation artifacts, is available in [FeatLens_FSE_Replication.tar.zst](FeatLens_FSE_Replication.tar.zst) in this repository. The archive contains only `results/`; source code and other package files are provided separately in the repository. Full API request/response traces and temporary evaluator workspaces are intentionally omitted. New experiments should use separate output directories to avoid overwriting the archived records.
 
-Download the archive using the file page's download button, or obtain it by cloning this repository. Extract it with GNU tar and Zstandard installed:
+Download the archive using the file page's download button, or obtain it by cloning this repository. With GNU tar and Zstandard installed, extract it from the repository root:
 
 ```bash
 tar --zstd -xf FeatLens_FSE_Replication.tar.zst
-cd FeatLens_FSE_Replication
 ```
 
-The archive expands into its own directory. Run the reproduction steps below from that extracted directory when using the complete data package.
+The archive extracts directly into `results/`, replacing any existing files with the same paths. Run the reproduction steps below from the repository root.
 
 ### Root Files
 
